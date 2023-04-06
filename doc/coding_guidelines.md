@@ -48,6 +48,9 @@ If supported by the tools it is prefered to use **VHDL-2008** language version.
     ```vhdl
     type t_ERR_COUNT is array (0 to 3) of std_logic_vector(7 downto 0);
     ```
+- **Resets** - active hight reset should be named **reset** or **rst**, active low resets - **reset_n** or **rst_n**
+
+- **Clocks** - single clock domain modules should use **clk** name for clock, multiple domain modules should have domain name and ***_clk** ending. 
 
 ## 3. Packages and libraries
 
