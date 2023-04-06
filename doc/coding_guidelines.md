@@ -30,8 +30,26 @@ If supported by the tools it is prefered to use **VHDL-2008** language version.
     signal axi_read_cnt   : unsigned(7 downto 0); --Read counter
     ```
 
+## 2. Naming Conventions
 
-## 2. Packages and libraries
+- **All names** must be written in English.
+- **Generics** should be uppercase and start with **g_***
+    #### Example: 
+    ```vhdl
+    g_DATA_WIDTH   : integer := 12
+    ```
+- **Constants** should be uppercase and start with **c_***
+    #### Example: 
+    ```vhdl
+    constant c_AXI_LITE_DATA_WIDTH   : integer := 32;
+    ```
+- **User defined types** should be uppercase and start with **t_***
+    #### Example: 
+    ```vhdl
+    type t_ERR_COUNT is array (0 to 3) of std_logic_vector(7 downto 0);
+    ```
+
+## 3. Packages and libraries
 
 Default libraries to use:
 ```vhdl
