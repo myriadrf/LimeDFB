@@ -21,4 +21,5 @@ Here you can find summary of available modules and their status. <br>
 | Module | Version | Status | Description |
 | ---  | --- | --- | --- |
 |[m_to_axi_lite](https://gitlab.com/myriadrf/limeip_hdl/-/tree/main/m_to_axi_lite)| v0.0 | dev | Converts general data bus with data valid signals to AXI4-Lite master interface |
+|[gt_channel](https://gitlab.com/myriadrf/limeip_hdl/-/tree/main/gt_channel)| v0.0 | dev | Send/receive data trough transceivers (Aurora 8b10b) |
 
