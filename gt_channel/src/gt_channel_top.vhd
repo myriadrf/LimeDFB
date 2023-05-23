@@ -98,7 +98,11 @@ signal m_axis_ctrl_wrusedw    : std_logic_vector(log2ceil(g_M_AXIS_CTRL_BUFFER_W
 signal m_axis_dma_wrusedw     : std_logic_vector(log2ceil(g_M_AXIS_DMA_BUFFER_WORDS) downto 0);
 signal aurora_axis_wrusedw    : std_logic_vector(log2ceil(g_GT_RX_BUFFER_WORDS) downto 0);
 
-
+signal aurora_top_ctrl_usedw  : std_logic_vector(31 downto 0); 
+signal aurora_top_data_usedw  : std_logic_vector(31 downto 0);
+signal aurora_top_bufr_usedw  : std_logic_vector(31 downto 0);
+signal aurora_top_ctrl_wr_stop: std_logic;
+signal aurora_top_data_wr_stop: std_logic;
 
 begin
 -- ----------------------------------------------------------------------------
@@ -174,8 +178,8 @@ begin
       s_axis_1_tdata    => s_axis_dma_tdata,
       s_axis_1_tlast    => s_axis_dma_tlast,
       --Control (synchronours to m_axis_aclk)
-      s_axis_0_arb_req_supress => '0',
-      s_axis_1_arb_req_supress => '0',
+      s_axis_0_arb_req_supress => aurora_top_ctrl_wr_stop,
+      s_axis_1_arb_req_supress => aurora_top_data_wr_stop,
       --AXI stream master
       m_axis_aclk       => aurora_user_clk_out,
       m_axis_aresetn    => aurora_lane_up, 
@@ -199,27 +203,17 @@ begin
       reset          => aurora_reset
    );
 
-   inst4_aurora: entity work.aurora_8b10b_0
+   inst4_aurora: entity work.aurora_top
    port map (
       s_axi_tx_tdata       => aurora_axis_tx_tdata, 
       s_axi_tx_tkeep       => (others=>'1'), --not used 
       s_axi_tx_tlast       => aurora_axis_tx_tlast,
       s_axi_tx_tvalid      => aurora_axis_tx_tvalid,
       s_axi_tx_tready      => aurora_axis_tx_tready,
-      s_axi_nfc_tx_tvalid  => '0',           --IN STD_LOGIC;
-      s_axi_nfc_tx_tdata   => (others=>'0'), --IN STD_LOGIC_VECTOR(0 TO 3);
-      s_axi_nfc_tx_tready  => open,          --OUT STD_LOGIC;
-      s_axi_ufc_tx_tvalid  => '0',           --IN STD_LOGIC;
-      s_axi_ufc_tx_tdata   => (others=>'0'), --IN STD_LOGIC_VECTOR(0 TO 2);
-      s_axi_ufc_tx_tready  => open,          --OUT STD_LOGIC;
       m_axi_rx_tdata       => aurora_axis_rx_tdata ,
       m_axi_rx_tkeep       => open,
       m_axi_rx_tlast       => aurora_axis_rx_tlast,
       m_axi_rx_tvalid      => aurora_axis_rx_tvalid,
-      m_axi_ufc_rx_tdata   => open, --OUT STD_LOGIC_VECTOR(0 TO 31);
-      m_axi_ufc_rx_tkeep   => open, --OUT STD_LOGIC_VECTOR(0 TO 3);
-      m_axi_ufc_rx_tlast   => open, --OUT STD_LOGIC;
-      m_axi_ufc_rx_tvalid  => open, --OUT STD_LOGIC;
       hard_err             => open,
       soft_err             => open,
       frame_err            => open,
@@ -250,12 +244,23 @@ begin
       gt_refclk1           => gt_refclk,
       sync_clk_out         => open,
       gt_reset_out         => open,
-      gt_powergood         => open
+      gt_powergood         => open,
+	  
+	  data_fifo_usedw      => aurora_top_data_usedw,
+	  ctrl_fifo_usedw      => aurora_top_ctrl_usedw,
+	  bufr_fifo_usedw      => aurora_top_bufr_usedw,
+	  data_fifo_stopwr     => aurora_top_data_wr_stop,
+	  ctrl_fifo_stopwr     => aurora_top_ctrl_wr_stop,
+	  ufc_misc_signals_in  => (others => '0'),
+	  ufc_misc_signals_out => open
    );   
    
-   
-
-   
+   aurora_top_data_usedw(31 downto m_axis_dma_wrusedw'LEFT+1 ) <= (others => '0');
+   aurora_top_data_usedw(m_axis_dma_wrusedw'LEFT downto 0    ) <= m_axis_dma_wrusedw;
+   aurora_top_ctrl_usedw(31 downto m_axis_ctrl_wrusedw'LEFT+1) <= (others => '0');
+   aurora_top_ctrl_usedw(m_axis_ctrl_wrusedw'LEFT downto 0   ) <= m_axis_ctrl_wrusedw;
+   aurora_top_bufr_usedw(31 downto aurora_axis_wrusedw'LEFT+1) <= (others => '0');
+   aurora_top_bufr_usedw(aurora_axis_wrusedw'LEFT downto 0   ) <= aurora_axis_wrusedw;
 
   
 end arch;   
