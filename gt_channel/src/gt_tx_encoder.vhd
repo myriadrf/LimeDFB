@@ -13,6 +13,9 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
+library work;
+use work.pkg_functions.log2ceil;
+
 -- ----------------------------------------------------------------------------
 -- Entity declaration
 -- ----------------------------------------------------------------------------
@@ -70,6 +73,7 @@ signal axis_1_fifo_tdata      : std_logic_vector(g_S_AXIS_1_DWIDTH-1 downto 0);
 signal axis_1_fifo_tlast      : std_logic;
 signal axis_1_fifo_tready     : std_logic;
 signal axis_1_fifo_tvalid     : std_logic;
+signal axis_1_fifo_rd_usedw   : std_logic_vector(log2ceil(g_S_AXIS_1_BUFFER_WORDS) downto 0);
 
 signal ctrl_pkt_axis_tdata    : std_logic_vector(g_I_AXIS_DWIDTH-1 downto 0);
 signal ctrl_pkt_axis_tlast    : std_logic;
@@ -158,23 +162,26 @@ begin
       inst3_axis_1_fifo: entity work.fifo_axis_wrap
       generic map(
          g_CLOCKING_MODE=> "independent_clock",
-         g_FIFO_DEPTH   =>  g_S_AXIS_1_BUFFER_WORDS,
-         g_TDATA_WIDTH  =>  g_S_AXIS_1_DWIDTH
+         g_FIFO_DEPTH          =>  g_S_AXIS_1_BUFFER_WORDS,
+         g_TDATA_WIDTH         =>  g_S_AXIS_1_DWIDTH,
+         g_RD_DATA_COUNT_WIDTH =>  log2ceil(g_S_AXIS_1_BUFFER_WORDS)+1
       )
       port map(
-         s_axis_aresetn => s_axis_1_aresetn,
-         s_axis_aclk    => s_axis_1_aclk,
-         s_axis_tvalid  => s_axis_1_tvalid,
-         s_axis_tready  => s_axis_1_tready,
-         s_axis_tdata   => s_axis_1_tdata,
-         s_axis_tlast   => s_axis_1_tlast,
-         m_axis_aclk    => m_axis_aclk,
-         m_axis_tvalid  => axis_1_fifo_tvalid,
-         m_axis_tready  => axis_1_fifo_tready,
-         m_axis_tdata   => axis_1_fifo_tdata, 
-         m_axis_tlast   => axis_1_fifo_tlast  
+         s_axis_aresetn     => s_axis_1_aresetn,
+         s_axis_aclk        => s_axis_1_aclk,
+         s_axis_tvalid      => s_axis_1_tvalid,
+         s_axis_tready      => s_axis_1_tready,
+         s_axis_tdata       => s_axis_1_tdata,
+         s_axis_tlast       => s_axis_1_tlast,
+         m_axis_aclk        => m_axis_aclk,
+         m_axis_tvalid      => axis_1_fifo_tvalid,
+         m_axis_tready      => axis_1_fifo_tready,
+         m_axis_tdata       => axis_1_fifo_tdata, 
+         m_axis_tlast       => axis_1_fifo_tlast,
+         rd_data_count_axis => axis_1_fifo_rd_usedw
       );
    end generate ADD_S1_AXIS_BUFFER;
+   
    
    --Bypass FIFO if g_S_AXIS_1_BUFFER_WORDS=0
    WITHOUT_S1_AXIS_BUFFER : if g_S_AXIS_1_BUFFER_WORDS = 0 generate 
@@ -182,24 +189,27 @@ begin
       s_axis_0_tready      <= axis_1_fifo_tready;
       axis_1_fifo_tdata    <= s_axis_1_tdata;
       axis_1_fifo_tlast    <= s_axis_1_tlast;
+      axis_1_fifo_rd_usedw <= (others => '0');
    end generate WITHOUT_S1_AXIS_BUFFER;
    
    
    inst4: entity work.axi4_tlast_gen
    generic map(
       g_DATA_WIDTH    => g_S_AXIS_1_DWIDTH,
-      g_LAST_PERIOD   => g_S_AXIS_1_TLAST_PERIOD
+      g_LAST_PERIOD   => g_S_AXIS_1_TLAST_PERIOD,
+      g_USEDW_WIDTH   => log2ceil(g_S_AXIS_1_BUFFER_WORDS)+1
    )
    port map(
-   clk                => m_axis_aclk,
-   reset_n            => m_axis_aresetn,
-   axi_s_data         => axis_1_fifo_tdata,
-   axi_s_ready        => axis_1_fifo_tready,
-   axi_s_valid        => axis_1_fifo_tvalid,
-   axi_m_data         => s_data_pkt_axis_tdata,
-   axi_m_ready        => s_data_pkt_axis_tready,
-   axi_m_valid        => s_data_pkt_axis_tvalid,
-   axi_m_last         => s_data_pkt_axis_tlast
+      clk                => m_axis_aclk,
+      reset_n            => m_axis_aresetn,
+      axi_s_data         => axis_1_fifo_tdata,
+      axi_s_ready        => axis_1_fifo_tready,
+      axi_s_valid        => axis_1_fifo_tvalid,
+      axi_s_usedw        => axis_1_fifo_rd_usedw,
+      axi_m_data         => s_data_pkt_axis_tdata,
+      axi_m_ready        => s_data_pkt_axis_tready,
+      axi_m_valid        => s_data_pkt_axis_tvalid,
+      axi_m_last         => s_data_pkt_axis_tlast
    );
    
    inst5: entity work.data_pkt

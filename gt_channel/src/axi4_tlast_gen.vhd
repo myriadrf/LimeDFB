@@ -19,7 +19,8 @@ use ieee.numeric_std.all;
 entity axi4_tlast_gen is
    generic(
       g_DATA_WIDTH    : integer := 32;
-      g_LAST_PERIOD   : integer := 100
+      g_LAST_PERIOD   : integer := 100;
+      g_USEDW_WIDTH   : integer := 1
    );
    port(
       CLK             : in  std_logic;
@@ -28,6 +29,7 @@ entity axi4_tlast_gen is
       AXI_S_DATA      : in  std_logic_vector(G_DATA_WIDTH-1 downto 0);
       AXI_S_READY     : out std_logic;
       AXI_S_VALID     : in  std_logic;
+      AXI_S_USEDW     : in  std_logic_vector(g_USEDW_WIDTH-1 downto 0);
       --AXI_M = axi peripheral receiving data from this module
       AXI_M_DATA      : out std_logic_vector(G_DATA_WIDTH-1 downto 0);
       AXI_M_READY     : in  std_logic;
@@ -54,7 +56,11 @@ begin
          if word_counter = g_LAST_PERIOD + 1 then
             word_counter <= 0;
          elsif AXI_S_VALID = '1' and AXI_M_READY = '1' then
-            word_counter <= word_counter + 1;
+            if unsigned(AXI_S_USEDW) = 2 then
+               word_counter <= g_LAST_PERIOD;
+            else
+               word_counter <= word_counter + 1;
+            end if;
          end if;
       end if;
     end process;

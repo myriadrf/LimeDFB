@@ -24,21 +24,23 @@ entity fifo_axis_wrap is
       g_CLOCKING_MODE      : string := "independent_clock"; -- "common_clock" or "independent_clock"
       g_FIFO_DEPTH         : integer := 256;
       g_TDATA_WIDTH        : integer := 32;
-      g_WR_DATA_COUNT_WIDTH: integer := 1
+      g_WR_DATA_COUNT_WIDTH: integer := 1;
+      g_RD_DATA_COUNT_WIDTH: integer := 1
    );
    port (
       s_axis_aresetn       : in  std_logic;
       s_axis_aclk          : in  std_logic;
       s_axis_tvalid        : in  std_logic;
       s_axis_tready        : out std_logic;
-      s_axis_tdata         : in  std_logic_vector(g_TDATA_WIDTH-1 downto 0);
+      s_axis_tdata         : in  std_logic_vector(g_TDATA_WIDTH - 1 downto 0);
       s_axis_tlast         : in  std_logic;
       m_axis_aclk          : in  std_logic;
       m_axis_tvalid        : out std_logic;
       m_axis_tready        : in  std_logic;
-      m_axis_tdata         : out std_logic_vector(g_TDATA_WIDTH-1 downto 0);
+      m_axis_tdata         : out std_logic_vector(g_TDATA_WIDTH - 1 downto 0);
       m_axis_tlast         : out std_logic;
-      wr_data_count_axis   : out std_logic_vector(g_WR_DATA_COUNT_WIDTH-1 downto 0)
+      wr_data_count_axis   : out std_logic_vector(g_WR_DATA_COUNT_WIDTH - 1 downto 0);
+      rd_data_count_axis   : out std_logic_vector(g_RD_DATA_COUNT_WIDTH - 1 downto 0)
    );
 end fifo_axis_wrap;
 
@@ -55,23 +57,23 @@ begin
 
    xpm_fifo_axis_inst : xpm_fifo_axis
    generic map (
-      CASCADE_HEIGHT       => 0,                -- DECIMAL
-      CDC_SYNC_STAGES      => 2,                -- DECIMAL
-      CLOCKING_MODE        => g_CLOCKING_MODE,  -- String
-      ECC_MODE             => "no_ecc",         -- String
-      FIFO_DEPTH           => g_FIFO_DEPTH,     -- DECIMAL
-      FIFO_MEMORY_TYPE     => "auto",           -- String
-      PACKET_FIFO          => "false",          -- String
-      PROG_EMPTY_THRESH    => 10,               -- DECIMAL
-      PROG_FULL_THRESH     => 10,               -- DECIMAL
-      RD_DATA_COUNT_WIDTH  => 1,                -- DECIMAL
-      RELATED_CLOCKS       => 0,                -- DECIMAL
-      SIM_ASSERT_CHK       => 0,                   -- DECIMAL; 0=disable simulation messages, 1=enable simulation messages
+      CASCADE_HEIGHT       => 0,                    -- DECIMAL
+      CDC_SYNC_STAGES      => 2,                    -- DECIMAL
+      CLOCKING_MODE        => g_CLOCKING_MODE,      -- String
+      ECC_MODE             => "no_ecc",             -- String
+      FIFO_DEPTH           => g_FIFO_DEPTH,         -- DECIMAL
+      FIFO_MEMORY_TYPE     => "auto",               -- String
+      PACKET_FIFO          => "false",              -- String
+      PROG_EMPTY_THRESH    => 10,                   -- DECIMAL
+      PROG_FULL_THRESH     => 10,                   -- DECIMAL
+      RD_DATA_COUNT_WIDTH  => g_RD_DATA_COUNT_WIDTH,-- DECIMAL
+      RELATED_CLOCKS       => 0,                    -- DECIMAL
+      SIM_ASSERT_CHK       => 0,                    -- DECIMAL; 0=disable simulation messages, 1=enable simulation messages
       TDATA_WIDTH          => g_TDATA_WIDTH,        -- DECIMAL
       TDEST_WIDTH          => 1,                    -- DECIMAL
       TID_WIDTH            => 1,                    -- DECIMAL
       TUSER_WIDTH          => 1,                    -- DECIMAL
-      USE_ADV_FEATURES     => "1004",               -- String
+      USE_ADV_FEATURES     => "1404",               -- String
       WR_DATA_COUNT_WIDTH  => g_WR_DATA_COUNT_WIDTH -- DECIMAL
    )
    port map (
@@ -138,7 +140,7 @@ begin
                                                 -- de-asserted when the number of words in the FIFO is less
                                                 -- than the programmable full threshold value.
    
-      rd_data_count_axis => open,               -- RD_DATA_COUNT_WIDTH-bit output: Read Data Count- This bus
+      rd_data_count_axis => rd_data_count_axis, -- RD_DATA_COUNT_WIDTH-bit output: Read Data Count- This bus
                                                 -- indicates the number of words available for reading in the
                                                 -- FIFO.
    
