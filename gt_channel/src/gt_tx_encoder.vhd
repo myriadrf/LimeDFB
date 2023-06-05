@@ -24,6 +24,7 @@ entity gt_tx_encoder is
       g_S_AXIS_0_BUFFER_WORDS : integer := 16;
       g_S_AXIS_1_DWIDTH       : integer := 128;
       g_S_AXIS_1_BUFFER_WORDS : integer := 512;
+      g_S_AXIS_1_TLAST_PERIOD : integer := 62;
       g_M_AXIS_DWIDTH         : integer := 32;
       g_M_AXIS_BUFFER_WORDS   : integer := 1024
    );
@@ -75,10 +76,15 @@ signal ctrl_pkt_axis_tlast    : std_logic;
 signal ctrl_pkt_axis_tready   : std_logic;
 signal ctrl_pkt_axis_tvalid   : std_logic;
 
-signal data_pkt_axis_tdata    : std_logic_vector(g_I_AXIS_DWIDTH-1 downto 0);
-signal data_pkt_axis_tlast    : std_logic;
-signal data_pkt_axis_tready   : std_logic;
-signal data_pkt_axis_tvalid   : std_logic;
+signal s_data_pkt_axis_tdata  : std_logic_vector(g_I_AXIS_DWIDTH-1 downto 0);
+signal s_data_pkt_axis_tlast  : std_logic;
+signal s_data_pkt_axis_tready : std_logic;
+signal s_data_pkt_axis_tvalid : std_logic;
+
+signal m_data_pkt_axis_tdata  : std_logic_vector(g_I_AXIS_DWIDTH-1 downto 0);
+signal m_data_pkt_axis_tlast  : std_logic;
+signal m_data_pkt_axis_tready : std_logic;
+signal m_data_pkt_axis_tvalid : std_logic;
 
 signal pkt_axis_tdata         : std_logic_vector(g_I_AXIS_DWIDTH-1 downto 0);
 signal pkt_axis_tlast         : std_logic;
@@ -178,7 +184,25 @@ begin
       axis_1_fifo_tlast    <= s_axis_1_tlast;
    end generate WITHOUT_S1_AXIS_BUFFER;
    
-   inst4: entity work.data_pkt
+   
+   inst4: entity work.axi4_tlast_gen
+   generic map(
+      g_DATA_WIDTH    => g_S_AXIS_1_DWIDTH,
+      g_LAST_PERIOD   => g_S_AXIS_1_TLAST_PERIOD
+   )
+   port map(
+   clk                => m_axis_aclk,
+   reset_n            => m_axis_aresetn,
+   axi_s_data         => axis_1_fifo_tdata,
+   axi_s_ready        => axis_1_fifo_tready,
+   axi_s_valid        => axis_1_fifo_tvalid,
+   axi_m_data         => s_data_pkt_axis_tdata,
+   axi_m_ready        => s_data_pkt_axis_tready,
+   axi_m_valid        => s_data_pkt_axis_tvalid,
+   axi_m_last         => s_data_pkt_axis_tlast
+   );
+   
+   inst5: entity work.data_pkt
    generic map (
       g_PKT_HEADER_WIDTH   => g_PKT_HEADER_WIDTH,
       g_DATA_DWIDTH        => g_S_AXIS_1_DWIDTH,
@@ -187,20 +211,20 @@ begin
    port map(
       clk            => m_axis_aclk,
       reset_n        => m_axis_aresetn,
-      s_axis_tdata   => axis_1_fifo_tdata,
-      s_axis_tlast   => axis_1_fifo_tlast,
-      s_axis_tready  => axis_1_fifo_tready,
-      s_axis_tvalid  => axis_1_fifo_tvalid, 
-      m_axis_tdata   => data_pkt_axis_tdata,
-      m_axis_tlast   => data_pkt_axis_tlast,
-      m_axis_tready  => data_pkt_axis_tready,
-      m_axis_tvalid  => data_pkt_axis_tvalid 
+      s_axis_tdata   => s_data_pkt_axis_tdata,
+      s_axis_tlast   => s_data_pkt_axis_tlast,
+      s_axis_tready  => s_data_pkt_axis_tready,
+      s_axis_tvalid  => s_data_pkt_axis_tvalid, 
+      m_axis_tdata   => m_data_pkt_axis_tdata,
+      m_axis_tlast   => m_data_pkt_axis_tlast,
+      m_axis_tready  => m_data_pkt_axis_tready,
+      m_axis_tvalid  => m_data_pkt_axis_tvalid 
    );
    
 -- ----------------------------------------------------------------------------
 -- Combine control and data packets into one AXIS stream
 -- ----------------------------------------------------------------------------   
-   inst5_axis_interconn : entity work.axis_interconnect_0
+   inst6_axis_interconn : entity work.axis_interconnect_0
    PORT MAP (
       ACLK                 => m_axis_aclk,
       ARESETN              => m_axis_aresetn,
@@ -214,10 +238,10 @@ begin
       
       S01_AXIS_ACLK        => m_axis_aclk,
       S01_AXIS_ARESETN     => m_axis_aresetn,
-      S01_AXIS_TVALID      => data_pkt_axis_tvalid,
-      S01_AXIS_TREADY      => data_pkt_axis_tready,
-      S01_AXIS_TDATA       => data_pkt_axis_tdata,
-      S01_AXIS_TLAST       => data_pkt_axis_tlast,
+      S01_AXIS_TVALID      => m_data_pkt_axis_tvalid,
+      S01_AXIS_TREADY      => m_data_pkt_axis_tready,
+      S01_AXIS_TDATA       => m_data_pkt_axis_tdata,
+      S01_AXIS_TLAST       => m_data_pkt_axis_tlast,
       
       M00_AXIS_ACLK        => m_axis_aclk,
       M00_AXIS_ARESETN     => m_axis_aresetn,
@@ -234,7 +258,7 @@ begin
 -- ----------------------------------------------------------------------------
 -- Converting AXIS data width
 -- ---------------------------------------------------------------------------- 
-   inst6_axis_dwidth : entity work.axis_dwidth_128_to_32
+   inst7_axis_dwidth : entity work.axis_dwidth_128_to_32
    port map (
       aclk           => m_axis_aclk,
       aresetn        => m_axis_aresetn,
