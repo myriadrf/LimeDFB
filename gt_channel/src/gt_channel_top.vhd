@@ -36,9 +36,8 @@ entity gt_channel_top is
       g_GT_TX_BUFFER_WORDS       : integer := 2048
    );
    port (
-      clk            : in  std_logic;
-      clk_125        : in  std_logic;
-      reset_n        : in  std_logic;
+      clk_125              : in  std_logic;
+      reset_n              : in  std_logic;
       -- Control RX
       s_axis_ctrl_clk    : in  std_logic;
       s_axis_ctrl_aresetn: in  std_logic;
@@ -61,6 +60,7 @@ entity gt_channel_top is
       s_axis_dma_tlast  : in  std_logic;
       --DMA TX
       m_axis_dma_clk    : in  std_logic;
+      m_axis_dma_aresetn: in  std_logic;
       m_axis_dma_tvalid : out std_logic;
       m_axis_dma_tready : in  std_logic;
       m_axis_dma_tdata  : out std_logic_vector(g_AXIS_DMA_DWIDTH-1 downto 0);
@@ -104,6 +104,11 @@ signal aurora_top_bufr_usedw  : std_logic_vector(31 downto 0);
 signal aurora_top_ctrl_wr_stop: std_logic;
 signal aurora_top_data_wr_stop: std_logic;
 
+attribute MARK_DEBUG : string;
+attribute MARK_DEBUG of aurora_lane_up    : signal is "TRUE";
+attribute MARK_DEBUG of aurora_reset      : signal is "TRUE";
+attribute MARK_DEBUG of aurora_gt_reset   : signal is "TRUE";
+
 begin
 -- ----------------------------------------------------------------------------
 -- Receive AURORA packets and decode them to CTRL and DATA
@@ -121,8 +126,6 @@ begin
       g_M_AXIS_1_BUFFER_WORDS => g_M_AXIS_DMA_BUFFER_WORDS
    )
    port map(
-      clk               => clk,
-      reset_n           => reset_n,
       --general data bus
       m_axis_0_aclk     => m_axis_ctrl_clk,
       m_axis_0_tvalid   => m_axis_ctrl_tvalid,
@@ -132,6 +135,7 @@ begin
       m_axis_0_wrusedw  => m_axis_ctrl_wrusedw,     
       --AXI stream slave
       m_axis_1_aclk     => m_axis_dma_clk,
+      m_axis_1_aresetn  => m_axis_dma_aresetn, 
       m_axis_1_tvalid   => m_axis_dma_tvalid,
       m_axis_1_tready   => m_axis_dma_tready,
       m_axis_1_tdata    => m_axis_dma_tdata,
@@ -151,7 +155,7 @@ begin
 -- Receive CTRL and DATA and pack them to AURORA packets 
 -- (CTRL RX / DMA RX) gt_rx_decoder (TX) -> (RX) AURORA
 -- ----------------------------------------------------------------------------
-  inst2_gt_tx_encoder : entity work.gt_tx_encoder
+   inst2_gt_tx_encoder : entity work.gt_tx_encoder
    generic map(
       g_PKT_HEADER_WIDTH      => 128,
       g_I_AXIS_DWIDTH         => 128,
@@ -214,45 +218,24 @@ begin
       m_axi_rx_tkeep       => open,
       m_axi_rx_tlast       => aurora_axis_rx_tlast,
       m_axi_rx_tvalid      => aurora_axis_rx_tvalid,
-      hard_err             => open,
-      soft_err             => open,
-      frame_err            => open,
-      channel_up           => open,
+      gt_refclk            => gt_refclk,
       lane_up              => aurora_lane_up,
-      txp                  => gt_txp,
-      txn                  => gt_txn,
+      txp(0)               => gt_txp,
+      txn(0)               => gt_txn,
       reset                => aurora_reset,      
       gt_reset             => aurora_gt_reset,
-      loopback             => "000",   -- 001: Near-End PCS Loopback, 010: Near-End PMA Loopback, 100: Far-End PMA Loopback, 110: Far-End PCS Loopback,
-      rxp                  => gt_rxp,
-      rxn                  => gt_rxn,
-      gt0_drpaddr          => (others=>'0'),
-      gt0_drpen            => '0',
-      gt0_drpdi            => (others=>'0'),
-      gt0_drprdy           => open,
-      gt0_drpdo            => open,
-      gt0_drpwe            => '0',
-      power_down           => '0',
-      tx_lock              => open,
-      tx_resetdone_out     => open,
-      rx_resetdone_out     => open,
-      link_reset_out       => open,
+      rxp(0)               => gt_rxp,
+      rxn(0)               => gt_rxn,
       init_clk_in          => clk_125,
       user_clk_out         => aurora_user_clk_out,
-      pll_not_locked_out   => open,                                          
-      sys_reset_out        => open,
-      gt_refclk1           => gt_refclk,
-      sync_clk_out         => open,
-      gt_reset_out         => open,
-      gt_powergood         => open,
-	  
-	  data_fifo_usedw      => aurora_top_data_usedw,
-	  ctrl_fifo_usedw      => aurora_top_ctrl_usedw,
-	  bufr_fifo_usedw      => aurora_top_bufr_usedw,
-	  data_fifo_stopwr     => aurora_top_data_wr_stop,
-	  ctrl_fifo_stopwr     => aurora_top_ctrl_wr_stop,
-	  ufc_misc_signals_in  => (others => '0'),
-	  ufc_misc_signals_out => open
+      
+      data_fifo_usedw      => aurora_top_data_usedw,
+      ctrl_fifo_usedw      => aurora_top_ctrl_usedw,
+      bufr_fifo_usedw      => aurora_top_bufr_usedw,
+      data_fifo_stopwr     => aurora_top_data_wr_stop,
+      ctrl_fifo_stopwr     => aurora_top_ctrl_wr_stop,
+      ufc_misc_signals_in  => (others => '0'),
+      ufc_misc_signals_out => open
    );   
    
    aurora_top_data_usedw(31 downto m_axis_dma_wrusedw'LEFT+1 ) <= (others => '0');

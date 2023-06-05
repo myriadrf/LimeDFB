@@ -31,8 +31,6 @@ entity gt_rx_decoder is
       g_M_AXIS_1_BUFFER_WORDS : integer := 512
    );
    port (
-      clk               : in  std_logic;
-      reset_n           : in  std_logic;
       --AXI stream master 0
       m_axis_0_aclk     : in  std_logic;
       m_axis_0_tvalid   : out std_logic;
@@ -42,6 +40,7 @@ entity gt_rx_decoder is
       m_axis_0_wrusedw  : out std_logic_vector(log2ceil(g_M_AXIS_0_BUFFER_WORDS) downto 0);
       --AXI stream master 1
       m_axis_1_aclk     : in  std_logic;
+      m_axis_1_aresetn  : in  std_logic;
       m_axis_1_tvalid   : out std_logic;
       m_axis_1_tready   : in  std_logic;
       m_axis_1_tdata    : out std_logic_vector(g_M_AXIS_1_DWIDTH-1 downto 0);
@@ -239,7 +238,7 @@ begin
          g_WR_DATA_COUNT_WIDTH   => log2ceil(g_M_AXIS_1_BUFFER_WORDS)+1
       )
       port map(
-         s_axis_aresetn       => s_axis_aresetn,
+         s_axis_aresetn       => s_axis_aresetn OR m_axis_1_aresetn,
          s_axis_aclk          => s_axis_aclk,
          s_axis_tvalid        => axis_1_128b_unpkd_tvalid,
          s_axis_tready        => axis_1_128b_unpkd_tready,

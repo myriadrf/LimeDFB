@@ -201,20 +201,44 @@ begin
       end if;
    end process;
    
-   inst1_data_fifo : entity work.axis_data_fifo_0
-   port map (
-      s_axis_aresetn    => reset_n,
-      s_axis_aclk       => clk0,
-      s_axis_tvalid     => inst1_s_axis_tvalid,
-      s_axis_tready     => inst1_s_axis_tready,
-      s_axis_tdata      => inst1_s_axis_tdata,
-      s_axis_tlast      => inst1_s_axis_tlast,
-      m_axis_aclk       => clk0,
-      m_axis_tvalid     => data_axis_tvalid,
-      m_axis_tready     => data_axis_tready,
-      m_axis_tdata      => data_axis_tdata,
-      m_axis_tlast      => data_axis_tlast
-  );
+ --  entity work.axis_data_fifo_0
+ -- port map (
+ --    s_axis_aresetn    => reset_n,
+ --    s_axis_aclk       => clk0,
+ --    s_axis_tvalid     => inst1_s_axis_tvalid,
+ --    s_axis_tready     => inst1_s_axis_tready,
+ --    s_axis_tdata      => inst1_s_axis_tdata,
+ --    s_axis_tlast      => inst1_s_axis_tlast,
+ --    m_axis_tvalid     => data_axis_tvalid,
+ --    m_axis_tready     => data_axis_tready,
+ --    m_axis_tdata      => data_axis_tdata,
+ --    m_axis_tlast      => data_axis_tlast
+ --);
+  
+  inst1_data_fifo : entity work.fifo_axis_wrap
+   generic map(
+      g_CLOCKING_MODE       => "independent_clock", -- "common_clock" or "independent_clock"
+      g_FIFO_DEPTH          =>  256,
+      g_TDATA_WIDTH         =>  c_DMA_CH_DATA_WIDTH,
+      g_RD_DATA_COUNT_WIDTH =>  9,
+      g_WR_DATA_COUNT_WIDTH =>  9
+   )
+   port map(
+      s_axis_aresetn       => reset_n,
+      s_axis_aclk          => clk0,
+      s_axis_tvalid        => inst1_s_axis_tvalid,
+      s_axis_tready        => inst1_s_axis_tready,
+      s_axis_tdata         => inst1_s_axis_tdata,
+      s_axis_tlast         => inst1_s_axis_tlast,
+      m_axis_aclk          => clk0,
+      m_axis_tvalid        => data_axis_tvalid,
+      m_axis_tready        => data_axis_tready,
+      m_axis_tdata         => data_axis_tdata,
+      m_axis_tlast         => data_axis_tlast,
+      almost_empty_axis    => open,
+      rd_data_count_axis   => open,
+      wr_data_count_axis   => open
+   );
      
 
    --process is
@@ -353,20 +377,21 @@ begin
       g_M_AXIS_1_BUFFER_WORDS => 512
    )
    port map(
-      clk               => clk0,
-      reset_n           => reset_n,
-      --general data bus
+      --AXI stream master 0
       m_axis_0_aclk     => clk0,
       m_axis_0_tvalid   => rx_axis_0_tvalid,
       m_axis_0_tready   => rx_axis_0_tready,
       m_axis_0_tdata    => rx_axis_0_tdata,
-      m_axis_0_tlast    => rx_axis_0_tlast, 
-      --AXI stream slave
+      m_axis_0_tlast    => rx_axis_0_tlast,
+      m_axis_0_wrusedw  => open, 
+      --AXI stream master 1
       m_axis_1_aclk     => clk0,
+      m_axis_1_aresetn  => reset_n,
       m_axis_1_tvalid   => rx_axis_1_tvalid,
       m_axis_1_tready   => rx_axis_1_tready,
       m_axis_1_tdata    => rx_axis_1_tdata,
       m_axis_1_tlast    => rx_axis_1_tlast,
+      m_axis_1_wrusedw  => open, 
       --AXI stream master
       s_axis_aclk       => clk0,
       s_axis_aresetn    => reset_n,

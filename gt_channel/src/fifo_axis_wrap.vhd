@@ -24,23 +24,24 @@ entity fifo_axis_wrap is
       g_CLOCKING_MODE      : string := "independent_clock"; -- "common_clock" or "independent_clock"
       g_FIFO_DEPTH         : integer := 256;
       g_TDATA_WIDTH        : integer := 32;
-      g_WR_DATA_COUNT_WIDTH: integer := 1;
-      g_RD_DATA_COUNT_WIDTH: integer := 1
+      g_RD_DATA_COUNT_WIDTH: integer := 1;
+      g_WR_DATA_COUNT_WIDTH: integer := 1
    );
    port (
       s_axis_aresetn       : in  std_logic;
       s_axis_aclk          : in  std_logic;
       s_axis_tvalid        : in  std_logic;
       s_axis_tready        : out std_logic;
-      s_axis_tdata         : in  std_logic_vector(g_TDATA_WIDTH - 1 downto 0);
+      s_axis_tdata         : in  std_logic_vector(g_TDATA_WIDTH-1 downto 0);
       s_axis_tlast         : in  std_logic;
       m_axis_aclk          : in  std_logic;
       m_axis_tvalid        : out std_logic;
       m_axis_tready        : in  std_logic;
-      m_axis_tdata         : out std_logic_vector(g_TDATA_WIDTH - 1 downto 0);
+      m_axis_tdata         : out std_logic_vector(g_TDATA_WIDTH-1 downto 0);
       m_axis_tlast         : out std_logic;
-      wr_data_count_axis   : out std_logic_vector(g_WR_DATA_COUNT_WIDTH - 1 downto 0);
-      rd_data_count_axis   : out std_logic_vector(g_RD_DATA_COUNT_WIDTH - 1 downto 0)
+      almost_empty_axis    : out std_logic;
+      rd_data_count_axis   : out std_logic_vector(g_RD_DATA_COUNT_WIDTH-1 downto 0);
+      wr_data_count_axis   : out std_logic_vector(g_WR_DATA_COUNT_WIDTH-1 downto 0)
    );
 end fifo_axis_wrap;
 
@@ -57,27 +58,27 @@ begin
 
    xpm_fifo_axis_inst : xpm_fifo_axis
    generic map (
-      CASCADE_HEIGHT       => 0,                    -- DECIMAL
-      CDC_SYNC_STAGES      => 2,                    -- DECIMAL
-      CLOCKING_MODE        => g_CLOCKING_MODE,      -- String
-      ECC_MODE             => "no_ecc",             -- String
-      FIFO_DEPTH           => g_FIFO_DEPTH,         -- DECIMAL
-      FIFO_MEMORY_TYPE     => "auto",               -- String
-      PACKET_FIFO          => "false",              -- String
-      PROG_EMPTY_THRESH    => 10,                   -- DECIMAL
-      PROG_FULL_THRESH     => 10,                   -- DECIMAL
-      RD_DATA_COUNT_WIDTH  => g_RD_DATA_COUNT_WIDTH,-- DECIMAL
-      RELATED_CLOCKS       => 0,                    -- DECIMAL
-      SIM_ASSERT_CHK       => 0,                    -- DECIMAL; 0=disable simulation messages, 1=enable simulation messages
-      TDATA_WIDTH          => g_TDATA_WIDTH,        -- DECIMAL
-      TDEST_WIDTH          => 1,                    -- DECIMAL
-      TID_WIDTH            => 1,                    -- DECIMAL
-      TUSER_WIDTH          => 1,                    -- DECIMAL
-      USE_ADV_FEATURES     => "1404",               -- String
-      WR_DATA_COUNT_WIDTH  => g_WR_DATA_COUNT_WIDTH -- DECIMAL
+      CASCADE_HEIGHT       => 0,                -- DECIMAL
+      CDC_SYNC_STAGES      => 2,                -- DECIMAL
+      CLOCKING_MODE        => g_CLOCKING_MODE,  -- String
+      ECC_MODE             => "no_ecc",         -- String
+      FIFO_DEPTH           => g_FIFO_DEPTH,     -- DECIMAL
+      FIFO_MEMORY_TYPE     => "auto",           -- String
+      PACKET_FIFO          => "false",          -- String
+      PROG_EMPTY_THRESH    => 10,               -- DECIMAL
+      PROG_FULL_THRESH     => 10,               -- DECIMAL
+      RD_DATA_COUNT_WIDTH  => g_RD_DATA_COUNT_WIDTH,  -- DECIMAL
+      RELATED_CLOCKS       => 0,                      -- DECIMAL
+      SIM_ASSERT_CHK       => 0,                      -- DECIMAL; 0=disable simulation messages, 1=enable simulation messages
+      TDATA_WIDTH          => g_TDATA_WIDTH,          -- DECIMAL
+      TDEST_WIDTH          => 1,                      -- DECIMAL
+      TID_WIDTH            => 1,                      -- DECIMAL
+      TUSER_WIDTH          => 1,                      -- DECIMAL
+      USE_ADV_FEATURES     => "1C04",                 -- String
+      WR_DATA_COUNT_WIDTH  => g_WR_DATA_COUNT_WIDTH   -- DECIMAL
    )
    port map (
-      almost_empty_axis => open,                -- 1-bit output: Almost Empty : When asserted, this signal
+      almost_empty_axis => almost_empty_axis,   -- 1-bit output: Almost Empty : When asserted, this signal
                                                 -- indicates that only one more read can be performed before
                                                 -- the FIFO goes to empty.
    
@@ -191,7 +192,7 @@ begin
                                                 -- KEEP[7] = 0b, DATA[63:56] is a NULL byte
    
       s_axis_tlast => s_axis_tlast,             -- 1-bit input: TLAST: Indicates the boundary of a packet.
-      s_axis_tstrb => (others=>'1'),             -- TDATA_WIDTH/8-bit input: TSTRB: The byte qualifier that
+      s_axis_tstrb => (others=>'1'),            -- TDATA_WIDTH/8-bit input: TSTRB: The byte qualifier that
                                                 -- indicates whether the content of the associated byte of
                                                 -- TDATA is processed as a data byte or a position byte. For a
                                                 -- 64-bit DATA, bit 0 corresponds to the least significant byte
