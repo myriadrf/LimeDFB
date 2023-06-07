@@ -27,7 +27,7 @@ entity gt_tx_encoder is
       g_S_AXIS_0_BUFFER_WORDS : integer := 16;
       g_S_AXIS_1_DWIDTH       : integer := 128;
       g_S_AXIS_1_BUFFER_WORDS : integer := 512;
-      g_S_AXIS_1_TLAST_PERIOD : integer := 62;
+      g_S_AXIS_1_TLAST        : string := "False";  --Set to "True" if tlast signal is present 
       g_M_AXIS_DWIDTH         : integer := 32;
       g_M_AXIS_BUFFER_WORDS   : integer := 1024
    );
@@ -69,11 +69,12 @@ signal axis_0_fifo_tlast      : std_logic;
 signal axis_0_fifo_tready     : std_logic;
 signal axis_0_fifo_tvalid     : std_logic;
 
-signal axis_1_fifo_tdata      : std_logic_vector(g_S_AXIS_1_DWIDTH-1 downto 0);
-signal axis_1_fifo_tlast      : std_logic;
-signal axis_1_fifo_tready     : std_logic;
-signal axis_1_fifo_tvalid     : std_logic;
-signal axis_1_fifo_rd_usedw   : std_logic_vector(log2ceil(g_S_AXIS_1_BUFFER_WORDS) downto 0);
+signal axis_1_fifo_tdata         : std_logic_vector(g_S_AXIS_1_DWIDTH-1 downto 0);
+signal axis_1_fifo_tlast         : std_logic;
+signal axis_1_fifo_tready        : std_logic;
+signal axis_1_fifo_tvalid        : std_logic;
+signal axis_1_fifo_almost_empty  : std_logic;
+signal axis_1_fifo_rd_usedw      : std_logic_vector(log2ceil(g_S_AXIS_1_BUFFER_WORDS) downto 0);
 
 signal ctrl_pkt_axis_tdata    : std_logic_vector(g_I_AXIS_DWIDTH-1 downto 0);
 signal ctrl_pkt_axis_tlast    : std_logic;
@@ -99,6 +100,25 @@ signal pkt_axis_32b_tdata     : std_logic_vector(g_M_AXIS_DWIDTH-1 downto 0);
 signal pkt_axis_32b_tlast     : std_logic;
 signal pkt_axis_32b_tready    : std_logic;
 signal pkt_axis_32b_tvalid    : std_logic;
+
+attribute MARK_DEBUG : string;
+attribute MARK_DEBUG of s_axis_0_aresetn     : signal is "TRUE"; 
+attribute MARK_DEBUG of s_axis_0_tvalid      : signal is "TRUE"; 
+attribute MARK_DEBUG of s_axis_0_tready      : signal is "TRUE"; 
+attribute MARK_DEBUG of s_axis_0_tdata       : signal is "TRUE"; 
+attribute MARK_DEBUG of s_axis_0_tlast       : signal is "TRUE"; 
+attribute MARK_DEBUG of axis_0_fifo_tvalid   : signal is "TRUE"; 
+attribute MARK_DEBUG of axis_0_fifo_tready   : signal is "TRUE"; 
+attribute MARK_DEBUG of axis_0_fifo_tdata    : signal is "TRUE"; 
+attribute MARK_DEBUG of axis_0_fifo_tlast    : signal is "TRUE"; 
+
+
+
+
+
+
+
+
 
 begin
    
@@ -161,10 +181,10 @@ begin
    ADD_S1_AXIS_BUFFER : if g_S_AXIS_1_BUFFER_WORDS > 0 generate 
       inst3_axis_1_fifo: entity work.fifo_axis_wrap
       generic map(
-         g_CLOCKING_MODE=> "independent_clock",
-         g_FIFO_DEPTH          =>  g_S_AXIS_1_BUFFER_WORDS,
-         g_TDATA_WIDTH         =>  g_S_AXIS_1_DWIDTH,
-         g_RD_DATA_COUNT_WIDTH =>  log2ceil(g_S_AXIS_1_BUFFER_WORDS)+1
+         g_CLOCKING_MODE         => "independent_clock",
+         g_FIFO_DEPTH            =>  g_S_AXIS_1_BUFFER_WORDS,
+         g_TDATA_WIDTH           =>  g_S_AXIS_1_DWIDTH,
+         g_RD_DATA_COUNT_WIDTH   =>  log2ceil(g_S_AXIS_1_BUFFER_WORDS)+1
       )
       port map(
          s_axis_aresetn     => s_axis_1_aresetn,
@@ -178,6 +198,7 @@ begin
          m_axis_tready      => axis_1_fifo_tready,
          m_axis_tdata       => axis_1_fifo_tdata, 
          m_axis_tlast       => axis_1_fifo_tlast,
+         almost_empty_axis  => axis_1_fifo_almost_empty,
          rd_data_count_axis => axis_1_fifo_rd_usedw
       );
    end generate ADD_S1_AXIS_BUFFER;
@@ -192,44 +213,56 @@ begin
       axis_1_fifo_rd_usedw <= (others => '0');
    end generate WITHOUT_S1_AXIS_BUFFER;
    
+-- ----------------------------------------------------------------------------
+-- Data packets
+-- If there is no tlast present data_pkt generates it internally in periods  
+-- specified by g_INTERNAL_TLAST_PERIOD also fifo_almost_empty used as tlast. 
+-- tlast is needed to decode data and control packets and in arbitration scheme
+-- ----------------------------------------------------------------------------  
+   EXTERNAL_TLAST_DATA_PKT : if g_S_AXIS_1_TLAST = "True" generate
+      inst5: entity work.data_pkt
+      generic map (
+         g_PKT_HEADER_WIDTH      => g_PKT_HEADER_WIDTH,
+         g_GEN_INTERNAL_TLAST    => "False",
+         g_INTERNAL_TLAST_PERIOD => 256,
+         g_AXIS_DWIDTH           => g_I_AXIS_DWIDTH
+      )
+      port map(
+         clk            => m_axis_aclk,
+         reset_n        => m_axis_aresetn,
+         s_axis_tdata   => axis_1_fifo_tdata,
+         s_axis_tlast   => axis_1_fifo_tlast,
+         s_axis_tready  => axis_1_fifo_tready,
+         s_axis_tvalid  => axis_1_fifo_tvalid,
+         m_axis_tdata   => m_data_pkt_axis_tdata,
+         m_axis_tlast   => m_data_pkt_axis_tlast,
+         m_axis_tready  => m_data_pkt_axis_tready,
+         m_axis_tvalid  => m_data_pkt_axis_tvalid 
+      );
+   end generate EXTERNAL_TLAST_DATA_PKT;
    
-   inst4: entity work.axi4_tlast_gen
-   generic map(
-      g_DATA_WIDTH    => g_S_AXIS_1_DWIDTH,
-      g_LAST_PERIOD   => g_S_AXIS_1_TLAST_PERIOD,
-      g_USEDW_WIDTH   => log2ceil(g_S_AXIS_1_BUFFER_WORDS)+1
-   )
-   port map(
-      clk                => m_axis_aclk,
-      reset_n            => m_axis_aresetn,
-      axi_s_data         => axis_1_fifo_tdata,
-      axi_s_ready        => axis_1_fifo_tready,
-      axi_s_valid        => axis_1_fifo_tvalid,
-      axi_s_usedw        => axis_1_fifo_rd_usedw,
-      axi_m_data         => s_data_pkt_axis_tdata,
-      axi_m_ready        => s_data_pkt_axis_tready,
-      axi_m_valid        => s_data_pkt_axis_tvalid,
-      axi_m_last         => s_data_pkt_axis_tlast
-   );
    
-   inst5: entity work.data_pkt
-   generic map (
-      g_PKT_HEADER_WIDTH   => g_PKT_HEADER_WIDTH,
-      g_DATA_DWIDTH        => g_S_AXIS_1_DWIDTH,
-      g_AXIS_DWIDTH        => g_I_AXIS_DWIDTH
-   )
-   port map(
-      clk            => m_axis_aclk,
-      reset_n        => m_axis_aresetn,
-      s_axis_tdata   => s_data_pkt_axis_tdata,
-      s_axis_tlast   => s_data_pkt_axis_tlast,
-      s_axis_tready  => s_data_pkt_axis_tready,
-      s_axis_tvalid  => s_data_pkt_axis_tvalid, 
-      m_axis_tdata   => m_data_pkt_axis_tdata,
-      m_axis_tlast   => m_data_pkt_axis_tlast,
-      m_axis_tready  => m_data_pkt_axis_tready,
-      m_axis_tvalid  => m_data_pkt_axis_tvalid 
-   );
+   INTERNAL_TLAST_DATA_PKT : if g_S_AXIS_1_TLAST = "False" generate
+      inst5: entity work.data_pkt
+      generic map (
+         g_PKT_HEADER_WIDTH      => g_PKT_HEADER_WIDTH,
+         g_GEN_INTERNAL_TLAST    => "True",
+         g_INTERNAL_TLAST_PERIOD => 256,
+         g_AXIS_DWIDTH           => g_I_AXIS_DWIDTH
+      )
+      port map(
+         clk            => m_axis_aclk,
+         reset_n        => m_axis_aresetn,
+         s_axis_tdata   => axis_1_fifo_tdata,
+         s_axis_tlast   => axis_1_fifo_almost_empty,
+         s_axis_tready  => axis_1_fifo_tready,
+         s_axis_tvalid  => axis_1_fifo_tvalid,
+         m_axis_tdata   => m_data_pkt_axis_tdata,
+         m_axis_tlast   => m_data_pkt_axis_tlast,
+         m_axis_tready  => m_data_pkt_axis_tready,
+         m_axis_tvalid  => m_data_pkt_axis_tvalid 
+      );
+   end generate INTERNAL_TLAST_DATA_PKT;
    
 -- ----------------------------------------------------------------------------
 -- Combine control and data packets into one AXIS stream

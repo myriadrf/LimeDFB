@@ -200,20 +200,6 @@ begin
          end if;
       end if;
    end process;
-   
- --  entity work.axis_data_fifo_0
- -- port map (
- --    s_axis_aresetn    => reset_n,
- --    s_axis_aclk       => clk0,
- --    s_axis_tvalid     => inst1_s_axis_tvalid,
- --    s_axis_tready     => inst1_s_axis_tready,
- --    s_axis_tdata      => inst1_s_axis_tdata,
- --    s_axis_tlast      => inst1_s_axis_tlast,
- --    m_axis_tvalid     => data_axis_tvalid,
- --    m_axis_tready     => data_axis_tready,
- --    m_axis_tdata      => data_axis_tdata,
- --    m_axis_tlast      => data_axis_tlast
- --);
   
   inst1_data_fifo : entity work.fifo_axis_wrap
    generic map(
@@ -229,7 +215,8 @@ begin
       s_axis_tvalid        => inst1_s_axis_tvalid,
       s_axis_tready        => inst1_s_axis_tready,
       s_axis_tdata         => inst1_s_axis_tdata,
-      s_axis_tlast         => inst1_s_axis_tlast,
+      --Not using tlast here
+      s_axis_tlast         => '0', --inst1_s_axis_tlast,
       m_axis_aclk          => clk0,
       m_axis_tvalid        => data_axis_tvalid,
       m_axis_tready        => data_axis_tready,

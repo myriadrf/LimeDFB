@@ -18,21 +18,22 @@ use ieee.numeric_std.all;
 -- ----------------------------------------------------------------------------
 entity data_pkt is
    generic(
-      g_PKT_HEADER_WIDTH   : integer := 128;
-      g_DATA_DWIDTH        : integer := 128;
-      g_AXIS_DWIDTH        : integer := 128
+      g_PKT_HEADER_WIDTH      : integer := 128;
+      g_GEN_INTERNAL_TLAST    : string  := "True";
+      g_INTERNAL_TLAST_PERIOD : integer := 256;
+      g_AXIS_DWIDTH           : integer := 128
    );
    port (
-      clk            : in  std_logic;
-      reset_n        : in  std_logic;
-      s_axis_tdata   : in  std_logic_vector(g_AXIS_DWIDTH-1 downto 0);
-      s_axis_tlast   : in  std_logic;
-      s_axis_tready  : out std_logic;
-      s_axis_tvalid  : in  std_logic;
-      m_axis_tdata   : out std_logic_vector(g_AXIS_DWIDTH-1 downto 0);
-      m_axis_tlast   : out std_logic;
-      m_axis_tready  : in  std_logic;
-      m_axis_tvalid  : out std_logic
+      clk                  : in  std_logic;
+      reset_n              : in  std_logic;
+      s_axis_tdata         : in  std_logic_vector(g_AXIS_DWIDTH-1 downto 0);
+      s_axis_tlast         : in  std_logic;
+      s_axis_tready        : out std_logic;
+      s_axis_tvalid        : in  std_logic;
+      m_axis_tdata         : out std_logic_vector(g_AXIS_DWIDTH-1 downto 0);
+      m_axis_tlast         : out std_logic;
+      m_axis_tready        : in  std_logic;
+      m_axis_tvalid        : out std_logic
       
    );
 end data_pkt;
@@ -56,7 +57,7 @@ signal s_axis_valid_write  : std_logic;
 signal m_axis_tvalid_reg   : std_logic;
 signal m_axis_valid_write  : std_logic;
 
-signal s_axi_wr_cnt        : unsigned(3 downto 0);
+signal s_axi_wr_cnt        : unsigned(7 downto 0);
 
 signal pending_slave_write_cnt : unsigned(3 downto 0);
 
@@ -70,8 +71,26 @@ signal last_word     : std_logic;
 begin
 
 
-s_axis_valid_write <= s_axis_tvalid       AND s_axis_tready_reg;
-m_axis_valid_write <= m_axis_tvalid_reg   AND m_axis_tready;
+   s_axis_valid_write <= s_axis_tvalid       AND s_axis_tready_reg;
+   m_axis_valid_write <= m_axis_tvalid_reg   AND m_axis_tready;
+
+   process(clk, reset_n)
+   begin
+      if(reset_n = '0')then
+         s_axi_wr_cnt <= (others=>'0');
+      elsif rising_edge(clk) then
+         if s_axis_valid_write = '1' then
+            if s_axi_wr_cnt < g_INTERNAL_TLAST_PERIOD AND s_axis_tlast = '0' then 
+               s_axi_wr_cnt <= s_axi_wr_cnt + 1;
+            else 
+               s_axi_wr_cnt <= (others=>'0');
+            end if;   
+         else 
+            s_axi_wr_cnt <= s_axi_wr_cnt;
+         end if;
+      end if;
+   end process;
+   
 
    process(clk, reset_n)
    begin
@@ -121,21 +140,39 @@ m_axis_valid_write <= m_axis_tvalid_reg   AND m_axis_tready;
       end if;
    end process;
    
-   
-   process(clk, reset_n)
-   begin
-      if(reset_n = '0')then
-         last_word <= '0';
-      elsif rising_edge(clk) then
-         if s_axis_valid_write = '1' AND s_axis_tlast = '1' then 
-            last_word <= '1';
-         elsif m_axis_valid_write = '1' AND last_word = '1' then 
+   INTERNAL_TLAST : if g_GEN_INTERNAL_TLAST = "True" generate 
+      process(clk, reset_n)
+      begin
+         if(reset_n = '0')then
             last_word <= '0';
-         else 
-            last_word <= last_word;
+         elsif rising_edge(clk) then
+            if s_axis_valid_write = '1' AND (s_axis_tlast = '1' OR s_axi_wr_cnt = g_INTERNAL_TLAST_PERIOD-1) then 
+               last_word <= '1';
+            elsif m_axis_valid_write = '1' AND last_word = '1' then 
+               last_word <= '0';
+            else 
+               last_word <= last_word;
+            end if;
          end if;
-      end if;
-   end process;
+      end process;
+   end generate INTERNAL_TLAST;
+   
+   EXTERNAL_TLAST : if g_GEN_INTERNAL_TLAST = "False" generate 
+      process(clk, reset_n)
+      begin
+         if(reset_n = '0')then
+            last_word <= '0';
+         elsif rising_edge(clk) then
+            if s_axis_valid_write = '1' AND s_axis_tlast = '1' then 
+               last_word <= '1';
+            elsif m_axis_valid_write = '1' AND last_word = '1' then 
+               last_word <= '0';
+            else 
+               last_word <= last_word;
+            end if;
+         end if;
+      end process;
+   end generate EXTERNAL_TLAST;
    
    
    

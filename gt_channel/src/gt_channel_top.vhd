@@ -28,6 +28,7 @@ entity gt_channel_top is
       --Data chanel
       g_AXIS_DMA_DWIDTH          : integer := 128;
       g_S_AXIS_DMA_BUFFER_WORDS  : integer := 512;
+      g_S_AXIS_DMA_TLAST         : string := "False"; --Set to "True" if tlast signal is present
       g_M_AXIS_DMA_BUFFER_WORDS  : integer := 512;
       --Aurora
       g_GT_LANES                 : integer := 1;
@@ -163,6 +164,7 @@ begin
       g_S_AXIS_0_BUFFER_WORDS => g_S_AXIS_CTRL_BUFFER_WORDS,
       g_S_AXIS_1_DWIDTH       => g_AXIS_DMA_DWIDTH,
       g_S_AXIS_1_BUFFER_WORDS => g_S_AXIS_DMA_BUFFER_WORDS,
+      g_S_AXIS_1_TLAST        => g_S_AXIS_DMA_TLAST,
       g_M_AXIS_DWIDTH         => g_GT_RXTX_DWIDTH,
       g_M_AXIS_BUFFER_WORDS   => g_GT_RX_BUFFER_WORDS
    )

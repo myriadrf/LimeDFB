@@ -62,6 +62,18 @@ signal m_axis_tlast_reg    : std_logic;
 
 signal ctrl_ready_reg      : std_logic;
 
+attribute MARK_DEBUG : string;
+attribute MARK_DEBUG of reset_n       : signal is "TRUE";      
+attribute MARK_DEBUG of ctrl_data     : signal is "TRUE";
+attribute MARK_DEBUG of ctrl_valid    : signal is "TRUE";
+attribute MARK_DEBUG of ctrl_ready    : signal is "TRUE";
+attribute MARK_DEBUG of m_axis_tdata  : signal is "TRUE";
+attribute MARK_DEBUG of m_axis_tlast  : signal is "TRUE";
+attribute MARK_DEBUG of m_axis_tready : signal is "TRUE";
+attribute MARK_DEBUG of m_axis_tvalid : signal is "TRUE";
+
+
+
 begin
 
    -- capture ctrl_data and shift right in axis slave is ready
