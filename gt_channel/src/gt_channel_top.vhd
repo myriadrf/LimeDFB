@@ -40,38 +40,38 @@ entity gt_channel_top is
       clk_125              : in  std_logic;
       reset_n              : in  std_logic;
       -- Control RX
-      s_axis_ctrl_clk    : in  std_logic;
-      s_axis_ctrl_aresetn: in  std_logic;
-      s_axis_ctrl_tvalid : in  std_logic;
-      s_axis_ctrl_tready : out std_logic;
-      s_axis_ctrl_tdata  : in  std_logic_vector(g_AXIS_CTRL_DWIDTH-1 downto 0);
-      s_axis_ctrl_tlast  : in  std_logic;
+      s_axis_ctrl_clk      : in  std_logic;
+      s_axis_ctrl_aresetn  : in  std_logic;
+      s_axis_ctrl_tvalid   : in  std_logic;
+      s_axis_ctrl_tready   : out std_logic;
+      s_axis_ctrl_tdata    : in  std_logic_vector(g_AXIS_CTRL_DWIDTH-1 downto 0);
+      s_axis_ctrl_tlast    : in  std_logic;
       --Control TX
-      m_axis_ctrl_clk    : in  std_logic;
-      m_axis_ctrl_tvalid : out std_logic;
-      m_axis_ctrl_tready : in  std_logic;
-      m_axis_ctrl_tdata  : out std_logic_vector(g_AXIS_CTRL_DWIDTH-1 downto 0);
-      m_axis_ctrl_tlast  : out std_logic;
+      m_axis_ctrl_clk      : in  std_logic;
+      m_axis_ctrl_tvalid   : out std_logic;
+      m_axis_ctrl_tready   : in  std_logic;
+      m_axis_ctrl_tdata    : out std_logic_vector(g_AXIS_CTRL_DWIDTH-1 downto 0);
+      m_axis_ctrl_tlast    : out std_logic;
       --DMA RX
-      s_axis_dma_clk    : in  std_logic;
-      s_axis_dma_aresetn: in  std_logic;
-      s_axis_dma_tvalid : in  std_logic;
-      s_axis_dma_tready : out std_logic;
-      s_axis_dma_tdata  : in  std_logic_vector(g_AXIS_DMA_DWIDTH-1 downto 0);
-      s_axis_dma_tlast  : in  std_logic;
+      s_axis_dma_clk       : in  std_logic;
+      s_axis_dma_aresetn   : in  std_logic;
+      s_axis_dma_tvalid    : in  std_logic;
+      s_axis_dma_tready    : out std_logic;
+      s_axis_dma_tdata     : in  std_logic_vector(g_AXIS_DMA_DWIDTH-1 downto 0);
+      s_axis_dma_tlast     : in  std_logic;
       --DMA TX
-      m_axis_dma_clk    : in  std_logic;
-      m_axis_dma_aresetn: in  std_logic;
-      m_axis_dma_tvalid : out std_logic;
-      m_axis_dma_tready : in  std_logic;
-      m_axis_dma_tdata  : out std_logic_vector(g_AXIS_DMA_DWIDTH-1 downto 0);
-      m_axis_dma_tlast  : out std_logic;
+      m_axis_dma_clk       : in  std_logic;
+      m_axis_dma_aresetn   : in  std_logic;
+      m_axis_dma_tvalid    : out std_logic;
+      m_axis_dma_tready    : in  std_logic;
+      m_axis_dma_tdata     : out std_logic_vector(g_AXIS_DMA_DWIDTH-1 downto 0);
+      m_axis_dma_tlast     : out std_logic;
       -- GT transceivers
-      gt_refclk     : in  std_logic;
-      gt_rxp        : in  std_logic;
-      gt_rxn        : in  std_logic;
-      gt_txp        : out std_logic;
-      gt_txn        : out std_logic
+      gt_refclk            : in  std_logic;
+      gt_rxp               : in  std_logic;
+      gt_rxn               : in  std_logic;
+      gt_txp               : out std_logic;
+      gt_txn               : out std_logic
    );
 end gt_channel_top;
 

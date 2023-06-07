@@ -15,68 +15,67 @@ use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.numeric_std.all;
 
 entity aurora_nfc_gen is
-    Generic (
-        Lo_limit : integer := 300;
-        Hi_limit  : integer := 400    
-    );
-    Port ( clk : in STD_LOGIC;
-           fifo_usedw : in STD_LOGIC_VECTOR (31 downto 0);
-           nfc_ready : in STD_LOGIC;
-           nfc_valid : out STD_LOGIC;
-           nfc_data : out STD_LOGIC_VECTOR(3 downto 0);
-           reset_n : in STD_LOGIC);
+   Generic (
+      g_LO_LIMIT  : integer := 300;
+      g_HI_LIMIT  : integer := 400    
+   );
+   Port ( 
+      CLK         : in STD_LOGIC;
+      FIFO_USEDW  : in STD_LOGIC_VECTOR (31 downto 0);
+      NFC_READY   : in STD_LOGIC;
+      NFC_VALID   : out STD_LOGIC;
+      NFC_DATA    : out STD_LOGIC_VECTOR(3 downto 0);
+      RESET_N     : in STD_LOGIC
+   );
 end aurora_nfc_gen;
 
 architecture Behavioral of aurora_nfc_gen is
 
-type T_state is (wait_for_full, wait_for_empty);
-signal current_state, next_state : T_state;
+   type t_STATE is (wait_for_full, wait_for_empty);
+   signal current_state, next_state : t_STATE;
 
 begin
 
-state_sw : process(clk,reset_n)
+state_sw : process(CLK,RESET_N)
 begin
-    if reset_n = '0' then  
-        current_state <= wait_for_full;
-    elsif rising_edge(clk) then
-        current_state <= next_state;
-    end if;
+   if RESET_N = '0' then  
+      current_state <= wait_for_full;
+   elsif rising_edge(CLK) then
+      current_state <= next_state;
+   end if;
 end process;
 
 fsm : process(all)
 begin
-    next_state <= current_state;
-    nfc_data   <= nfc_data;
-    nfc_valid  <= '0';
-    case current_state is
-        
-        when wait_for_full =>
-            nfc_valid  <= '0';
-            if (unsigned(fifo_usedw) > Hi_limit) then
-                nfc_data   <= "1111";
-                nfc_valid  <= '1';
-                if nfc_ready = '1' then
-                    next_state <= wait_for_empty;
-                end if;
-            end if;      
-            
-        when wait_for_empty => 
-            nfc_valid  <= '0';
-            if (unsigned(fifo_usedw) < Lo_limit) then
-                nfc_data   <= "0000";
-                nfc_valid  <= '1';
-                if nfc_ready = '1' then
-                    next_state <= wait_for_full;
-                end if;
-            end if;      
-        
-        when others => next_state <= wait_for_full;
-        
-    end case;
+   next_state <= current_state;
+   NFC_DATA   <= NFC_DATA;
+   NFC_VALID  <= '0';
+   case current_state is
+           
+   when wait_for_full =>
+      NFC_VALID  <= '0';
+      if (unsigned(FIFO_USEDW) > g_HI_LIMIT) then
+         NFC_DATA   <= "1111";
+         NFC_VALID  <= '1';
+         if NFC_READY = '1' then
+            next_state <= wait_for_empty;
+         end if;
+      end if;      
+               
+   when wait_for_empty => 
+      NFC_VALID  <= '0';
+      if (unsigned(FIFO_USEDW) < g_LO_LIMIT) then
+         NFC_DATA   <= "0000";
+         NFC_VALID  <= '1';
+         if NFC_READY = '1' then
+            next_state <= wait_for_full;
+         end if;
+      end if;      
+           
+   when others => next_state <= wait_for_full;
+           
+   end case;
 
 end process;
-
-
-
 
 end Behavioral;

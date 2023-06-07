@@ -14,110 +14,83 @@ use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
 
 entity aurora_top is
-generic(
-    G_DATA_FIFO_LO_THR          : integer := 300; --Deassert write stop when usedw falls below this threshold
-    G_DATA_FIFO_HI_THR          : integer := 400; --Assert write stop when usedw is higher than this threshold
-    G_CTRL_FIFO_LO_THR          : integer := 300; --...
-    G_CTRL_FIFO_HI_THR          : integer := 400;
-    G_BUFR_FIFO_LO_THR          : integer := 300;
-    G_BUFR_FIFO_HI_THR          : integer := 400
-);
-port (
-    -- AXI TX Interface
-    S_AXI_TX_TDATA            : in  std_logic_vector(0 to 31);
-    S_AXI_TX_TVALID           : in  std_logic;
-    S_AXI_TX_TREADY           : out std_logic;
-    S_AXI_TX_TKEEP            : in std_logic_vector(0 to 3);
-    S_AXI_TX_TLAST            : in  std_logic;
-    -- AXI RX Interface
-    M_AXI_RX_TDATA            : out std_logic_vector(0 to 31);
-    M_AXI_RX_TVALID           : out std_logic;
-    M_AXI_RX_TKEEP            : out std_logic_vector(0 to 3);
-    M_AXI_RX_TLAST            : out std_logic;
-    -- GT Serial I/O
-    RXP                       : in std_logic_vector(0 downto 0);
-    RXN                       : in std_logic_vector(0 downto 0);
-    TXP                       : out std_logic_vector(0 downto 0);
-    TXN                       : out std_logic_vector(0 downto 0);
-    -- GT Reference Clock Interface
-    GT_REFCLK                 : in  std_logic;
-    -- Error Detection Interface
-    LANE_UP                   : out std_logic;
-    -- System Interface
-    USER_CLK_OUT              : out std_logic;
-    RESET                     : in  std_logic;
-    GT_RESET                  : in  std_logic;
-    INIT_CLK_IN               : in  std_logic;
---____________________________FLOW CONTROL PORTS_________________________
-  DATA_FIFO_USEDW             : in  std_logic_vector(31 downto 0);--UFC
-  CTRL_FIFO_USEDW             : in  std_logic_vector(31 downto 0);--UFC
-  BUFR_FIFO_USEDW             : in  std_logic_vector(31 downto 0);--NFC
-  DATA_FIFO_STOPWR            : out std_logic;
-  CTRL_FIFO_STOPWR            : out std_logic;
-  UFC_MISC_SIGNALS_IN         : in  std_logic_vector(29 downto 0):=(others => '0'); --Reserved | IN  = provided to this core
-  UFC_MISC_SIGNALS_OUT        : out std_logic_vector(29 downto 0)                   --Reserved | OUT = output by this core
+   generic(
+       G_DATA_FIFO_LO_THR          : integer := 300; --Deassert write stop when usedw falls below this threshold
+       G_DATA_FIFO_HI_THR          : integer := 400; --Assert write stop when usedw is higher than this threshold
+       G_CTRL_FIFO_LO_THR          : integer := 300; --...
+       G_CTRL_FIFO_HI_THR          : integer := 400;
+       G_BUFR_FIFO_LO_THR          : integer := 300;
+       G_BUFR_FIFO_HI_THR          : integer := 400
+   );
+   port (
+      -- AXI TX Interface
+      S_AXI_TX_TDATA            : in  std_logic_vector(0 to 31);
+      S_AXI_TX_TVALID           : in  std_logic;
+      S_AXI_TX_TREADY           : out std_logic;
+      S_AXI_TX_TKEEP            : in std_logic_vector(0 to 3);
+      S_AXI_TX_TLAST            : in  std_logic;
+      -- AXI RX Interface
+      M_AXI_RX_TDATA            : out std_logic_vector(0 to 31);
+      M_AXI_RX_TVALID           : out std_logic;
+      M_AXI_RX_TKEEP            : out std_logic_vector(0 to 3);
+      M_AXI_RX_TLAST            : out std_logic;
+      -- GT Serial I/O
+      RXP                       : in std_logic_vector(0 downto 0);
+      RXN                       : in std_logic_vector(0 downto 0);
+      TXP                       : out std_logic_vector(0 downto 0);
+      TXN                       : out std_logic_vector(0 downto 0);
+      -- GT Reference Clock Interface
+      GT_REFCLK                 : in  std_logic;
+      -- Error Detection Interface
+      LANE_UP                   : out std_logic;
+      -- System Interface
+      USER_CLK_OUT              : out std_logic;
+      RESET                     : in  std_logic;
+      GT_RESET                  : in  std_logic;
+      INIT_CLK_IN               : in  std_logic;
+      --____________________________FLOW CONTROL PORTS_________________________
+      DATA_FIFO_USEDW           : in  std_logic_vector(31 downto 0);--UFC
+      CTRL_FIFO_USEDW           : in  std_logic_vector(31 downto 0);--UFC
+      BUFR_FIFO_USEDW           : in  std_logic_vector(31 downto 0);--NFC
+      DATA_FIFO_STOPWR          : out std_logic;
+      CTRL_FIFO_STOPWR          : out std_logic;
+      UFC_MISC_SIGNALS_IN       : in  std_logic_vector(29 downto 0):=(others => '0'); --Reserved | IN  = provided to this core
+      UFC_MISC_SIGNALS_OUT      : out std_logic_vector(29 downto 0)                   --Reserved | OUT = output by this core
 
- );
+    );
 end aurora_top;
 
 architecture Behavioral of aurora_top is
 
-    signal sys_reset        : std_logic;
-	signal user_clk			: std_logic;
-	
-	signal rx_nfc_ready     : std_logic;
-	signal rx_nfc_valid     : std_logic;
-	signal rx_nfc_data      : std_logic_vector(3 downto 0);
-	
-	signal ufc_register_out : std_logic_vector(31 downto 0) := (others => '0'); -- | OUT = sent to partner via UFC
-	signal ufc_register_in  : std_logic_vector(31 downto 0); -- | IN  = received from partner via UFC
-	signal ufc_tx_valid     : std_logic;
-	signal ufc_tx_tdata     : std_logic_vector(2 downto 0);
-	signal ufc_tx_ready     : std_logic;
-	signal ufc_tx_axisdata  : std_logic_vector(31 downto 0);
-	signal ufc_rx_tdata     : std_logic_vector(31 downto 0);
---	signal ufc_rx_keep      
-    signal ufc_rx_valid     : std_logic;
-    signal ufc_rx_last      : std_logic;
-    
-    signal aurora_tx_data_mux : std_logic_vector(31 downto 0);    
-    signal aurora_tx_ready    : std_logic;
-    
-   signal channel_up_int   : std_logic;
-   signal lane_up_int      : std_logic;
---component declarations
------
-    component aurora_nfc_gen is
-     Generic (
-         Lo_limit : integer := 300;
-         Hi_limit  : integer := 400    
-     );
-     Port ( clk : in STD_LOGIC;
-            fifo_usedw : in STD_LOGIC_VECTOR (31 downto 0);
-            nfc_ready : in STD_LOGIC;
-            nfc_valid : out STD_LOGIC;
-            nfc_data : out STD_LOGIC_VECTOR(3 downto 0);
-            reset_n : in STD_LOGIC);
-    end component;
------
-    component aurora_ufc_reg_send 
-        Port ( clk             : in STD_LOGIC;
-               reset_n         : in STD_LOGIC;
-               ufc_tx_valid    : out STD_LOGIC;
-               ufc_tx_data     : out STD_LOGIC_VECTOR (2 downto 0);
-               ufc_tx_ready    : in STD_LOGIC;
-               axis_tx_data    : out STD_LOGIC_VECTOR (31 downto 0);
-               reg_input       : in STD_LOGIC_VECTOR (31 downto 0) := (others => '0')
-               );
-    end component;
------
+   signal sys_reset          : std_logic;
+	signal user_clk			  : std_logic;
+                             
+	signal rx_nfc_ready       : std_logic;
+	signal rx_nfc_valid       : std_logic;
+	signal rx_nfc_data        : std_logic_vector(3 downto 0);
+                             
+	signal ufc_register_out   : std_logic_vector(31 downto 0) := (others => '0'); -- | OUT = sent to partner via UFC
+	signal ufc_register_in    : std_logic_vector(31 downto 0); -- | IN  = received from partner via UFC
+	signal ufc_tx_valid       : std_logic;
+	signal ufc_tx_tdata       : std_logic_vector(2 downto 0);
+	signal ufc_tx_ready       : std_logic;
+	signal ufc_tx_axisdata    : std_logic_vector(31 downto 0);
+	signal ufc_rx_tdata       : std_logic_vector(31 downto 0);     
+   signal ufc_rx_valid       : std_logic;
+   signal ufc_rx_last        : std_logic;
+   
+   signal aurora_tx_data_mux : std_logic_vector(31 downto 0);    
+   signal aurora_tx_ready    : std_logic;
+   
+   signal channel_up_int     : std_logic;
+   signal lane_up_int        : std_logic;
 
 begin
 
 
 
    aurora_module_i : entity work.aurora_8b10b_wrapper
-      port map(
+      Port map(
       -- AXI TX Interface
          s_axi_tx_tdata       => aurora_tx_data_mux,
          s_axi_tx_tkeep       => S_AXI_TX_TKEEP,
@@ -161,21 +134,21 @@ begin
          init_clk_in          => INIT_CLK_IN       
       );
 
-    nfc_control_inst : aurora_nfc_gen
-    Generic map (
-        Lo_limit => G_BUFR_FIFO_LO_THR,
-        Hi_limit => G_BUFR_FIFO_HI_THR
-    )
-    Port map (
-           clk          => user_clk,
-           reset_n      => not lane_up_int,
-           fifo_usedw   => BUFR_FIFO_USEDW,
-           nfc_ready    => rx_nfc_ready,
-           nfc_valid    => rx_nfc_valid,
-           nfc_data     => rx_nfc_data 
-    );
+   nfc_control_inst : aurora_nfc_gen
+      Generic map (
+         g_LO_LIMIT   => G_BUFR_FIFO_LO_THR,
+         g_HI_LIMIT   => G_BUFR_FIFO_HI_THR
+      )
+      Port map (
+         clk          => user_clk,
+         reset_n      => not lane_up_int,
+         fifo_usedw   => BUFR_FIFO_USEDW,
+         nfc_ready    => rx_nfc_ready,
+         nfc_valid    => rx_nfc_valid,
+         nfc_data     => rx_nfc_data 
+      );
 	
-	ufc_register_value_control : process(DATA_FIFO_USEDW,CTRL_FIFO_USEDW,user_clk)
+	ufc_register_value_control : process(user_clk)
 	begin
 		if rising_edge(user_clk) then
 			-- if write stop is not asserted and high threshold is reached, assert write stop
@@ -203,34 +176,34 @@ begin
 	end process;
 	
 	ufc_sender_inst : aurora_ufc_reg_send 
-    Port map ( clk         => user_clk,
-           reset_n         => not lane_up_int,
-           ufc_tx_valid    => ufc_tx_valid,
-           ufc_tx_data     => ufc_tx_tdata,
-           ufc_tx_ready    => ufc_tx_ready,
-           axis_tx_data    => ufc_tx_axisdata,
-           reg_input       => ufc_register_out
-           );
+   Port map ( clk         => user_clk,
+      reset_n         => not lane_up_int,
+      ufc_tx_valid    => ufc_tx_valid,
+      ufc_tx_data     => ufc_tx_tdata,
+      ufc_tx_ready    => ufc_tx_ready,
+      axis_tx_data    => ufc_tx_axisdata,
+      reg_input       => ufc_register_out
+   );
            
-      aurora_tx_data_mux <= S_AXI_TX_TDATA when aurora_tx_ready = '1' else ufc_tx_axisdata;
+   aurora_tx_data_mux <= S_AXI_TX_TDATA when aurora_tx_ready = '1' else ufc_tx_axisdata;
 	
---	 Receive UFC message
-	 ufc_receiver : process(user_clk)
-     begin
-         if rising_edge(user_clk) then
-             if ufc_rx_valid = '1' then
-                 ufc_register_in <= ufc_rx_tdata;
-             end if;    
-         end if;
-     end process;
+--	Receive UFC message
+	ufc_receiver : process(user_clk)
+   begin
+      if rising_edge(user_clk) then
+         if ufc_rx_valid = '1' then
+            ufc_register_in <= ufc_rx_tdata;
+         end if;    
+      end if;
+   end process;
      
-     UFC_MISC_SIGNALS_OUT <= ufc_register_in(31 downto 2);
-     DATA_FIFO_STOPWR     <= ufc_register_in(0);
-     CTRL_FIFO_STOPWR     <= ufc_register_in(1); 
+   UFC_MISC_SIGNALS_OUT <= ufc_register_in(31 downto 2);
+   DATA_FIFO_STOPWR     <= ufc_register_in(0);
+   CTRL_FIFO_STOPWR     <= ufc_register_in(1); 
      
 
-    S_AXI_TX_TREADY <= aurora_tx_ready;
+   S_AXI_TX_TREADY <= aurora_tx_ready;
 	USER_CLK_OUT    <= user_clk;
-   LANE_UP <= lane_up_int;
+   LANE_UP         <= lane_up_int;
 
 end Behavioral;
