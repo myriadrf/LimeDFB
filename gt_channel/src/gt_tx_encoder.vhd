@@ -46,6 +46,7 @@ entity gt_tx_encoder is
       s_axis_1_tready   : out std_logic;
       s_axis_1_tdata    : in  std_logic_vector(g_S_AXIS_1_DWIDTH-1 downto 0);
       s_axis_1_tlast    : in  std_logic;
+      s_axis_1_wrusedw  : out std_logic_vector(log2ceil(g_S_AXIS_1_BUFFER_WORDS) downto 0);
       -- Control signals
       s_axis_0_arb_req_supress : in std_logic;
       s_axis_1_arb_req_supress : in std_logic;
@@ -184,7 +185,8 @@ begin
          g_CLOCKING_MODE         => "independent_clock",
          g_FIFO_DEPTH            =>  g_S_AXIS_1_BUFFER_WORDS,
          g_TDATA_WIDTH           =>  g_S_AXIS_1_DWIDTH,
-         g_RD_DATA_COUNT_WIDTH   =>  log2ceil(g_S_AXIS_1_BUFFER_WORDS)+1
+         g_RD_DATA_COUNT_WIDTH   =>  log2ceil(g_S_AXIS_1_BUFFER_WORDS)+1,
+         g_WR_DATA_COUNT_WIDTH   =>  log2ceil(g_S_AXIS_1_BUFFER_WORDS)+1
       )
       port map(
          s_axis_aresetn     => s_axis_1_aresetn,
@@ -199,7 +201,8 @@ begin
          m_axis_tdata       => axis_1_fifo_tdata, 
          m_axis_tlast       => axis_1_fifo_tlast,
          almost_empty_axis  => axis_1_fifo_almost_empty,
-         rd_data_count_axis => axis_1_fifo_rd_usedw
+         rd_data_count_axis => axis_1_fifo_rd_usedw,
+         wr_data_count_axis => s_axis_1_wrusedw
       );
    end generate ADD_S1_AXIS_BUFFER;
    

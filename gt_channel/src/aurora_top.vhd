@@ -90,6 +90,9 @@ begin
 
 
    aurora_module_i : entity work.aurora_8b10b_wrapper
+      Generic map(
+         g_GT_TYPE => "GTP"
+      )
       Port map(
       -- AXI TX Interface
          s_axi_tx_tdata       => aurora_tx_data_mux,
@@ -134,7 +137,7 @@ begin
          init_clk_in          => INIT_CLK_IN       
       );
 
-   nfc_control_inst : aurora_nfc_gen
+   nfc_control_inst : entity work.aurora_nfc_gen
       Generic map (
          g_LO_LIMIT   => G_BUFR_FIFO_LO_THR,
          g_HI_LIMIT   => G_BUFR_FIFO_HI_THR
@@ -175,7 +178,7 @@ begin
 		end if;
 	end process;
 	
-	ufc_sender_inst : aurora_ufc_reg_send 
+	ufc_sender_inst : entity work.aurora_ufc_reg_send 
    Port map ( clk         => user_clk,
       reset_n         => not lane_up_int,
       ufc_tx_valid    => ufc_tx_valid,

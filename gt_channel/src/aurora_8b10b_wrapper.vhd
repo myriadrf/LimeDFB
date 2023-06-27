@@ -118,6 +118,62 @@ begin
       );
    end generate gen_gth;
    
+   gen_gtp : if g_GT_TYPE = "GTP" generate
+      inst_aurora: entity work.aurora_8b10b_0
+      port map (
+         s_axi_tx_tdata       => s_axi_tx_tdata,     
+         s_axi_tx_tkeep       => s_axi_tx_tkeep,     
+         s_axi_tx_tlast       => s_axi_tx_tlast,     
+         s_axi_tx_tvalid      => s_axi_tx_tvalid,    
+         s_axi_tx_tready      => s_axi_tx_tready,    
+         s_axi_nfc_tx_tvalid  => s_axi_nfc_tx_tvalid,
+         s_axi_nfc_tx_tdata   => s_axi_nfc_tx_tdata, 
+         s_axi_nfc_tx_tready  => s_axi_nfc_tx_tready,
+         s_axi_ufc_tx_tvalid  => s_axi_ufc_tx_tvalid,
+         s_axi_ufc_tx_tdata   => s_axi_ufc_tx_tdata, 
+         s_axi_ufc_tx_tready  => s_axi_ufc_tx_tready,
+         m_axi_rx_tdata       => m_axi_rx_tdata,     
+         m_axi_rx_tkeep       => m_axi_rx_tkeep,     
+         m_axi_rx_tlast       => m_axi_rx_tlast,     
+         m_axi_rx_tvalid      => m_axi_rx_tvalid,    
+         m_axi_ufc_rx_tdata   => m_axi_ufc_rx_tdata, 
+         m_axi_ufc_rx_tkeep   => m_axi_ufc_rx_tkeep, 
+         m_axi_ufc_rx_tlast   => m_axi_ufc_rx_tlast, 
+         m_axi_ufc_rx_tvalid  => m_axi_ufc_rx_tvalid,
+         hard_err             => open, 
+         soft_err             => open,
+         frame_err            => open,
+         channel_up           => open,
+         lane_up              => lane_up,
+         txp                  => txp,
+         txn                  => txn,
+         reset                => reset,      
+         gt_reset             => gt_reset,
+         loopback             => "000",   -- 001: Near-End PCS Loopback, 010: Near-End PMA Loopback, 100: Far-End PMA Loopback, 110: Far-End PCS Loopback,
+         rxp                  => rxp,
+         rxn                  => rxn,
+         drpaddr_in          => (others=>'0'),
+         drpen_in            => '0',
+         drpdi_in            => (others=>'0'),
+         drprdy_iut           => open,
+         drpdo_out            => open,
+         drpwe_in            => '0',
+         power_down           => '0',
+         tx_lock              => open,
+         tx_resetdone_out     => open,
+         rx_resetdone_out     => open,
+         link_reset_out       => open,
+         init_clk_in          => init_clk_in,
+         user_clk_out         => user_clk_out,
+         pll_not_locked_out   => open,                                          
+         sys_reset_out        => open,
+         gt_refclk1           => gt_refclk,
+         sync_clk_out         => open,
+         gt_reset_out         => open,
+         gt_powergood         => open
+      );
+   end generate gen_gtp;
+   
    
 end arch;   
 

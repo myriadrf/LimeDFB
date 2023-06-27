@@ -22,7 +22,7 @@ use work.pkg_functions.log2ceil;
 entity gt_channel_top is
    generic(
       -- Control channel
-      g_AXIS_CTRL_DWIDTH         : integer := 512;
+      g_AXIS_CTRL_DWIDTH         : integer := 32;
       g_S_AXIS_CTRL_BUFFER_WORDS : integer := 16;
       g_M_AXIS_CTRL_BUFFER_WORDS : integer := 16;
       --Data chanel
@@ -42,16 +42,14 @@ entity gt_channel_top is
       -- Control RX
       s_axis_ctrl_clk      : in  std_logic;
       s_axis_ctrl_aresetn  : in  std_logic;
-      s_axis_ctrl_tvalid   : in  std_logic;
-      s_axis_ctrl_tready   : out std_logic;
-      s_axis_ctrl_tdata    : in  std_logic_vector(g_AXIS_CTRL_DWIDTH-1 downto 0);
-      s_axis_ctrl_tlast    : in  std_logic;
+      s_axis_ctrl_wr       : in  std_logic;
+      s_axis_ctrl_wrfull   : out std_logic;
+      s_axis_ctrl_wdata    : in  std_logic_vector(g_AXIS_CTRL_DWIDTH-1 downto 0);
       --Control TX
       m_axis_ctrl_clk      : in  std_logic;
-      m_axis_ctrl_tvalid   : out std_logic;
-      m_axis_ctrl_tready   : in  std_logic;
-      m_axis_ctrl_tdata    : out std_logic_vector(g_AXIS_CTRL_DWIDTH-1 downto 0);
-      m_axis_ctrl_tlast    : out std_logic;
+      m_axis_ctrl_rd       : in std_logic;
+      m_axis_ctrl_rempty   : out  std_logic;
+      m_axis_ctrl_rdata    : out std_logic_vector(g_AXIS_CTRL_DWIDTH-1 downto 0);
       --DMA RX
       s_axis_dma_clk       : in  std_logic;
       s_axis_dma_aresetn   : in  std_logic;
@@ -59,6 +57,7 @@ entity gt_channel_top is
       s_axis_dma_tready    : out std_logic;
       s_axis_dma_tdata     : in  std_logic_vector(g_AXIS_DMA_DWIDTH-1 downto 0);
       s_axis_dma_tlast     : in  std_logic;
+      s_axis_dma_wrusedw   : out std_logic_vector(log2ceil(g_S_AXIS_DMA_BUFFER_WORDS) downto 0);
       --DMA TX
       m_axis_dma_clk       : in  std_logic;
       m_axis_dma_aresetn   : in  std_logic;
@@ -105,6 +104,14 @@ signal aurora_top_bufr_usedw  : std_logic_vector(31 downto 0);
 signal aurora_top_ctrl_wr_stop: std_logic;
 signal aurora_top_data_wr_stop: std_logic;
 
+signal rx_decoder_ctrl_tvalid : std_logic;
+signal rx_decoder_ctrl_tready : std_logic;
+signal rx_decoder_ctrl_tdata  : std_logic_vector(511 downto 0);
+
+signal tx_encoder_ctrl_tvalid : std_logic;
+signal tx_encoder_ctrl_tready : std_logic;
+signal tx_encoder_ctrl_tdata  : std_logic_vector(511 downto 0);
+
 attribute MARK_DEBUG : string;
 attribute MARK_DEBUG of aurora_lane_up    : signal is "TRUE";
 attribute MARK_DEBUG of aurora_reset      : signal is "TRUE";
@@ -121,7 +128,7 @@ begin
       g_I_AXIS_DWIDTH         => 128,
       g_S_AXIS_DWIDTH         => g_GT_RXTX_DWIDTH,
       g_S_AXIS_BUFFER_WORDS   => g_GT_TX_BUFFER_WORDS,
-      g_M_AXIS_0_DWIDTH       => g_AXIS_CTRL_DWIDTH,
+      g_M_AXIS_0_DWIDTH       => 512, --NOT CONFIGURABLE
       g_M_AXIS_0_BUFFER_WORDS => g_M_AXIS_CTRL_BUFFER_WORDS,
       g_M_AXIS_1_DWIDTH       => g_AXIS_DMA_DWIDTH,
       g_M_AXIS_1_BUFFER_WORDS => g_M_AXIS_DMA_BUFFER_WORDS
@@ -129,10 +136,10 @@ begin
    port map(
       --general data bus
       m_axis_0_aclk     => m_axis_ctrl_clk,
-      m_axis_0_tvalid   => m_axis_ctrl_tvalid,
-      m_axis_0_tready   => m_axis_ctrl_tready,
-      m_axis_0_tdata    => m_axis_ctrl_tdata,
-      m_axis_0_tlast    => m_axis_ctrl_tlast,
+      m_axis_0_tvalid   => rx_decoder_ctrl_tvalid,
+      m_axis_0_tready   => rx_decoder_ctrl_tready,
+      m_axis_0_tdata    => rx_decoder_ctrl_tdata,
+      m_axis_0_tlast    => open,
       m_axis_0_wrusedw  => m_axis_ctrl_wrusedw,     
       --AXI stream slave
       m_axis_1_aclk     => m_axis_dma_clk,
@@ -151,16 +158,67 @@ begin
       s_axis_tlast      => aurora_axis_rx_tlast,
       s_axis_wrusedw    => aurora_axis_wrusedw
    );
+   
+-- ----------------------------------------------------------------------------
+-- For Control endpoint, Aurora->FPGA
+-- ----------------------------------------------------------------------------
+   inst2_A2F_C_FIFO : entity work.wr_control_buff
+   -- Commented to use default values
+      generic map(
+   --      g_DEV_FAMILY         => g_DEV_FAMILY,
+         g_BUFF_RWIDTH        => g_AXIS_CTRL_DWIDTH
+   --      g_BUFF_RDUSEDW_WIDTH => c_H2F_C0_RDUSEDW_WIDTH     
+      )
+   port map(
+      clk            => m_axis_ctrl_clk,
+      reset_n        => aurora_lane_up,
+      -- Control endpoint
+      cntrl_valid    => rx_decoder_ctrl_tvalid,
+      cntrl_data     => rx_decoder_ctrl_tdata,
+      cntrl_ready    => rx_decoder_ctrl_tready,
+      -- Control Buffer FIFO
+      buff_rdclk     => m_axis_ctrl_clk,
+      buff_rd        => m_axis_ctrl_rd,--m_axis_ctrl_tready,
+      buff_rdata     => m_axis_ctrl_rdata,--m_axis_ctrl_tdata,
+      buff_rempty    => m_axis_ctrl_rempty,
+      buff_rdusedw   => open
+   );
+
+-- ----------------------------------------------------------------------------
+-- For Control endpoint, FPGA->Aurora
+-- ----------------------------------------------------------------------------
+   inst3_F2A_C_FIFO : entity work.rd_control_buff
+   -- Commented to use default values
+   generic map(
+--      g_DEV_FAMILY         => g_DEV_FAMILY,
+      g_BUFF_WRWIDTH       => g_AXIS_CTRL_DWIDTH
+--      g_BUFF_WRUSEDW_WIDTH => c_F2H_C0_WRUSEDW_WIDTH   
+   )
+   port map(
+      clk            => s_axis_ctrl_clk,
+      reset_n        => aurora_lane_up,
+      -- Control endpoint
+      cntrl_valid    => tx_encoder_ctrl_tvalid,
+      cntrl_data     => tx_encoder_ctrl_tdata,
+      cntrl_ready    => tx_encoder_ctrl_tready, 
+      -- Control Buffer FIFO
+      buff_wrdclk    => s_axis_ctrl_clk,
+      buff_wr        => s_axis_ctrl_wr,--s_axis_ctrl_tvalid,
+      buff_wrdata    => s_axis_ctrl_wdata,--s_axis_ctrl_tdata,
+      buff_wrfull    => s_axis_ctrl_wrfull,
+      buff_wrdusedw  => open
+   );
 
 -- ----------------------------------------------------------------------------
 -- Receive CTRL and DATA and pack them to AURORA packets 
 -- (CTRL RX / DMA RX) gt_rx_decoder (TX) -> (RX) AURORA
 -- ----------------------------------------------------------------------------
+
    inst2_gt_tx_encoder : entity work.gt_tx_encoder
    generic map(
       g_PKT_HEADER_WIDTH      => 128,
       g_I_AXIS_DWIDTH         => 128,
-      g_S_AXIS_0_DWIDTH       => g_AXIS_CTRL_DWIDTH,
+      g_S_AXIS_0_DWIDTH       => 512, --NOT CONFIGURABLE
       g_S_AXIS_0_BUFFER_WORDS => g_S_AXIS_CTRL_BUFFER_WORDS,
       g_S_AXIS_1_DWIDTH       => g_AXIS_DMA_DWIDTH,
       g_S_AXIS_1_BUFFER_WORDS => g_S_AXIS_DMA_BUFFER_WORDS,
@@ -172,10 +230,10 @@ begin
       --AXI stream slave
       s_axis_0_aclk     => s_axis_ctrl_clk,
       s_axis_0_aresetn  => s_axis_ctrl_aresetn,
-      s_axis_0_tvalid   => s_axis_ctrl_tvalid,
-      s_axis_0_tready   => s_axis_ctrl_tready,
-      s_axis_0_tdata    => s_axis_ctrl_tdata, 
-      s_axis_0_tlast    => s_axis_ctrl_tlast,
+      s_axis_0_tvalid   => tx_encoder_ctrl_tvalid,
+      s_axis_0_tready   => tx_encoder_ctrl_tready,
+      s_axis_0_tdata    => tx_encoder_ctrl_tdata, 
+      s_axis_0_tlast    => '0',
       --AXI stream slave
       s_axis_1_aclk     => s_axis_dma_clk,
       s_axis_1_aresetn  => s_axis_dma_aresetn,
@@ -183,6 +241,7 @@ begin
       s_axis_1_tready   => s_axis_dma_tready,
       s_axis_1_tdata    => s_axis_dma_tdata,
       s_axis_1_tlast    => s_axis_dma_tlast,
+      s_axis_1_wrusedw  => s_axis_dma_wrusedw,
       --Control (synchronours to m_axis_aclk)
       s_axis_0_arb_req_supress => aurora_top_ctrl_wr_stop,
       s_axis_1_arb_req_supress => aurora_top_data_wr_stop,
