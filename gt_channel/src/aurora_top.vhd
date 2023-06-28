@@ -15,12 +15,12 @@ use IEEE.NUMERIC_STD.ALL;
 
 entity aurora_top is
    generic(
-       G_DATA_FIFO_LO_THR          : integer := 300; --Deassert write stop when usedw falls below this threshold
-       G_DATA_FIFO_HI_THR          : integer := 400; --Assert write stop when usedw is higher than this threshold
-       G_CTRL_FIFO_LO_THR          : integer := 300; --...
-       G_CTRL_FIFO_HI_THR          : integer := 400;
-       G_BUFR_FIFO_LO_THR          : integer := 300;
-       G_BUFR_FIFO_HI_THR          : integer := 400
+      G_DATA_FIFO_LO_THR          : integer := 300; --Deassert write stop when usedw falls below this threshold
+      G_DATA_FIFO_HI_THR          : integer := 400; --Assert write stop when usedw is higher than this threshold
+      G_CTRL_FIFO_LO_THR          : integer := 300; --...
+      G_CTRL_FIFO_HI_THR          : integer := 400;
+      G_BUFR_FIFO_LO_THR          : integer := 300;
+      G_BUFR_FIFO_HI_THR          : integer := 400
    );
    port (
       -- AXI TX Interface
@@ -62,28 +62,28 @@ end aurora_top;
 
 architecture Behavioral of aurora_top is
 
-   signal sys_reset          : std_logic;
-	signal user_clk			  : std_logic;
-                             
-	signal rx_nfc_ready       : std_logic;
-	signal rx_nfc_valid       : std_logic;
-	signal rx_nfc_data        : std_logic_vector(3 downto 0);
-                             
-	signal ufc_register_out   : std_logic_vector(31 downto 0) := (others => '0'); -- | OUT = sent to partner via UFC
-	signal ufc_register_in    : std_logic_vector(31 downto 0); -- | IN  = received from partner via UFC
-	signal ufc_tx_valid       : std_logic;
-	signal ufc_tx_tdata       : std_logic_vector(2 downto 0);
-	signal ufc_tx_ready       : std_logic;
-	signal ufc_tx_axisdata    : std_logic_vector(31 downto 0);
-	signal ufc_rx_tdata       : std_logic_vector(31 downto 0);     
-   signal ufc_rx_valid       : std_logic;
-   signal ufc_rx_last        : std_logic;
+   signal sys_reset           : std_logic;
+   signal user_clk            : std_logic;
+                           
+   signal rx_nfc_ready        : std_logic;
+   signal rx_nfc_valid        : std_logic;
+   signal rx_nfc_data         : std_logic_vector(3 downto 0);
+                           
+   signal ufc_register_out    : std_logic_vector(31 downto 0) := (others => '0'); -- | OUT = sent to partner via UFC
+   signal ufc_register_in     : std_logic_vector(31 downto 0); -- | IN  = received from partner via UFC
+   signal ufc_tx_valid        : std_logic;
+   signal ufc_tx_tdata        : std_logic_vector(2 downto 0);
+   signal ufc_tx_ready        : std_logic;
+   signal ufc_tx_axisdata     : std_logic_vector(31 downto 0);
+   signal ufc_rx_tdata        : std_logic_vector(31 downto 0);     
+   signal ufc_rx_valid        : std_logic;
+   signal ufc_rx_last         : std_logic;
    
-   signal aurora_tx_data_mux : std_logic_vector(31 downto 0);    
-   signal aurora_tx_ready    : std_logic;
+   signal aurora_tx_data_mux  : std_logic_vector(31 downto 0);    
+   signal aurora_tx_ready     : std_logic;
    
-   signal channel_up_int     : std_logic;
-   signal lane_up_int        : std_logic;
+   signal channel_up_int      : std_logic;
+   signal lane_up_int         : std_logic;
 
 begin
 
@@ -134,7 +134,7 @@ begin
          init_clk_in          => INIT_CLK_IN       
       );
 
-   nfc_control_inst : aurora_nfc_gen
+   nfc_control_inst : entity work.aurora_nfc_gen
       Generic map (
          g_LO_LIMIT   => G_BUFR_FIFO_LO_THR,
          g_HI_LIMIT   => G_BUFR_FIFO_HI_THR
@@ -147,48 +147,49 @@ begin
          nfc_valid    => rx_nfc_valid,
          nfc_data     => rx_nfc_data 
       );
-	
-	ufc_register_value_control : process(user_clk)
-	begin
-		if rising_edge(user_clk) then
-			-- if write stop is not asserted and high threshold is reached, assert write stop
-			if unsigned(DATA_FIFO_USEDW) > G_DATA_FIFO_HI_THR and ufc_register_out(0) = '0' then
-				ufc_register_out(0) <= '1';
-			-- if write stop is asserted and low threshold is passed, deassert write stop
-			elsif unsigned(DATA_FIFO_USEDW) < G_DATA_FIFO_LO_THR and ufc_register_out(0) = '1' then
-				ufc_register_out(0) <= '0';
-			else
-				ufc_register_out(0) <= ufc_register_out(0);
-			end if;
-			
-			-- if write stop is not asserted and high threshold is reached, assert write stop
-			if unsigned(CTRL_FIFO_USEDW) > G_CTRL_FIFO_HI_THR and ufc_register_out(1) = '0' then
-				ufc_register_out(1) <= '1';
-			-- if write stop is asserted and low threshold is passed, deassert write stop
-			elsif unsigned(CTRL_FIFO_USEDW) < G_CTRL_FIFO_LO_THR and ufc_register_out(1) = '1' then
-				ufc_register_out(1) <= '0';
-			else
-				ufc_register_out(1) <= ufc_register_out(1);
-			end if;
-			
-			ufc_register_out(31 downto 2) <= UFC_MISC_SIGNALS_IN;
-		end if;
-	end process;
-	
-	ufc_sender_inst : aurora_ufc_reg_send 
-   Port map ( clk         => user_clk,
-      reset_n         => not lane_up_int,
-      ufc_tx_valid    => ufc_tx_valid,
-      ufc_tx_data     => ufc_tx_tdata,
-      ufc_tx_ready    => ufc_tx_ready,
-      axis_tx_data    => ufc_tx_axisdata,
-      reg_input       => ufc_register_out
+   
+   ufc_register_value_control : process(user_clk)
+   begin
+      if rising_edge(user_clk) then
+         -- if write stop is not asserted and high threshold is reached, assert write stop
+         if unsigned(DATA_FIFO_USEDW) > G_DATA_FIFO_HI_THR and ufc_register_out(0) = '0' then
+            ufc_register_out(0) <= '1';
+         -- if write stop is asserted and low threshold is passed, deassert write stop
+         elsif unsigned(DATA_FIFO_USEDW) < G_DATA_FIFO_LO_THR and ufc_register_out(0) = '1' then
+            ufc_register_out(0) <= '0';
+         else
+            ufc_register_out(0) <= ufc_register_out(0);
+         end if;
+         
+         -- if write stop is not asserted and high threshold is reached, assert write stop
+         if unsigned(CTRL_FIFO_USEDW) > G_CTRL_FIFO_HI_THR and ufc_register_out(1) = '0' then
+            ufc_register_out(1) <= '1';
+         -- if write stop is asserted and low threshold is passed, deassert write stop
+         elsif unsigned(CTRL_FIFO_USEDW) < G_CTRL_FIFO_LO_THR and ufc_register_out(1) = '1' then
+            ufc_register_out(1) <= '0';
+         else
+            ufc_register_out(1) <= ufc_register_out(1);
+         end if;
+         
+         ufc_register_out(31 downto 2) <= UFC_MISC_SIGNALS_IN;
+      end if;
+   end process;
+   
+   ufc_sender_inst : entity work.aurora_ufc_reg_send 
+   Port map (
+      clk            => user_clk,
+      reset_n        => not lane_up_int,
+      ufc_tx_valid   => ufc_tx_valid,
+      ufc_tx_data    => ufc_tx_tdata,
+      ufc_tx_ready   => ufc_tx_ready,
+      axis_tx_data   => ufc_tx_axisdata,
+      reg_input      => ufc_register_out
    );
            
    aurora_tx_data_mux <= S_AXI_TX_TDATA when aurora_tx_ready = '1' else ufc_tx_axisdata;
-	
---	Receive UFC message
-	ufc_receiver : process(user_clk)
+   
+-- Receive UFC message
+   ufc_receiver : process(user_clk)
    begin
       if rising_edge(user_clk) then
          if ufc_rx_valid = '1' then
@@ -203,7 +204,7 @@ begin
      
 
    S_AXI_TX_TREADY <= aurora_tx_ready;
-	USER_CLK_OUT    <= user_clk;
+   USER_CLK_OUT    <= user_clk;
    LANE_UP         <= lane_up_int;
 
 end Behavioral;

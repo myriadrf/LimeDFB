@@ -68,6 +68,7 @@ entity gt_channel_top is
       m_axis_dma_tlast     : out std_logic;
       -- GT transceivers
       gt_refclk            : in  std_logic;
+      gt_lane_up           : out std_logic;
       gt_rxp               : in  std_logic;
       gt_rxn               : in  std_logic;
       gt_txp               : out std_logic;
@@ -246,6 +247,8 @@ begin
    aurora_top_ctrl_usedw(m_axis_ctrl_wrusedw'LEFT downto 0   ) <= m_axis_ctrl_wrusedw;
    aurora_top_bufr_usedw(31 downto aurora_axis_wrusedw'LEFT+1) <= (others => '0');
    aurora_top_bufr_usedw(aurora_axis_wrusedw'LEFT downto 0   ) <= aurora_axis_wrusedw;
+   
+   gt_lane_up <= aurora_lane_up;
 
   
 end arch;   
