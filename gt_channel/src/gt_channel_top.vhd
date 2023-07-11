@@ -39,6 +39,7 @@ entity gt_channel_top is
    port (
       clk_125              : in  std_logic;
       reset_n              : in  std_logic;
+      user_clk_out         : out std_logic;
       -- Control RX
       s_axis_ctrl_clk      : in  std_logic;
       s_axis_ctrl_aresetn  : in  std_logic;
@@ -305,6 +306,8 @@ begin
    aurora_top_ctrl_usedw(m_axis_ctrl_wrusedw'LEFT downto 0   ) <= m_axis_ctrl_wrusedw;
    aurora_top_bufr_usedw(31 downto aurora_axis_wrusedw'LEFT+1) <= (others => '0');
    aurora_top_bufr_usedw(aurora_axis_wrusedw'LEFT downto 0   ) <= aurora_axis_wrusedw;
+   
+   user_clk_out <= aurora_user_clk_out;
 
   
 end arch;   
