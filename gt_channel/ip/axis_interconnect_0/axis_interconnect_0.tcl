@@ -18,11 +18,11 @@ if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
 # source axis_interconnect_0.tcl
 # If there is no project opened, this script will create a
 # project, but make sure you do not have an existing project
-# <./vivado/pcie_dma_test.xpr> in the current working folder.
+# <./LimeSDR-XTRX/LimeSDR-XTRX.xpr> in the current working folder.
 
 set list_projs [get_projects -quiet]
 if { $list_projs eq "" } {
-  create_project pcie_dma_test vivado -part xczu7ev-ffvc1156-2-e
+  create_project LimeSDR-XTRX LimeSDR-XTRX -part xc7a50tcpg236-2
   set_property target_language Verilog [current_project]
   set_property simulator_language Mixed [current_project]
 }
