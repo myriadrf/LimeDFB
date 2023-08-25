@@ -65,8 +65,8 @@ set aurora_8b10b_0 [create_ip -name aurora_8b10b -vendor xilinx.com -library ip 
 set_property -dict { 
   CONFIG.C_LANE_WIDTH {4}
   CONFIG.C_LINE_RATE {6.25}
-  CONFIG.C_REFCLK_FREQUENCY {125.000}
-  CONFIG.C_INIT_CLK {125}
+  CONFIG.C_REFCLK_FREQUENCY {156.250}
+  CONFIG.C_INIT_CLK {100}
   CONFIG.Interface_Mode {Framing}
   CONFIG.Flow_Mode {UFC+_Immediate_NFC}
   CONFIG.C_COLUMN_USED {None}
@@ -80,6 +80,7 @@ set_property -dict {
   CONFIG.SupportLevel {1}
   CONFIG.C_USE_BYTESWAP {false}
   CONFIG.CHANNEL_ENABLE {X0Y0}
+  CONFIG.C_DOUBLE_GTRXRESET {true}
 } [get_ips aurora_8b10b_0]
 
 set_property -dict { 

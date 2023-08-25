@@ -15,12 +15,13 @@ use IEEE.NUMERIC_STD.ALL;
 
 entity aurora_top is
    generic(
-       G_DATA_FIFO_LO_THR          : integer := 300; --Deassert write stop when usedw falls below this threshold
-       G_DATA_FIFO_HI_THR          : integer := 400; --Assert write stop when usedw is higher than this threshold
-       G_CTRL_FIFO_LO_THR          : integer := 300; --...
-       G_CTRL_FIFO_HI_THR          : integer := 400;
-       G_BUFR_FIFO_LO_THR          : integer := 300;
-       G_BUFR_FIFO_HI_THR          : integer := 400
+      g_GT_TYPE                   : string  := "GTH"; -- GTH - Ultrascale+; GTP - Artix7; 
+      G_DATA_FIFO_LO_THR          : integer := 300;   -- Deassert write stop when usedw falls below this threshold
+      G_DATA_FIFO_HI_THR          : integer := 400;   -- Assert write stop when usedw is higher than this threshold
+      G_CTRL_FIFO_LO_THR          : integer := 300;   -- ...
+      G_CTRL_FIFO_HI_THR          : integer := 400;
+      G_BUFR_FIFO_LO_THR          : integer := 300;
+      G_BUFR_FIFO_HI_THR          : integer := 400
    );
    port (
       -- AXI TX Interface
@@ -91,7 +92,7 @@ begin
 
    aurora_module_i : entity work.aurora_8b10b_wrapper
       Generic map(
-         g_GT_TYPE => "GTP"
+         g_GT_TYPE => g_GT_TYPE
       )
       Port map(
       -- AXI TX Interface

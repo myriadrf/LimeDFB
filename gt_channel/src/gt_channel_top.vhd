@@ -21,6 +21,7 @@ use work.pkg_functions.log2ceil;
 -- ----------------------------------------------------------------------------
 entity gt_channel_top is
    generic(
+      g_GT_TYPE                  : string  := "GTH"; -- GTH - Ultrascale+; GTP - Artix7;
       -- Control channel
       g_AXIS_CTRL_DWIDTH         : integer := 32;
       g_S_AXIS_CTRL_BUFFER_WORDS : integer := 16;
@@ -68,6 +69,10 @@ entity gt_channel_top is
       m_axis_dma_tlast     : out std_logic;
       -- GT transceivers
       gt_refclk            : in  std_logic;
+      gt_soft_reset_n      : in  std_logic;
+      gt_lane_up           : out std_logic;
+      aurora_gt_reset_out  : out std_logic;
+      aurora_reset_out     : out std_logic;
       gt_rxp               : in  std_logic;
       gt_rxn               : in  std_logic;
       gt_txp               : out std_logic;
@@ -114,9 +119,17 @@ signal tx_encoder_ctrl_tready : std_logic;
 signal tx_encoder_ctrl_tdata  : std_logic_vector(511 downto 0);
 
 attribute MARK_DEBUG : string;
+attribute MARK_DEBUG of reset_n           : signal is "TRUE";
+attribute MARK_DEBUG of gt_soft_reset_n   : signal is "TRUE";
 attribute MARK_DEBUG of aurora_lane_up    : signal is "TRUE";
 attribute MARK_DEBUG of aurora_reset      : signal is "TRUE";
 attribute MARK_DEBUG of aurora_gt_reset   : signal is "TRUE";
+
+attribute KEEP : string;
+attribute KEEP of reset_n         : signal is "TRUE";
+attribute KEEP of gt_soft_reset_n : signal is "TRUE";
+attribute KEEP of aurora_reset    : signal is "TRUE";
+attribute KEEP of aurora_gt_reset : signal is "TRUE";
 
 begin
 -- ----------------------------------------------------------------------------
@@ -263,13 +276,16 @@ begin
       init_clk       => clk_125,
       user_clk       => aurora_user_clk_out,
       hard_reset_n   => reset_n,
-      soft_reset_n   => reset_n,
+      soft_reset_n   => gt_soft_reset_n,
       -- GT reset out
       gt_reset       => aurora_gt_reset,
       reset          => aurora_reset
    );
 
    inst4_aurora: entity work.aurora_top
+   generic map ( 
+      g_GT_TYPE   => g_GT_TYPE
+   )
    port map (
       s_axi_tx_tdata       => aurora_axis_tx_tdata, 
       s_axi_tx_tkeep       => (others=>'1'), --not used 
@@ -308,6 +324,10 @@ begin
    aurora_top_bufr_usedw(aurora_axis_wrusedw'LEFT downto 0   ) <= aurora_axis_wrusedw;
    
    user_clk_out <= aurora_user_clk_out;
+   
+   gt_lane_up           <= aurora_lane_up;
+   aurora_gt_reset_out  <= aurora_gt_reset;
+   aurora_reset_out     <= aurora_reset;
 
   
 end arch;   
