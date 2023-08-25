@@ -18,11 +18,11 @@ if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
 # source aurora_8b10b_0.tcl
 # If there is no project opened, this script will create a
 # project, but make sure you do not have an existing project
-# <./LimeSDR-XTRX/LimeSDR-XTRX.xpr> in the current working folder.
+# <./LimeSDR-XTRX-Aurora/LimeSDR-XTRX-Aurora.xpr> in the current working folder.
 
 set list_projs [get_projects -quiet]
 if { $list_projs eq "" } {
-  create_project LimeSDR-XTRX LimeSDR-XTRX -part xc7a50tcpg236-2
+  create_project LimeSDR-XTRX-Aurora LimeSDR-XTRX-Aurora -part xc7a50tcpg236-2
   set_property target_language Verilog [current_project]
   set_property simulator_language Mixed [current_project]
 }
@@ -66,7 +66,7 @@ set_property -dict {
   CONFIG.C_LANE_WIDTH {4}
   CONFIG.C_LINE_RATE {6.25}
   CONFIG.C_REFCLK_FREQUENCY {156.250}
-  CONFIG.C_INIT_CLK {100}
+  CONFIG.C_INIT_CLK {130}
   CONFIG.Interface_Mode {Framing}
   CONFIG.Flow_Mode {UFC+_Immediate_NFC}
   CONFIG.C_COLUMN_USED {None}
@@ -78,9 +78,9 @@ set_property -dict {
   CONFIG.SINGLEEND_INITCLK {true}
   CONFIG.SINGLEEND_GTREFCLK {true}
   CONFIG.SupportLevel {1}
+  CONFIG.C_DOUBLE_GTRXRESET {true}
   CONFIG.C_USE_BYTESWAP {false}
   CONFIG.CHANNEL_ENABLE {X0Y0}
-  CONFIG.C_DOUBLE_GTRXRESET {true}
 } [get_ips aurora_8b10b_0]
 
 set_property -dict { 
