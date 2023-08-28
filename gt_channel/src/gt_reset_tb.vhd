@@ -24,7 +24,7 @@ end gt_reset_tb;
 -- ----------------------------------------------------------------------------
 
 architecture tb_behave of gt_reset_tb is
-   constant clk0_period    : time := 8 ns;
+   constant clk0_period    : time := 10  ns;
    constant clk1_period    : time := 6.4 ns; 
    --signals
    signal clk0,clk1        : std_logic;

@@ -18,11 +18,11 @@ if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
 # source axis_dwidth_32_to_128.tcl
 # If there is no project opened, this script will create a
 # project, but make sure you do not have an existing project
-# <./vivado/pcie_dma_test.xpr> in the current working folder.
+# <./LimeMM-X8/LimeMM-X8.xpr> in the current working folder.
 
 set list_projs [get_projects -quiet]
 if { $list_projs eq "" } {
-  create_project pcie_dma_test vivado -part xczu7ev-ffvc1156-2-e
+  create_project LimeMM-X8 LimeMM-X8 -part xczu7ev-ffvc1156-2-e
   set_property target_language Verilog [current_project]
   set_property simulator_language Mixed [current_project]
 }

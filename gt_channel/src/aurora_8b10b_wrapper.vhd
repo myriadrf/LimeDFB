@@ -60,6 +60,8 @@ end aurora_8b10b_wrapper;
 -- ----------------------------------------------------------------------------
 architecture arch of aurora_8b10b_wrapper is
 
+signal lane_up_int      : std_logic;
+
 begin
 
    gen_gth : if g_GT_TYPE = "GTH" generate
@@ -88,7 +90,7 @@ begin
          soft_err             => open,
          frame_err            => open,
          channel_up           => open,
-         lane_up              => lane_up,
+         lane_up              => lane_up_int,
          txp                  => txp,
          txn                  => txn,
          reset                => reset,      
@@ -117,6 +119,9 @@ begin
          gt_powergood         => open
       );
    end generate gen_gth;
+   
+   
+   lane_up <= lane_up_int;
    
    
 end arch;   
