@@ -66,7 +66,8 @@ set_property -dict {
   CONFIG.C_LANE_WIDTH {4}
   CONFIG.C_LINE_RATE {6.25}
   CONFIG.C_REFCLK_FREQUENCY {156.250}
-  CONFIG.C_INIT_CLK {130}
+  CONFIG.C_INIT_CLK {78}
+  CONFIG.DRP_FREQ {78}
   CONFIG.Interface_Mode {Framing}
   CONFIG.Flow_Mode {UFC+_Immediate_NFC}
   CONFIG.C_COLUMN_USED {None}
