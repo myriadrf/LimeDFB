@@ -205,7 +205,7 @@ begin
          loopback                => "000",   -- 001: Near-End PCS Loopback, 010: Near-End PMA Loopback, 100: Far-End PMA Loopback, 110: Far-End PCS Loopback,
          rxp                     => rxp,
          rxn                     => rxn,
-         drpclk_in               => '0', 
+         drpclk_in               => init_clk_in, 
          drpaddr_in              => (others=>'0'),
          drpen_in                => '0',
          drpdi_in                => (others=>'0'),
