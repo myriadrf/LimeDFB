@@ -23,7 +23,7 @@ foreach file $SYNTH_SRC {
 puts "Sourcing SIM SRC"
 foreach file $SIM_SRC {
    puts $file
-   add_files $file
+   add_files -fileset sim_1 $file
 }
 
 puts "Sourcing IP"
