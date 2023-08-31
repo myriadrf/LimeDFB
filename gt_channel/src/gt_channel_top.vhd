@@ -21,6 +21,8 @@ use work.pkg_functions.log2ceil;
 -- ----------------------------------------------------------------------------
 entity gt_channel_top is
    generic(
+      g_DEBUG                    : string  := "false";
+      g_GT_TYPE                  : string  := "GTH"; -- GTH - Ultrascale+; GTP - Artix7;
       -- Control channel
       g_AXIS_CTRL_DWIDTH         : integer := 512;
       g_S_AXIS_CTRL_BUFFER_WORDS : integer := 16;
@@ -217,6 +219,10 @@ begin
    );
 
    inst4_aurora: entity work.aurora_top
+   generic map (
+      g_DEBUG     => g_DEBUG,   
+      g_GT_TYPE   => g_GT_TYPE
+   )
    port map (
       s_axi_tx_tdata       => aurora_axis_tx_tdata, 
       s_axi_tx_tkeep       => (others=>'1'), --not used 
