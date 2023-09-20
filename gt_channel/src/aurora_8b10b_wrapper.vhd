@@ -22,25 +22,25 @@ entity aurora_8b10b_wrapper is
       g_GT_TYPE   : string := "GTH"
    );
    port (
-      s_axi_tx_tdata       : in  std_logic_vector ( 0 to 31 );
-      s_axi_tx_tkeep       : in  std_logic_vector ( 0 to 3 );
+      s_axi_tx_tdata       : in  std_logic_vector ( 31 downto 0 );
+      s_axi_tx_tkeep       : in  std_logic_vector ( 3 downto 0 );
       s_axi_tx_tvalid      : in  std_logic;
       s_axi_tx_tlast       : in  std_logic;
       s_axi_tx_tready      : out std_logic;
-      m_axi_rx_tdata       : out std_logic_vector ( 0 to 31 );
-      m_axi_rx_tkeep       : out std_logic_vector ( 0 to 3 );
+      m_axi_rx_tdata       : out std_logic_vector ( 31 downto 0 );
+      m_axi_rx_tkeep       : out std_logic_vector ( 3 downto 0 );
       m_axi_rx_tvalid      : out std_logic;
       m_axi_rx_tlast       : out std_logic;
       s_axi_nfc_tx_tvalid  : in  std_logic;
-      s_axi_nfc_tx_tdata   : in  std_logic_vector ( 0 to 3 );
+      s_axi_nfc_tx_tdata   : in  std_logic_vector ( 3 downto 0 );
       s_axi_nfc_tx_tready  : out std_logic;
       m_axi_nfc_rx_tvalid  : out std_logic;
-      m_axi_nfc_rx_tdata   : out std_logic_vector ( 0 to 3 );
+      m_axi_nfc_rx_tdata   : out std_logic_vector ( 3 downto 0 );
       s_axi_ufc_tx_tvalid  : in  std_logic;
-      s_axi_ufc_tx_tdata   : in  std_logic_vector ( 0 to 2 );
+      s_axi_ufc_tx_tdata   : in  std_logic_vector ( 2 downto 0 );
       s_axi_ufc_tx_tready  : out std_logic;
-      m_axi_ufc_rx_tdata   : out std_logic_vector ( 0 to 31 );
-      m_axi_ufc_rx_tkeep   : out std_logic_vector ( 0 to 3 );
+      m_axi_ufc_rx_tdata   : out std_logic_vector ( 31 downto 0 );
+      m_axi_ufc_rx_tkeep   : out std_logic_vector ( 3 downto 0 );
       m_axi_ufc_rx_tvalid  : out std_logic;
       m_axi_ufc_rx_tlast   : out std_logic;
       rxp                  : in  std_logic;

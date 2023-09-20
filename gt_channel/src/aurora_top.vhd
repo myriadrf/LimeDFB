@@ -26,15 +26,15 @@ entity aurora_top is
    );
    port (
       -- AXI TX Interface
-      S_AXI_TX_TDATA            : in  std_logic_vector(0 to 31);
+      S_AXI_TX_TDATA            : in  std_logic_vector(31 downto 0);
       S_AXI_TX_TVALID           : in  std_logic;
       S_AXI_TX_TREADY           : out std_logic;
-      S_AXI_TX_TKEEP            : in std_logic_vector(0 to 3);
+      S_AXI_TX_TKEEP            : in std_logic_vector(3 downto 0);
       S_AXI_TX_TLAST            : in  std_logic;
       -- AXI RX Interface
-      M_AXI_RX_TDATA            : out std_logic_vector(0 to 31);
+      M_AXI_RX_TDATA            : out std_logic_vector(31 downto 0);
       M_AXI_RX_TVALID           : out std_logic;
-      M_AXI_RX_TKEEP            : out std_logic_vector(0 to 3);
+      M_AXI_RX_TKEEP            : out std_logic_vector(3 downto 0);
       M_AXI_RX_TLAST            : out std_logic;
       -- GT Serial I/O
       RXP                       : in std_logic_vector(0 downto 0);
