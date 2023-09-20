@@ -17,8 +17,8 @@ entity aurora_top is
    generic(
       g_DEBUG                     : string  := "false";
       g_GT_TYPE                   : string  := "GTH"; -- GTH - Ultrascale+; GTP - Artix7; 
-      G_DATA_FIFO_LO_THR          : integer := 300;   -- Deassert write stop when usedw falls below this threshold
-      G_DATA_FIFO_HI_THR          : integer := 400;   -- Assert write stop when usedw is higher than this threshold
+      G_DATA_FIFO_LO_THR          : integer := 128;   -- Deassert write stop when usedw falls below this threshold
+      G_DATA_FIFO_HI_THR          : integer := 256;   -- Assert write stop when usedw is higher than this threshold
       G_CTRL_FIFO_LO_THR          : integer := 300;   -- ...
       G_CTRL_FIFO_HI_THR          : integer := 400;
       G_BUFR_FIFO_LO_THR          : integer := 300;
