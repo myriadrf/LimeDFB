@@ -86,7 +86,32 @@ architecture Behavioral of aurora_top is
 
    signal channel_up_int      : std_logic;
    signal lane_up_int         : std_logic;
-
+   
+   attribute MARK_DEBUG : string;
+   attribute MARK_DEBUG of lane_up_int       : signal is g_DEBUG;
+   attribute MARK_DEBUG of BUFR_FIFO_USEDW   : signal is g_DEBUG;
+   attribute MARK_DEBUG of DATA_FIFO_USEDW   : signal is g_DEBUG;
+   attribute MARK_DEBUG of CTRL_FIFO_USEDW   : signal is g_DEBUG;
+  
+   attribute MARK_DEBUG of rx_nfc_ready      : signal is g_DEBUG;
+   attribute MARK_DEBUG of rx_nfc_valid      : signal is g_DEBUG;
+   attribute MARK_DEBUG of rx_nfc_data       : signal is g_DEBUG;
+   
+   attribute MARK_DEBUG of ufc_tx_valid      : signal is g_DEBUG;
+   attribute MARK_DEBUG of ufc_tx_tdata      : signal is g_DEBUG;
+   attribute MARK_DEBUG of ufc_tx_ready      : signal is g_DEBUG;
+   attribute MARK_DEBUG of ufc_rx_tdata      : signal is g_DEBUG;
+   attribute MARK_DEBUG of ufc_rx_valid      : signal is g_DEBUG;
+   attribute MARK_DEBUG of ufc_rx_last       : signal is g_DEBUG;
+   attribute MARK_DEBUG of ufc_register_in   : signal is g_DEBUG;
+   attribute MARK_DEBUG of ufc_register_out  : signal is g_DEBUG;
+   attribute MARK_DEBUG of S_AXI_TX_TVALID   : signal is g_DEBUG;
+   attribute MARK_DEBUG of S_AXI_TX_TREADY   : signal is g_DEBUG;  
+   attribute MARK_DEBUG of S_AXI_TX_TKEEP    : signal is g_DEBUG;
+   attribute MARK_DEBUG of S_AXI_TX_TLAST    : signal is g_DEBUG;
+   attribute MARK_DEBUG of ufc_tx_axisdata   : signal is g_DEBUG;
+   
+   
 begin
 
 

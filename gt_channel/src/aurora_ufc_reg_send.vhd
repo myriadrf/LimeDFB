@@ -66,7 +66,7 @@ begin
             when send =>
                 UFC_TX_VALID <= '1';
                 if UFC_TX_READY = '1' then
-                    UFC_TX_VALID <= '0';
+                    --UFC_TX_VALID <= '0';
                     next_state   <= idle;
                 end if;
                 

@@ -21,6 +21,7 @@ use work.pkg_functions.log2ceil;
 -- ----------------------------------------------------------------------------
 entity gt_rx_decoder is
    generic(
+      g_DEBUG                 : string  := "TRUE";  
       g_PKT_HEADER_WIDTH      : integer := 128;
       g_I_AXIS_DWIDTH         : integer := 128;
       g_S_AXIS_DWIDTH         : integer := 32;
@@ -47,13 +48,14 @@ entity gt_rx_decoder is
       m_axis_1_tlast    : out std_logic;
       m_axis_1_wrusedw  : out std_logic_vector(log2ceil(g_M_AXIS_1_BUFFER_WORDS) downto 0);
       --AXI stream slave
-      s_axis_aclk    : in  std_logic;
-      s_axis_aresetn : in  std_logic;
-      s_axis_tvalid  : in  std_logic; 
-      s_axis_tready  : out std_logic;
-      s_axis_tdata   : in  std_logic_vector(g_S_AXIS_DWIDTH-1 downto 0);
-      s_axis_tlast   : in  std_logic;
-      s_axis_wrusedw : out std_logic_vector(log2ceil(g_S_AXIS_BUFFER_WORDS) downto 0)
+      s_axis_aclk          : in  std_logic;
+      s_axis_aresetn       : in  std_logic;
+      s_axis_tvalid        : in  std_logic; 
+      s_axis_tready        : out std_logic;
+      s_axis_tdata         : in  std_logic_vector(g_S_AXIS_DWIDTH-1 downto 0);
+      s_axis_tlast         : in  std_logic;
+      s_axis_almost_full   : out std_logic;
+      s_axis_wrusedw       : out std_logic_vector(log2ceil(g_S_AXIS_BUFFER_WORDS) downto 0)
    );
 end gt_rx_decoder;
 
@@ -88,6 +90,14 @@ signal axis_0_512b_unpkd_tready    : std_logic;
 signal axis_0_512b_unpkd_tdata     : std_logic_vector(g_M_AXIS_0_DWIDTH-1 downto 0);
 signal axis_0_512b_unpkd_tlast     : std_logic;
 
+attribute MARK_DEBUG : string;
+attribute MARK_DEBUG of s_axis_aresetn               : signal is g_DEBUG;
+attribute MARK_DEBUG of s_axis_tvalid                : signal is g_DEBUG;
+attribute MARK_DEBUG of s_axis_tready                : signal is g_DEBUG;
+attribute MARK_DEBUG of s_axis_tdata                 : signal is g_DEBUG;
+attribute MARK_DEBUG of s_axis_tlast                 : signal is g_DEBUG;
+attribute MARK_DEBUG of s_axis_almost_full           : signal is g_DEBUG;
+attribute MARK_DEBUG of s_axis_wrusedw               : signal is g_DEBUG;
 
 begin
 
@@ -113,7 +123,8 @@ begin
          m_axis_tvalid        => axis_32b_tvalid,
          m_axis_tready        => axis_32b_tready,
          m_axis_tdata         => axis_32b_tdata, 
-         m_axis_tlast         => axis_32b_tlast, 
+         m_axis_tlast         => axis_32b_tlast,
+         almost_full_axis     => s_axis_almost_full,
          wr_data_count_axis   => s_axis_wrusedw         
       );
    end generate ADD_S_AXIS_BUFFER;
@@ -151,6 +162,7 @@ begin
 -- ----------------------------------------------------------------------------  
    inst3_rx_decoder : entity work.rx_decoder
    generic map(
+      g_DEBUG              => g_DEBUG,
       g_PKT_HEADER_WIDTH   => g_PKT_HEADER_WIDTH,
       g_S_AXIS_DWIDTH      => g_I_AXIS_DWIDTH,
       g_M_AXIS_DWIDTH      => g_I_AXIS_DWIDTH

@@ -120,11 +120,24 @@ signal tx_encoder_ctrl_tready : std_logic;
 signal tx_encoder_ctrl_tdata  : std_logic_vector(511 downto 0);
 
 attribute MARK_DEBUG : string;
-attribute MARK_DEBUG of reset_n           : signal is "TRUE";
-attribute MARK_DEBUG of gt_soft_reset_n   : signal is "TRUE";
-attribute MARK_DEBUG of aurora_lane_up    : signal is "TRUE";
-attribute MARK_DEBUG of aurora_reset      : signal is "TRUE";
-attribute MARK_DEBUG of aurora_gt_reset   : signal is "TRUE";
+attribute MARK_DEBUG of reset_n           : signal is g_DEBUG;
+attribute MARK_DEBUG of gt_soft_reset_n   : signal is g_DEBUG;
+attribute MARK_DEBUG of aurora_lane_up    : signal is g_DEBUG;
+attribute MARK_DEBUG of aurora_reset      : signal is g_DEBUG;
+attribute MARK_DEBUG of aurora_gt_reset   : signal is g_DEBUG;
+
+--Debug
+attribute MARK_DEBUG of aurora_axis_rx_tvalid   : signal is g_DEBUG;
+attribute MARK_DEBUG of aurora_axis_rx_tready   : signal is g_DEBUG;
+attribute MARK_DEBUG of aurora_axis_rx_tdata    : signal is g_DEBUG;
+attribute MARK_DEBUG of aurora_axis_rx_tlast    : signal is g_DEBUG;
+
+attribute MARK_DEBUG of m_axis_dma_aresetn   : signal is g_DEBUG;
+attribute MARK_DEBUG of m_axis_dma_tvalid    : signal is g_DEBUG;
+attribute MARK_DEBUG of m_axis_dma_tready    : signal is g_DEBUG;
+attribute MARK_DEBUG of m_axis_dma_tdata     : signal is g_DEBUG;
+attribute MARK_DEBUG of m_axis_dma_tlast     : signal is g_DEBUG;
+
 
 attribute KEEP : string;
 attribute KEEP of reset_n         : signal is "TRUE";

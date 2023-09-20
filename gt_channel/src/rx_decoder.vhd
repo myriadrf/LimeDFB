@@ -20,6 +20,7 @@ use ieee.numeric_std.all;
 -- ----------------------------------------------------------------------------
 entity rx_decoder is
    generic(
+      g_DEBUG              : string := "false";
       g_PKT_HEADER_WIDTH   : integer := 128;
       g_S_AXIS_DWIDTH      : integer := 128;
       g_M_AXIS_DWIDTH      : integer := 128
@@ -66,6 +67,21 @@ signal m_axis_1_tlast_reg  : std_logic;
 
 signal s_axis_tready_reg   : std_logic;
 signal s_axis_valid_write  : std_logic;
+
+
+   attribute MARK_DEBUG : string;
+   attribute MARK_DEBUG of m_axis_0_tvalid   : signal is g_DEBUG;
+   attribute MARK_DEBUG of m_axis_0_tready   : signal is g_DEBUG;
+   attribute MARK_DEBUG of m_axis_0_tdata    : signal is g_DEBUG;
+   attribute MARK_DEBUG of m_axis_0_tlast    : signal is g_DEBUG;
+   attribute MARK_DEBUG of m_axis_1_tvalid   : signal is g_DEBUG;
+   attribute MARK_DEBUG of m_axis_1_tready   : signal is g_DEBUG;
+   attribute MARK_DEBUG of m_axis_1_tdata    : signal is g_DEBUG;
+   attribute MARK_DEBUG of m_axis_1_tlast    : signal is g_DEBUG;
+   attribute MARK_DEBUG of s_axis_tvalid     : signal is g_DEBUG;
+   attribute MARK_DEBUG of s_axis_tready     : signal is g_DEBUG;
+   attribute MARK_DEBUG of s_axis_tdata      : signal is g_DEBUG;
+   attribute MARK_DEBUG of s_axis_tlast      : signal is g_DEBUG;
 
 
 begin
