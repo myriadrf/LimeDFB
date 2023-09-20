@@ -251,7 +251,7 @@ begin
       s_axis_0_tlast    => '0',
       --AXI stream slave
       s_axis_1_aclk     => s_axis_dma_clk,
-      s_axis_1_aresetn  => s_axis_dma_aresetn,
+      s_axis_1_aresetn  => s_axis_dma_aresetn AND aurora_lane_up,
       s_axis_1_tvalid   => s_axis_dma_tvalid,
       s_axis_1_tready   => s_axis_dma_tready,
       s_axis_1_tdata    => s_axis_dma_tdata,
