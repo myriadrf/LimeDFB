@@ -101,6 +101,8 @@ signal pkt_axis_32b_tlast     : std_logic;
 signal pkt_axis_32b_tready    : std_logic;
 signal pkt_axis_32b_tvalid    : std_logic;
 
+signal m_axis_almost_full     : std_logic;
+
 attribute MARK_DEBUG : string;
 attribute MARK_DEBUG of s_axis_0_aresetn     : signal is "TRUE"; 
 attribute MARK_DEBUG of s_axis_0_tvalid      : signal is "TRUE"; 
@@ -337,7 +339,8 @@ begin
          m_axis_tvalid  => m_axis_tvalid,
          m_axis_tready  => m_axis_tready,
          m_axis_tdata   => m_axis_tdata, 
-         m_axis_tlast   => m_axis_tlast  
+         m_axis_tlast   => m_axis_tlast,
+         almost_full_axis => m_axis_almost_full       
       );
    end generate ADD_M_AXIS_BUFFER;
    

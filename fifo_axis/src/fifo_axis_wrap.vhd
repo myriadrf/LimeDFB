@@ -40,6 +40,7 @@ entity fifo_axis_wrap is
       m_axis_tdata         : out std_logic_vector(g_TDATA_WIDTH-1 downto 0);
       m_axis_tlast         : out std_logic;
       almost_empty_axis    : out std_logic;
+      almost_full_axis     : out std_logic;
       rd_data_count_axis   : out std_logic_vector(g_RD_DATA_COUNT_WIDTH-1 downto 0);
       wr_data_count_axis   : out std_logic_vector(g_WR_DATA_COUNT_WIDTH-1 downto 0)
    );
@@ -74,7 +75,7 @@ begin
       TDEST_WIDTH          => 1,                      -- DECIMAL
       TID_WIDTH            => 1,                      -- DECIMAL
       TUSER_WIDTH          => 1,                      -- DECIMAL
-      USE_ADV_FEATURES     => "1C04",                 -- String
+      USE_ADV_FEATURES     => "1C0C",                 -- String
       WR_DATA_COUNT_WIDTH  => g_WR_DATA_COUNT_WIDTH   -- DECIMAL
    )
    port map (
@@ -82,7 +83,7 @@ begin
                                                 -- indicates that only one more read can be performed before
                                                 -- the FIFO goes to empty.
    
-      almost_full_axis => open,                 -- 1-bit output: Almost Full: When asserted, this signal
+      almost_full_axis => almost_full_axis,     -- 1-bit output: Almost Full: When asserted, this signal
                                                 -- indicates that only one more write can be performed before
                                                 -- the FIFO is full.
    
