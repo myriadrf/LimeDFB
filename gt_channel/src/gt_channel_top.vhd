@@ -114,10 +114,32 @@ signal aurora_top_ctrl_wr_stop: std_logic;
 signal aurora_top_data_wr_stop: std_logic;
 
 attribute MARK_DEBUG : string;
-attribute MARK_DEBUG of aurora_lane_up    : signal is "TRUE";
-attribute MARK_DEBUG of aurora_reset      : signal is "TRUE";
-attribute MARK_DEBUG of aurora_gt_reset   : signal is "TRUE";
-attribute MARK_DEBUG of reset_n           : signal is "TRUE";
+attribute MARK_DEBUG of aurora_lane_up    : signal is g_DEBUG;
+attribute MARK_DEBUG of aurora_reset      : signal is g_DEBUG;
+attribute MARK_DEBUG of aurora_gt_reset   : signal is g_DEBUG;
+attribute MARK_DEBUG of reset_n           : signal is g_DEBUG;
+
+
+attribute MARK_DEBUG of aurora_axis_tx_tvalid   : signal is g_DEBUG;
+attribute MARK_DEBUG of aurora_axis_tx_tready   : signal is g_DEBUG;
+attribute MARK_DEBUG of aurora_axis_tx_tdata    : signal is g_DEBUG;
+attribute MARK_DEBUG of aurora_axis_tx_tlast    : signal is g_DEBUG;
+attribute MARK_DEBUG of aurora_top_ctrl_wr_stop : signal is g_DEBUG;
+attribute MARK_DEBUG of aurora_top_data_wr_stop : signal is g_DEBUG;
+
+attribute MARK_DEBUG of s_axis_dma_aresetn      : signal is g_DEBUG;
+attribute MARK_DEBUG of s_axis_dma_tvalid       : signal is g_DEBUG;
+attribute MARK_DEBUG of s_axis_dma_tready       : signal is g_DEBUG;
+attribute MARK_DEBUG of s_axis_dma_tdata        : signal is g_DEBUG;
+attribute MARK_DEBUG of s_axis_dma_tlast        : signal is g_DEBUG;
+
+
+
+
+
+
+
+
 
 begin
 -- ----------------------------------------------------------------------------
@@ -167,6 +189,7 @@ begin
 -- ----------------------------------------------------------------------------
    inst2_gt_tx_encoder : entity work.gt_tx_encoder
    generic map(
+      g_DEBUG                 => g_DEBUG,
       g_PKT_HEADER_WIDTH      => 128,
       g_I_AXIS_DWIDTH         => 128,
       g_S_AXIS_0_DWIDTH       => g_AXIS_CTRL_DWIDTH,

@@ -21,6 +21,7 @@ use work.pkg_functions.log2ceil;
 -- ----------------------------------------------------------------------------
 entity gt_tx_encoder is
    generic(
+      g_DEBUG                 : string  := "false";
       g_PKT_HEADER_WIDTH      : integer := 128;
       g_I_AXIS_DWIDTH         : integer := 128;
       g_S_AXIS_0_DWIDTH       : integer := 512;
@@ -104,15 +105,18 @@ signal pkt_axis_32b_tvalid    : std_logic;
 signal m_axis_almost_full     : std_logic;
 
 attribute MARK_DEBUG : string;
-attribute MARK_DEBUG of s_axis_0_aresetn     : signal is "TRUE"; 
-attribute MARK_DEBUG of s_axis_0_tvalid      : signal is "TRUE"; 
-attribute MARK_DEBUG of s_axis_0_tready      : signal is "TRUE"; 
-attribute MARK_DEBUG of s_axis_0_tdata       : signal is "TRUE"; 
-attribute MARK_DEBUG of s_axis_0_tlast       : signal is "TRUE"; 
-attribute MARK_DEBUG of axis_0_fifo_tvalid   : signal is "TRUE"; 
-attribute MARK_DEBUG of axis_0_fifo_tready   : signal is "TRUE"; 
-attribute MARK_DEBUG of axis_0_fifo_tdata    : signal is "TRUE"; 
-attribute MARK_DEBUG of axis_0_fifo_tlast    : signal is "TRUE"; 
+attribute MARK_DEBUG of s_axis_0_aresetn     : signal is g_DEBUG; 
+attribute MARK_DEBUG of s_axis_0_tvalid      : signal is g_DEBUG; 
+attribute MARK_DEBUG of s_axis_0_tready      : signal is g_DEBUG; 
+attribute MARK_DEBUG of s_axis_0_tdata       : signal is g_DEBUG; 
+attribute MARK_DEBUG of s_axis_0_tlast       : signal is g_DEBUG; 
+attribute MARK_DEBUG of axis_0_fifo_tvalid   : signal is g_DEBUG; 
+attribute MARK_DEBUG of axis_0_fifo_tready   : signal is g_DEBUG; 
+attribute MARK_DEBUG of axis_0_fifo_tdata    : signal is g_DEBUG; 
+attribute MARK_DEBUG of axis_0_fifo_tlast    : signal is g_DEBUG;
+
+attribute MARK_DEBUG of m_axis_almost_full   : signal is g_DEBUG; 
+
 
 
 
