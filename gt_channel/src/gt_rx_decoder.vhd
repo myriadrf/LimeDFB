@@ -238,7 +238,7 @@ begin
          g_WR_DATA_COUNT_WIDTH   => log2ceil(g_M_AXIS_1_BUFFER_WORDS)+1
       )
       port map(
-         s_axis_aresetn       => s_axis_aresetn OR m_axis_1_aresetn,
+         s_axis_aresetn       => s_axis_aresetn AND m_axis_1_aresetn,
          s_axis_aclk          => s_axis_aclk,
          s_axis_tvalid        => axis_1_128b_unpkd_tvalid,
          s_axis_tready        => axis_1_128b_unpkd_tready,

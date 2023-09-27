@@ -147,7 +147,7 @@ begin
       )
       Port map (
          clk          => user_clk,
-         reset_n      => not lane_up_int,
+         reset_n      => lane_up_int,
          fifo_usedw   => BUFR_FIFO_USEDW,
          nfc_ready    => rx_nfc_ready,
          nfc_valid    => rx_nfc_valid,
@@ -184,7 +184,7 @@ begin
    ufc_sender_inst : entity work.aurora_ufc_reg_send 
    Port map (
       clk            => user_clk,
-      reset_n        => not lane_up_int,
+      reset_n        => lane_up_int,
       ufc_tx_valid   => ufc_tx_valid,
       ufc_tx_data    => ufc_tx_tdata,
       ufc_tx_ready   => ufc_tx_ready,
@@ -195,9 +195,11 @@ begin
    aurora_tx_data_mux <= S_AXI_TX_TDATA when aurora_tx_ready = '1' else ufc_tx_axisdata;
 
    -- Receive UFC message
-   ufc_receiver : process(user_clk)
+   ufc_receiver : process(user_clk, lane_up_int)
    begin
-      if rising_edge(user_clk) then
+      if lane_up_int = '0' then 
+         ufc_register_in <= (others=>'0');
+      elsif rising_edge(user_clk) then
          if ufc_rx_valid = '1' then
             ufc_register_in <= ufc_rx_tdata;
          end if;    
