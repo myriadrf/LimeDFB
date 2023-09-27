@@ -198,7 +198,7 @@ begin
       g_S_AXIS_1_BUFFER_WORDS => g_S_AXIS_DMA_BUFFER_WORDS,
       g_S_AXIS_1_TLAST        => g_S_AXIS_DMA_TLAST,
       g_M_AXIS_DWIDTH         => g_GT_RXTX_DWIDTH,
-      g_M_AXIS_BUFFER_WORDS   => g_GT_RX_BUFFER_WORDS
+      g_M_AXIS_BUFFER_WORDS   => 1024
    )
    port map(
       --AXI stream slave
