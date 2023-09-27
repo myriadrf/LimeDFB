@@ -75,7 +75,7 @@ set_property -dict {
   CONFIG.SINGLEEND_GTREFCLK {true}
   CONFIG.SupportLevel {1}
   CONFIG.C_DOUBLE_GTRXRESET {true}
-  CONFIG.C_USE_BYTESWAP {false}
+  CONFIG.C_USE_BYTESWAP {true}
   CONFIG.CHANNEL_ENABLE {X0Y14}
 } [get_ips aurora_8b10b_0]
 
