@@ -35,8 +35,8 @@ entity gt_channel_top is
       --Aurora
       g_GT_LANES                 : integer := 1;
       g_GT_RXTX_DWIDTH           : integer := 32;
-      g_GT_RX_BUFFER_WORDS       : integer := 2048;
-      g_GT_TX_BUFFER_WORDS       : integer := 2048
+      g_GT_RX_BUFFER_WORDS       : integer := 512;
+      g_GT_TX_BUFFER_WORDS       : integer := 256
    );
    port (
       clk_125              : in  std_logic;
@@ -102,6 +102,7 @@ signal aurora_reset           : std_logic;
 signal aurora_lane_up         : std_logic;
 
 signal m_axis_ctrl_wrusedw    : std_logic_vector(log2ceil(g_M_AXIS_CTRL_BUFFER_WORDS) downto 0);
+signal m_axis_dma_almost_full : std_logic;
 signal m_axis_dma_wrusedw     : std_logic_vector(log2ceil(g_M_AXIS_DMA_BUFFER_WORDS) downto 0);
 signal aurora_axis_wrusedw    : std_logic_vector(log2ceil(g_GT_RX_BUFFER_WORDS) downto 0);
 
@@ -155,7 +156,7 @@ begin
       g_PKT_HEADER_WIDTH      => 128,
       g_I_AXIS_DWIDTH         => 128,
       g_S_AXIS_DWIDTH         => g_GT_RXTX_DWIDTH,
-      g_S_AXIS_BUFFER_WORDS   => g_GT_TX_BUFFER_WORDS,
+      g_S_AXIS_BUFFER_WORDS   => g_GT_RX_BUFFER_WORDS,
       g_M_AXIS_0_DWIDTH       => 512, --NOT CONFIGURABLE
       g_M_AXIS_0_BUFFER_WORDS => g_M_AXIS_CTRL_BUFFER_WORDS,
       g_M_AXIS_1_DWIDTH       => g_AXIS_DMA_DWIDTH,
@@ -170,13 +171,14 @@ begin
       m_axis_0_tlast    => open,
       m_axis_0_wrusedw  => m_axis_ctrl_wrusedw,     
       --AXI stream slave
-      m_axis_1_aclk     => m_axis_dma_clk,
-      m_axis_1_aresetn  => m_axis_dma_aresetn, 
-      m_axis_1_tvalid   => m_axis_dma_tvalid,
-      m_axis_1_tready   => m_axis_dma_tready,
-      m_axis_1_tdata    => m_axis_dma_tdata,
-      m_axis_1_tlast    => m_axis_dma_tlast,
-      m_axis_1_wrusedw  => m_axis_dma_wrusedw,
+      m_axis_1_aclk        => m_axis_dma_clk,
+      m_axis_1_aresetn     => m_axis_dma_aresetn, 
+      m_axis_1_tvalid      => m_axis_dma_tvalid,
+      m_axis_1_tready      => m_axis_dma_tready,
+      m_axis_1_tdata       => m_axis_dma_tdata,
+      m_axis_1_tlast       => m_axis_dma_tlast,
+      m_axis_1_almost_full => m_axis_dma_almost_full,
+      m_axis_1_wrusedw     => m_axis_dma_wrusedw,
       --AXI stream master
       s_axis_aclk       => aurora_user_clk_out,
       s_axis_aresetn    => aurora_lane_up,
@@ -252,7 +254,7 @@ begin
       g_S_AXIS_1_BUFFER_WORDS => g_S_AXIS_DMA_BUFFER_WORDS,
       g_S_AXIS_1_TLAST        => g_S_AXIS_DMA_TLAST,
       g_M_AXIS_DWIDTH         => g_GT_RXTX_DWIDTH,
-      g_M_AXIS_BUFFER_WORDS   => g_GT_RX_BUFFER_WORDS
+      g_M_AXIS_BUFFER_WORDS   => g_GT_TX_BUFFER_WORDS
    )
    port map(
       --AXI stream slave
@@ -264,7 +266,7 @@ begin
       s_axis_0_tlast    => '0',
       --AXI stream slave
       s_axis_1_aclk     => s_axis_dma_clk,
-      s_axis_1_aresetn  => s_axis_dma_aresetn AND aurora_lane_up,
+      s_axis_1_aresetn  => s_axis_dma_aresetn,
       s_axis_1_tvalid   => s_axis_dma_tvalid,
       s_axis_1_tready   => s_axis_dma_tready,
       s_axis_1_tdata    => s_axis_dma_tdata,
@@ -323,6 +325,7 @@ begin
       user_clk_out         => aurora_user_clk_out,
       
       data_fifo_usedw      => aurora_top_data_usedw,
+      data_fifo_almost_full=> m_axis_dma_almost_full, 
       ctrl_fifo_usedw      => aurora_top_ctrl_usedw,
       bufr_fifo_usedw      => aurora_top_bufr_usedw,
       data_fifo_stopwr     => aurora_top_data_wr_stop,

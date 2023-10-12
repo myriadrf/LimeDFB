@@ -40,13 +40,14 @@ entity gt_rx_decoder is
       m_axis_0_tlast    : out std_logic;
       m_axis_0_wrusedw  : out std_logic_vector(log2ceil(g_M_AXIS_0_BUFFER_WORDS) downto 0);
       --AXI stream master 1
-      m_axis_1_aclk     : in  std_logic;
-      m_axis_1_aresetn  : in  std_logic;
-      m_axis_1_tvalid   : out std_logic;
-      m_axis_1_tready   : in  std_logic;
-      m_axis_1_tdata    : out std_logic_vector(g_M_AXIS_1_DWIDTH-1 downto 0);
-      m_axis_1_tlast    : out std_logic;
-      m_axis_1_wrusedw  : out std_logic_vector(log2ceil(g_M_AXIS_1_BUFFER_WORDS) downto 0);
+      m_axis_1_aclk        : in  std_logic;
+      m_axis_1_aresetn     : in  std_logic;
+      m_axis_1_tvalid      : out std_logic;
+      m_axis_1_tready      : in  std_logic;
+      m_axis_1_tdata       : out std_logic_vector(g_M_AXIS_1_DWIDTH-1 downto 0);
+      m_axis_1_tlast       : out std_logic;
+      m_axis_1_almost_full : out std_logic;
+      m_axis_1_wrusedw     : out std_logic_vector(log2ceil(g_M_AXIS_1_BUFFER_WORDS) downto 0);
       --AXI stream slave
       s_axis_aclk          : in  std_logic;
       s_axis_aresetn       : in  std_logic;
@@ -261,6 +262,7 @@ begin
          m_axis_tready        => m_axis_1_tready,
          m_axis_tdata         => m_axis_1_tdata,
          m_axis_tlast         => m_axis_1_tlast,
+         almost_full_axis     => m_axis_1_almost_full,
          wr_data_count_axis   => m_axis_1_wrusedw
       );
    end generate ADD_M_AXIS_1_BUFFER;

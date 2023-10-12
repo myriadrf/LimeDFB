@@ -135,15 +135,15 @@ begin
          g_TDATA_WIDTH  => g_S_AXIS_0_DWIDTH
       )
       port map(
-         s_axis_aresetn => s_axis_0_aresetn,
+         s_axis_aresetn => s_axis_0_aresetn AND m_axis_aresetn,
          s_axis_aclk    => s_axis_0_aclk,
-         s_axis_tvalid  => s_axis_0_tvalid,
+         s_axis_tvalid  => s_axis_0_tvalid AND m_axis_aresetn,
          s_axis_tready  => s_axis_0_tready,
          s_axis_tdata   => s_axis_0_tdata,
          s_axis_tlast   => s_axis_0_tlast,
          m_axis_aclk    => m_axis_aclk,
          m_axis_tvalid  => axis_0_fifo_tvalid,
-         m_axis_tready  => axis_0_fifo_tready,
+         m_axis_tready  => axis_0_fifo_tready AND m_axis_aresetn,
          m_axis_tdata   => axis_0_fifo_tdata, 
          m_axis_tlast   => axis_0_fifo_tlast  
       );
@@ -189,7 +189,7 @@ begin
          g_WR_DATA_COUNT_WIDTH   =>  log2ceil(g_S_AXIS_1_BUFFER_WORDS)+1
       )
       port map(
-         s_axis_aresetn     => s_axis_1_aresetn,
+         s_axis_aresetn     => s_axis_1_aresetn AND m_axis_aresetn,
          s_axis_aclk        => s_axis_1_aclk,
          s_axis_tvalid      => s_axis_1_tvalid,
          s_axis_tready      => s_axis_1_tready,
