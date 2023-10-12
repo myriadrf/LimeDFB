@@ -23,7 +23,6 @@ if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
 set list_projs [get_projects -quiet]
 if { $list_projs eq "" } {
   create_project LimeMM-X8 LimeMM-X8 -part xczu7ev-ffvc1156-2-e
-  set_property BOARD_PART xilinx.com:zcu106:part0:2.6 [current_project]
   set_property target_language Verilog [current_project]
   set_property simulator_language Mixed [current_project]
 }
@@ -61,6 +60,7 @@ if { $bCheckIPsPassed != 1 } {
 # CREATE IP axis_interconnect_0
 ##################################################################
 
+set_property BOARD_PART xilinx.com:zcu106:part0:2.6 [current_project]
 set axis_interconnect_0 [create_ip -name axis_interconnect -vendor xilinx.com -library ip -version 1.1 -module_name axis_interconnect_0]
 
 set_property -dict { 
