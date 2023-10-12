@@ -14,6 +14,9 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use ieee.math_real.all;
 
+library work;
+use work.pkg_functions.log2ceil;
+
 -- ----------------------------------------------------------------------------
 -- Entity declaration
 -- ----------------------------------------------------------------------------
@@ -25,11 +28,31 @@ end gt_txrx_encoder_tb;
 -- ----------------------------------------------------------------------------
 
 architecture tb_behave of gt_txrx_encoder_tb is
-   constant clk0_period    : time := 10 ns;
-   constant clk1_period    : time := 10 ns; 
-   --signals
+   constant clk0_period          : time := 10 ns;
+   constant clk1_period          : time := 10 ns;
+   constant rx_data_clk_period   : time := 80 ns;
+   -- Clocks and resets
    signal clk0,clk1        : std_logic;
+   signal rx_data_clk      : std_logic;
    signal reset_n          : std_logic;
+   signal tx_reset_n       : std_logic;
+   signal rx_reset_n       : std_logic;
+   
+   
+   constant C_DATA_FIFO_LO_THR   : integer := 128;   -- Deassert write stop when usedw falls below this threshold
+   constant C_DATA_FIFO_HI_THR   : integer := 256;   -- Assert write stop when usedw is higher than this threshold
+   constant C_CTRL_FIFO_LO_THR   : integer := 300;   -- ...
+   constant C_CTRL_FIFO_HI_THR   : integer := 400;
+   
+   -- DUT1 tx_encoder constants
+   constant C_TX_ENCODER_S_AXIS_0_BUFFER_WORDS  : integer := 16;
+   constant C_TX_ENCODER_S_AXIS_1_BUFFER_WORDS  : integer := 512;
+   constant C_TX_ENCODER_M_AXIS_BUFFER_WORDS    : integer :=  32;
+   
+   -- DUT2 rx_decoder constants 
+   constant C_RX_DECODER_S_AXIS_BUFFER_WORDS    : integer := 64;
+   constant C_RX_DECODER_M_AXIS_0_BUFFER_WORDS  : integer := 16;
+   constant C_RX_DECODER_M_AXIS_1_BUFFER_WORDS  : integer := 512;
    
    constant c_CTRL_DATA_WIDTH       : integer := 512;
    
@@ -57,6 +80,12 @@ architecture tb_behave of gt_txrx_encoder_tb is
    signal dut1_m_axis_tlast   : std_logic;
    signal dut1_m_axis_tvalid  : std_logic;
    signal dut1_m_axis_tready  : std_logic;
+   signal tx_encoder_s_axis_1_arb_req_supress : std_logic;
+   
+   signal tx_encoder_m_axis_tvalid  : std_logic;
+   signal tx_encoder_m_axis_tready  : std_logic;
+   signal tx_encoder_m_axis_tdata   : std_logic_vector(31 downto 0);
+   signal tx_encoder_m_axis_tlast   : std_logic;
    
    signal data_axis_tdata    : std_logic_vector(127 downto 0);
    signal data_axis_tlast    : std_logic;
@@ -94,6 +123,10 @@ architecture tb_behave of gt_txrx_encoder_tb is
    signal rx_axis_1_tready       : std_logic;
    signal rx_axis_1_tdata        : std_logic_vector(127 downto 0);
    signal rx_axis_1_tlast        : std_logic;
+   signal rx_axis_1_almost_full  : std_logic;
+   signal rx_axis_1_wrusedw      : std_logic_vector(log2ceil(C_TX_ENCODER_S_AXIS_1_BUFFER_WORDS) downto 0);
+   
+   signal rx_decoder_s_axis_tvalid : std_logic;
    
    constant c_CTRL_TEST_PACKET   : std_logic_vector(511 downto 0):=  x"44444444444444444444444444444444" &
                                                                      x"33333333333333333333333333333333" &
@@ -113,10 +146,32 @@ begin
       clk1 <= '1'; wait for clk1_period/2;
    end process clock1;
    
-   res: process is
+   process is
    begin
-      reset_n <= '0'; wait for 20 ns;
-      reset_n <= '1'; wait;
+      rx_data_clk <= '0'; wait for rx_data_clk_period/2;
+      rx_data_clk <= '1'; wait for rx_data_clk_period/2;
+   end process;
+   
+   res: process is
+      variable seed1, seed2: positive;
+      variable rand: real;
+      variable range_of_rand : real := 300000.0;
+      variable rand_num: integer :=0;
+   begin
+      reset_n <= '0'; tx_reset_n <= '0'; rx_reset_n <= '0'; wait for 20 ns;
+      reset_n     <= '1'; wait for 200 ns;
+      tx_reset_n  <= '1'; wait for 1000 ns;
+      rx_reset_n  <= '1'; 
+      for i in 0 to 99999 loop
+         uniform(seed1, seed2, rand);
+         rand_num := integer(rand*range_of_rand);
+         wait for rand_num * 1ns;
+         tx_reset_n  <= '0'; rx_reset_n  <= '0'; wait for 10000 ns;
+         tx_reset_n  <= '1'; wait for 500 ns;
+         rx_reset_n  <= '1';
+      end loop;
+      
+      
    end process res;
    
 -- ----------------------------------------------------------------------------
@@ -130,7 +185,7 @@ begin
    begin
       ctrl_writer_valid <= '0'; 
       ctrl_writer_data <= (others=>'0'); 
-      wait until rising_edge(clk0) AND reset_n = '1' AND ctrl_writer_ready = '1';
+      wait until rising_edge(clk0) AND tx_reset_n = '1' AND ctrl_writer_ready = '1';
       ctrl_writer_valid <= '1';
       ctrl_writer_data  <= c_CTRL_TEST_PACKET;
       wait until rising_edge(clk0);
@@ -151,7 +206,7 @@ begin
       variable range_of_rand : real := 320.0;
       variable rand_num: integer :=0;
    begin
-      inst1_s_axis_tvalid <= '0'; wait until rising_edge(clk0) AND reset_n = '1';
+      inst1_s_axis_tvalid <= '0'; wait until rising_edge(clk0) AND tx_reset_n = '1';
       inst1_s_axis_tvalid <= '1';
       for i in 0 to c_DMA_CH_WORDS_TO_WRITE-1 loop
          wait until rising_edge(clk0) AND inst1_s_axis_tready = '1';
@@ -164,9 +219,9 @@ begin
       end loop;
    end process;
    
-   process (clk0, reset_n)
+   process (clk0, tx_reset_n)
    begin 
-      if reset_n = '0' then 
+      if tx_reset_n = '0' then 
          inst1_s_axis_tdata <= (others=>'0');
       elsif rising_edge(clk0) then 
          if inst1_s_axis_tvalid = '1' AND inst1_s_axis_tready = '1' then 
@@ -175,9 +230,9 @@ begin
       end if;
    end process;
    
-   process (clk0, reset_n)
+   process (clk0, tx_reset_n)
    begin 
-      if reset_n = '0' then 
+      if tx_reset_n = '0' then 
          data_trnsfr_cnt <= (others=>'0');
       elsif rising_edge(clk0) then 
          if inst1_s_axis_tvalid = '1' AND inst1_s_axis_tready = '1' AND data_trnsfr_cnt = c_DMA_CH_WORDS_TO_WRITE-1 then 
@@ -188,9 +243,9 @@ begin
       end if;
    end process;
    
-   process (clk0, reset_n)
+   process (clk0, tx_reset_n)
    begin 
-      if reset_n = '0' then 
+      if tx_reset_n = '0' then 
          inst1_s_axis_tlast <= '0';
       elsif rising_edge(clk0) then 
          if inst1_s_axis_tvalid = '1' AND data_trnsfr_cnt = c_DMA_CH_WORDS_TO_WRITE-1 AND inst1_s_axis_tready = '1' then 
@@ -210,7 +265,7 @@ begin
       g_WR_DATA_COUNT_WIDTH =>  9
    )
    port map(
-      s_axis_aresetn       => reset_n,
+      s_axis_aresetn       => tx_reset_n,
       s_axis_aclk          => clk0,
       s_axis_tvalid        => inst1_s_axis_tvalid,
       s_axis_tready        => inst1_s_axis_tready,
@@ -316,52 +371,81 @@ begin
   
   dut1 : entity work.gt_tx_encoder
    generic map(
+      g_DEBUG                 => "False",
       g_PKT_HEADER_WIDTH      => 128,
       g_I_AXIS_DWIDTH         => 128,
       g_S_AXIS_0_DWIDTH       => 512,
-      g_S_AXIS_0_BUFFER_WORDS => 16,
+      g_S_AXIS_0_BUFFER_WORDS => C_TX_ENCODER_S_AXIS_0_BUFFER_WORDS,
       g_S_AXIS_1_DWIDTH       => 128,
-      g_S_AXIS_1_BUFFER_WORDS => 512,
+      g_S_AXIS_1_BUFFER_WORDS => C_TX_ENCODER_S_AXIS_1_BUFFER_WORDS,
+      g_S_AXIS_1_TLAST        => "False",
       g_M_AXIS_DWIDTH         => 32,
-      g_M_AXIS_BUFFER_WORDS   => 1024
+      g_M_AXIS_BUFFER_WORDS   => C_TX_ENCODER_M_AXIS_BUFFER_WORDS
    )
    port map(
       --AXI stream slave
       s_axis_0_aclk     => clk0,
-      s_axis_0_aresetn  => reset_n,
+      s_axis_0_aresetn  => tx_reset_n,
       s_axis_0_tvalid   => ctrl_writer_valid,
       s_axis_0_tready   => ctrl_writer_ready,
       s_axis_0_tdata    => ctrl_writer_data, 
       s_axis_0_tlast    => '0',              --not used
       --AXI stream slave
       s_axis_1_aclk     => clk0,
-      s_axis_1_aresetn  => reset_n,
+      s_axis_1_aresetn  => tx_reset_n,
       s_axis_1_tvalid   => data_axis_tvalid,
       s_axis_1_tready   => data_axis_tready,
       s_axis_1_tdata    => data_axis_tdata,
       s_axis_1_tlast    => data_axis_tlast,
       --Control
       s_axis_0_arb_req_supress => '0',
-      s_axis_1_arb_req_supress => '0',
+      s_axis_1_arb_req_supress => tx_encoder_s_axis_1_arb_req_supress,
       --AXI stream master
       m_axis_aclk       => clk0,
       m_axis_aresetn    => reset_n,
-      m_axis_tvalid     => pkt_axis_tvalid,
-      m_axis_tready     => pkt_axis_tready,
-      m_axis_tdata      => pkt_axis_tdata,
-      m_axis_tlast      => pkt_axis_tlast
+      m_axis_tvalid     => tx_encoder_m_axis_tvalid, 
+      m_axis_tready     => tx_encoder_m_axis_tready,
+      m_axis_tdata      => tx_encoder_m_axis_tdata,
+      m_axis_tlast      => tx_encoder_m_axis_tlast
    );
+   
+   process is
+      variable seed1, seed2: positive;
+      variable rand: real;
+      variable range_of_rand : real := 640.0;
+      variable rand_num: integer :=0;
+   begin
+      tx_encoder_m_axis_tready <= '0'; 
+      wait until rising_edge(clk0);
+      tx_encoder_m_axis_tready <= '1';
+      wait until rising_edge(clk0);
+      uniform(seed1, seed2, rand);
+      rand_num := integer(rand*range_of_rand);
+      for i in 0 to rand_num loop
+         wait until rising_edge(clk0);
+      end loop;
+      tx_encoder_m_axis_tready <= '0';
+      uniform(seed1, seed2, rand);
+      rand_num := integer(rand*16);
+      for i in 0 to rand_num loop
+         wait until rising_edge(clk0);
+      end loop;
+      wait until rising_edge(clk0);  
+   end process;
+   
+   rx_decoder_s_axis_tvalid <= tx_encoder_m_axis_tvalid AND tx_encoder_m_axis_tready;
+   
    
    dut2 : entity work.gt_rx_decoder
    generic map(
       g_PKT_HEADER_WIDTH      => 128,
       g_I_AXIS_DWIDTH         => 128,
       g_S_AXIS_DWIDTH         => 32,
-      g_S_AXIS_BUFFER_WORDS   => 2048,
+      g_S_AXIS_BUFFER_WORDS   => C_RX_DECODER_S_AXIS_BUFFER_WORDS,
       g_M_AXIS_0_DWIDTH       => 512,
-      g_M_AXIS_0_BUFFER_WORDS => 16,
+      g_M_AXIS_0_BUFFER_WORDS => C_RX_DECODER_M_AXIS_0_BUFFER_WORDS,
       g_M_AXIS_1_DWIDTH       => 128,
-      g_M_AXIS_1_BUFFER_WORDS => 512
+      g_M_AXIS_1_BUFFER_WORDS => C_RX_DECODER_M_AXIS_1_BUFFER_WORDS
    )
    port map(
       --AXI stream master 0
@@ -372,30 +456,50 @@ begin
       m_axis_0_tlast    => rx_axis_0_tlast,
       m_axis_0_wrusedw  => open, 
       --AXI stream master 1
-      m_axis_1_aclk     => clk0,
-      m_axis_1_aresetn  => reset_n,
-      m_axis_1_tvalid   => rx_axis_1_tvalid,
-      m_axis_1_tready   => rx_axis_1_tready,
-      m_axis_1_tdata    => rx_axis_1_tdata,
-      m_axis_1_tlast    => rx_axis_1_tlast,
-      m_axis_1_wrusedw  => open, 
+      m_axis_1_aclk        => rx_data_clk,
+      m_axis_1_aresetn     => rx_reset_n,
+      m_axis_1_tvalid      => rx_axis_1_tvalid,
+      m_axis_1_tready      => rx_axis_1_tready,
+      m_axis_1_tdata       => rx_axis_1_tdata,
+      m_axis_1_tlast       => rx_axis_1_tlast,
+      m_axis_1_almost_full => rx_axis_1_almost_full,
+      m_axis_1_wrusedw     => rx_axis_1_wrusedw, 
       --AXI stream master
       s_axis_aclk       => clk0,
       s_axis_aresetn    => reset_n,
-      s_axis_tvalid     => pkt_axis_tvalid,
-      s_axis_tready     => pkt_axis_tready,
-      s_axis_tdata      => pkt_axis_tdata,
-      s_axis_tlast      => pkt_axis_tlast
+      s_axis_tvalid     => rx_decoder_s_axis_tvalid,
+      s_axis_tready     => open,   -- there is not tready signal from master
+      s_axis_tdata      => tx_encoder_m_axis_tdata,
+      s_axis_tlast      => tx_encoder_m_axis_tlast,
+      s_axis_wrusedw    => open
    );
    
-   
-   
-   
-   process (clk0, reset_n)
+   process(clk0, reset_n)
    begin 
-      if reset_n = '0' then 
-         rx_axis_0_tready <= '0';
+      if reset_n = '0' then
+         tx_encoder_s_axis_1_arb_req_supress <= '1';
       elsif rising_edge(clk0) then
+         if unsigned(rx_axis_1_wrusedw) > C_DATA_FIFO_HI_THR OR rx_axis_1_almost_full = '1' then 
+            tx_encoder_s_axis_1_arb_req_supress <= '1';
+         elsif unsigned(rx_axis_1_wrusedw) < C_DATA_FIFO_LO_THR AND rx_axis_1_almost_full = '0' then 
+            tx_encoder_s_axis_1_arb_req_supress <= '0';
+         else 
+            tx_encoder_s_axis_1_arb_req_supress <= tx_encoder_s_axis_1_arb_req_supress;
+         end if;
+      end if;
+   end process;
+   
+   
+   
+   
+   
+   
+   
+   process (rx_data_clk, rx_reset_n)
+   begin 
+      if rx_reset_n = '0' then 
+         rx_axis_0_tready <= '0';
+      elsif rising_edge(rx_data_clk) then
          rx_axis_0_tready <= '1';
          
          if rx_axis_0_tvalid = '1' AND rx_axis_0_tready = '1' then 
@@ -409,12 +513,12 @@ begin
       end if;
    end process;
    
-   process (clk0, reset_n)
+   process (rx_data_clk, rx_reset_n)
    begin 
-      if reset_n = '0' then 
+      if rx_reset_n = '0' then 
          rec_cmp_data      <= (others => '0');
          rx_axis_1_tready  <= '0';
-      elsif rising_edge(clk0) then
+      elsif rising_edge(rx_data_clk) then
          rx_axis_1_tready <= '1';
          
          if rx_axis_1_tvalid ='1' AND rx_axis_1_tready = '1'  then 

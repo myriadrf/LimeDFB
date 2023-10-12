@@ -23,6 +23,7 @@ if { [string first $scripts_vivado_version $current_vivado_version] == -1 } {
 set list_projs [get_projects -quiet]
 if { $list_projs eq "" } {
   create_project LimeMM-X8 LimeMM-X8 -part xczu7ev-ffvc1156-2-e
+  set_property BOARD_PART xilinx.com:zcu106:part0:2.6 [current_project]
   set_property target_language Verilog [current_project]
   set_property simulator_language Mixed [current_project]
 }
@@ -73,7 +74,7 @@ set_property -dict {
   CONFIG.ARBITER_TYPE {Round-Robin}
   CONFIG.SWITCH_PACKET_MODE {true}
   CONFIG.C_SWITCH_MAX_XFERS_PER_ARB {0}
-  CONFIG.C_SWITCH_NUM_CYCLES_TIMEOUT {0}
+  CONFIG.C_SWITCH_NUM_CYCLES_TIMEOUT {8}
   CONFIG.M00_AXIS_TDATA_NUM_BYTES {16}
   CONFIG.S00_AXIS_TDATA_NUM_BYTES {16}
   CONFIG.S01_AXIS_TDATA_NUM_BYTES {16}

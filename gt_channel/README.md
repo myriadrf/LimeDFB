@@ -1,1 +1,1 @@
-![Block diagram](./doc/block_diagram.png "Block diagram")
+![Block diagram](./doc/gt_rx_decoder.svg "Block diagram")
