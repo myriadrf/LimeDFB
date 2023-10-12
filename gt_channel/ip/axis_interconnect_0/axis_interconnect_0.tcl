@@ -60,7 +60,6 @@ if { $bCheckIPsPassed != 1 } {
 # CREATE IP axis_interconnect_0
 ##################################################################
 
-set_property BOARD_PART xilinx.com:zcu106:part0:2.6 [current_project]
 set axis_interconnect_0 [create_ip -name axis_interconnect -vendor xilinx.com -library ip -version 1.1 -module_name axis_interconnect_0]
 
 set_property -dict { 

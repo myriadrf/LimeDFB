@@ -60,7 +60,6 @@ if { $bCheckIPsPassed != 1 } {
 # CREATE IP axis_dwidth_128_to_512
 ##################################################################
 
-set_property BOARD_PART xilinx.com:zcu106:part0:2.6 [current_project]
 set axis_dwidth_128_to_512 [create_ip -name axis_dwidth_converter -vendor xilinx.com -library ip -version 1.1 -module_name axis_dwidth_128_to_512]
 
 set_property -dict { 
