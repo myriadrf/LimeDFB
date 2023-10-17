@@ -121,7 +121,7 @@ begin
       rec_data_packet <= '0';
    elsif rising_edge(clk) then 
       if s_axis_valid_write = '1' AND rec_hdr ='0' then 
-         if s_axis_tdata = x"00000000000000000000000000500000" then
+         if s_axis_tdata = x"55AA0000000000000000000000500002" then
             rec_ctrl_packet <= '1';
             rec_data_packet <= '0';
          elsif s_axis_tdata = x"AA550000000000000000000000000001" then
