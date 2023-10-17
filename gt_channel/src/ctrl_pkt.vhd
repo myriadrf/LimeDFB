@@ -51,6 +51,7 @@ architecture arch of ctrl_pkt is
 signal pkt_reg       : std_logic_vector(g_CTRL_DWIDTH+g_PKT_HEADER_WIDTH-1 downto 0); 
 alias pkt_type       : std_logic_vector( 7 downto 0) is pkt_reg( 7 downto  0);
 alias pkt_byte_cnt   : std_logic_vector(31 downto 0) is pkt_reg(47 downto 16);
+alias pkt_keyword    : std_logic_vector(15 downto 0) is pkt_reg(127 downto 112);
 alias pkt_data       : std_logic_vector(g_CTRL_DWIDTH-1 downto 0) is pkt_reg(639 downto 128);
 
 constant c_MAX_TVALID_CNT  : integer := (g_PKT_HEADER_WIDTH + g_CTRL_DWIDTH)/g_AXIS_DWIDTH;
@@ -85,8 +86,9 @@ begin
             if ctrl_valid = '1' AND ctrl_ready_reg = '1' then
                pkt_reg        <= (others=>'0');
                -- Assign to pkt_reg aliases
-               pkt_type       <= x"00";         -- ctrl packet type
+               pkt_type       <= x"02";         -- ctrl packet type
                pkt_byte_cnt   <= x"00000050";   -- 80 bytes
+               pkt_keyword    <= x"55AA";       -- ctrl packet keyword
                pkt_data       <= ctrl_data;     -- 64 bytes of data
             elsif m_axis_tready = '1' then
                -- shifting right if axis is ready

@@ -70,6 +70,10 @@ architecture Behavioral of aurora_top is
    signal rx_nfc_ready        : std_logic;
    signal rx_nfc_valid        : std_logic;
    signal rx_nfc_data         : std_logic_vector(3 downto 0);
+   
+   signal m_axi_nfc_rx_tvalid : std_logic;
+   signal m_axi_nfc_rx_tdata  : std_logic_vector(3 downto 0);
+   
 
    signal ufc_register_out    : std_logic_vector(31 downto 0) := (others => '0'); -- | OUT = sent to partner via UFC
    signal ufc_register_in     : std_logic_vector(31 downto 0); -- | IN  = received from partner via UFC
@@ -86,6 +90,11 @@ architecture Behavioral of aurora_top is
 
    signal channel_up_int      : std_logic;
    signal lane_up_int         : std_logic;
+   
+   attribute KEEP : string;
+   attribute KEEP of m_axi_nfc_rx_tvalid  : signal is "true";
+   attribute KEEP of m_axi_nfc_rx_tdata   : signal is "true";
+   
 
 begin
 
@@ -113,8 +122,8 @@ begin
          s_axi_nfc_tx_tdata   => rx_nfc_data, 
          s_axi_nfc_tx_tready  => rx_nfc_ready,
       -- Native Flow Control RX Interface
-         m_axi_nfc_rx_tvalid  => open,
-         m_axi_nfc_rx_tdata   => open,
+         m_axi_nfc_rx_tvalid  => m_axi_nfc_rx_tvalid,
+         m_axi_nfc_rx_tdata   => m_axi_nfc_rx_tdata,
       -- User Flow Control TX Interface
          s_axi_ufc_tx_tvalid  => ufc_tx_valid,----,axi_ufc_tx_req_n_i,
          s_axi_ufc_tx_tdata   => ufc_tx_tdata,--,axi_ufc_tx_ms_i,
