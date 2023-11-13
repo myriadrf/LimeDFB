@@ -17,12 +17,12 @@ entity aurora_top is
    generic(
       g_DEBUG                     : string  := "false";
       g_GT_TYPE                   : string  := "GTH"; -- GTH - Ultrascale+; GTP - Artix7; 
-      G_DATA_FIFO_LO_THR          : integer := 128;   -- Deassert write stop when usedw falls below this threshold
-      G_DATA_FIFO_HI_THR          : integer := 256;   -- Assert write stop when usedw is higher than this threshold
+      G_DATA_FIFO_LO_THR          : integer :=  64;   -- Deassert write stop when usedw falls below this threshold
+      G_DATA_FIFO_HI_THR          : integer := 128;   -- Assert write stop when usedw is higher than this threshold
       G_CTRL_FIFO_LO_THR          : integer := 300;   -- ...
       G_CTRL_FIFO_HI_THR          : integer := 400;
-      G_BUFR_FIFO_LO_THR          : integer := 300;
-      G_BUFR_FIFO_HI_THR          : integer := 400
+      G_BUFR_FIFO_LO_THR          : integer :=  16;
+      G_BUFR_FIFO_HI_THR          : integer :=  32
    );
    port (
       -- AXI TX Interface
@@ -52,6 +52,7 @@ entity aurora_top is
       INIT_CLK_IN               : in  std_logic;
       --____________________________FLOW CONTROL PORTS_________________________
       DATA_FIFO_USEDW           : in  std_logic_vector(31 downto 0);--UFC
+      DATA_FIFO_ALMOST_FULL     : in  std_logic;
       CTRL_FIFO_USEDW           : in  std_logic_vector(31 downto 0);--UFC
       BUFR_FIFO_USEDW           : in  std_logic_vector(31 downto 0);--NFC
       DATA_FIFO_STOPWR          : out std_logic;
@@ -163,14 +164,16 @@ begin
          nfc_data     => rx_nfc_data 
       );
 
-   ufc_register_value_control : process(user_clk)
+   ufc_register_value_control : process(user_clk, lane_up_int)
    begin
-      if rising_edge(user_clk) then
+      if lane_up_int = '0' then 
+         ufc_register_out <= (others=>'0');
+      elsif rising_edge(user_clk) then
          -- if write stop is not asserted and high threshold is reached, assert write stop
-         if unsigned(DATA_FIFO_USEDW) > G_DATA_FIFO_HI_THR and ufc_register_out(0) = '0' then
+         if (unsigned(DATA_FIFO_USEDW) > G_DATA_FIFO_HI_THR OR DATA_FIFO_ALMOST_FULL='1') and ufc_register_out(0) = '0' then
             ufc_register_out(0) <= '1';
          -- if write stop is asserted and low threshold is passed, deassert write stop
-         elsif unsigned(DATA_FIFO_USEDW) < G_DATA_FIFO_LO_THR and ufc_register_out(0) = '1' then
+         elsif (unsigned(DATA_FIFO_USEDW) < G_DATA_FIFO_LO_THR AND DATA_FIFO_ALMOST_FULL='0') and ufc_register_out(0) = '1' then
             ufc_register_out(0) <= '0';
          else
             ufc_register_out(0) <= ufc_register_out(0);

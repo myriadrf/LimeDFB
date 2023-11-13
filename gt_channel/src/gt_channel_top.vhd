@@ -104,6 +104,7 @@ signal aurora_reset           : std_logic;
 signal aurora_lane_up         : std_logic;
 
 signal m_axis_ctrl_wrusedw    : std_logic_vector(log2ceil(g_M_AXIS_CTRL_BUFFER_WORDS) downto 0);
+signal m_axis_dma_almost_full : std_logic;
 signal m_axis_dma_wrusedw     : std_logic_vector(log2ceil(g_M_AXIS_DMA_BUFFER_WORDS) downto 0);
 signal aurora_axis_wrusedw    : std_logic_vector(log2ceil(g_GT_RX_BUFFER_WORDS) downto 0);
 
@@ -172,6 +173,7 @@ begin
       m_axis_1_tready   => m_axis_dma_tready,
       m_axis_1_tdata    => m_axis_dma_tdata,
       m_axis_1_tlast    => m_axis_dma_tlast,
+      m_axis_1_almost_full => m_axis_dma_almost_full,
       m_axis_1_wrusedw  => m_axis_dma_wrusedw,
       --AXI stream master
       s_axis_aclk       => aurora_user_clk_out,
@@ -268,6 +270,7 @@ begin
       user_clk_out         => aurora_user_clk_out,
       
       data_fifo_usedw      => aurora_top_data_usedw,
+      data_fifo_almost_full=> m_axis_dma_almost_full, 
       ctrl_fifo_usedw      => aurora_top_ctrl_usedw,
       bufr_fifo_usedw      => aurora_top_bufr_usedw,
       data_fifo_stopwr     => aurora_top_data_wr_stop,

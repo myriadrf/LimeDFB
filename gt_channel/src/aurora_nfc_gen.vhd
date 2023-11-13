@@ -36,45 +36,41 @@ architecture Behavioral of aurora_nfc_gen is
 
 begin
 
-state_sw : process(CLK,RESET_N)
-begin
-   if RESET_N = '0' then  
-      current_state <= wait_for_full;
-   elsif rising_edge(CLK) then
-      current_state <= next_state;
-   end if;
-end process;
 
-fsm : process(all)
+fsm : process(clk,reset_n)
 begin
-   next_state <= current_state;
-   NFC_DATA   <= NFC_DATA;
-   NFC_VALID  <= '0';
-   case current_state is
-           
-   when wait_for_full =>
+   if reset_n = '0' then
+      current_state <= wait_for_full;
+   elsif rising_edge(clk) then
+      current_state <= current_state;
+      NFC_DATA   <= NFC_DATA;
       NFC_VALID  <= '0';
-      if (unsigned(FIFO_USEDW) > g_HI_LIMIT) then
-         NFC_DATA   <= "1111";
-         NFC_VALID  <= '1';
-         if NFC_READY = '1' then
-            next_state <= wait_for_empty;
-         end if;
-      end if;      
-               
-   when wait_for_empty => 
-      NFC_VALID  <= '0';
-      if (unsigned(FIFO_USEDW) < g_LO_LIMIT) then
-         NFC_DATA   <= "0000";
-         NFC_VALID  <= '1';
-         if NFC_READY = '1' then
-            next_state <= wait_for_full;
-         end if;
-      end if;      
-           
-   when others => next_state <= wait_for_full;
-           
-   end case;
+      case current_state is
+              
+      when wait_for_full =>
+         NFC_VALID  <= '0';
+         if (unsigned(FIFO_USEDW) > g_HI_LIMIT) then
+            NFC_DATA   <= "1111";
+            NFC_VALID  <= '1';
+            if NFC_READY = '1' then
+               current_state <= wait_for_empty;
+            end if;
+         end if;      
+                  
+      when wait_for_empty => 
+         NFC_VALID  <= '0';
+         if (unsigned(FIFO_USEDW) < g_LO_LIMIT) then
+            NFC_DATA   <= "0000";
+            NFC_VALID  <= '1';
+            if NFC_READY = '1' then
+               current_state <= wait_for_full;
+            end if;
+         end if;      
+              
+      when others => current_state <= wait_for_full;
+              
+      end case;
+   end if;
 
 end process;
 
