@@ -1,1 +1,1 @@
-![Top Block diagram](./doc/top.svg "Top Block diagram")
+![Top Block diagram](./doc/top.png "Top Block diagram")
