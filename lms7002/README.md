@@ -7,5 +7,5 @@ Detailed IO port description and waveforms can be found [here](./doc/lms7002_top
 
 ## Main block diagram:
 
-![Top Block diagram](./doc/top.png "Top Block diagram")
+![Top Block diagram]( ./doc/top.svg "Top Block diagram")
 
