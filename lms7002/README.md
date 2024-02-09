@@ -1,1 +1,1 @@
-![Block diagram](./doc/gt_rx_decoder.svg "Block diagram")
+![Top Block diagram](./doc/top.svg "Top Block diagram")
