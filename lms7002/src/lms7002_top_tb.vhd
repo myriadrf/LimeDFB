@@ -38,6 +38,9 @@ architecture tb_behave of lms7002_top_tb is
    signal clk0,clk1        : std_logic;
    signal sys_clk          : std_logic;
    signal reset_n          : std_logic; 
+   
+   signal dut1_DIQ1           : std_logic_vector(11 downto 0);
+   signal dut1_ENABLE_IQSEL1  : std_logic;
     
    signal dut1_from_fpgacfg   : t_FROM_FPGACFG;
    signal dut1_from_tstcfg    : t_FROM_TSTCFG;
@@ -220,8 +223,12 @@ begin
 
    clock1: process is
    begin
-      clk1 <= '0'; wait for clk1_period/2;
-      clk1 <= '1'; wait for clk1_period/2;
+      --Simulate 90deg phase shift
+      wait for clk1_period/4;
+      loop 
+         clk1 <= '0'; wait for clk1_period/2;
+         clk1 <= '1'; wait for clk1_period/2;
+      end loop;
    end process clock1;
    
    sys_clock: process is 
@@ -250,14 +257,14 @@ begin
       --! @virtualbus LMS_PORT1 @dir out interface
       MCLK1                => clk0,  --! TX interface clock
       FCLK1                => open,  --! TX interface feedback clock
-      DIQ1                 => open,  --! DIQ1 data bus
-      ENABLE_IQSEL1        => open,  --! IQ select flag for DIQ1 data
+      DIQ1                 => dut1_DIQ1,           --! DIQ1 data bus
+      ENABLE_IQSEL1        => dut1_ENABLE_IQSEL1,  --! IQ select flag for DIQ1 data
       TXNRX1               => open,  --! LMS_PORT1 direction select @end
       --! @virtualbus LMS_PORT2 @dir in interface
       MCLK2                => clk1,          --! RX interface clock
       FCLK2                => open,          --! RX interface feedback clock
-      DIQ2                 => (others=>'0'), --! DIQ2 data bus
-      ENABLE_IQSEL2        => '0',           --! IQ select flag for DIQ2 data
+      DIQ2                 => dut1_DIQ1,     --! DIQ2 data bus
+      ENABLE_IQSEL2        => dut1_ENABLE_IQSEL1,           --! IQ select flag for DIQ2 data
       TXNRX2               => open,          --! LMS_PORT2 direction select @end
       --! @virtualbus LMS_MISC @dir out LMS miscellaneous control ports
       RESET                => open,   --! LMS hardware reset, active low
@@ -279,9 +286,7 @@ begin
       m_axis_rx_tready     => '1',  -- @end
       -- misc
       tx_active            => open, -- TX antenna enable flag
-      rx_active            => open, -- RX sample counter enable
-      rx_diq_h             => open, -- Output of Direct capture on rising edge of DIQ2 port 
-      rx_diq_l             => open  -- Output of Direct capture on falling edge of DIQ2 port
+      rx_active            => open  -- RX sample counter enable
    );
    
 

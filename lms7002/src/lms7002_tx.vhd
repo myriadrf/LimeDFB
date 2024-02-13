@@ -21,9 +21,7 @@ use work.memcfg_pkg.all;
 -- ----------------------------------------------------------------------------
 entity lms7002_tx is
    generic( 
-      g_DEV_FAMILY         : string    := "Artix 7";
-      g_IQ_WIDTH           : integer   := 12;
-      g_S_AXIS_FIFO_WORDS  : integer   := 16
+      g_IQ_WIDTH           : integer   := 12
    );
    port (
       clk               : in  std_logic;
@@ -36,9 +34,9 @@ entity lms7002_tx is
       mimo_en           : in  std_logic; -- SISO: 1; MIMO: 0
       ch_en             : in  std_logic_vector(1 downto 0); --"01" - Ch. A, "10" - Ch. B, "11" - Ch. A and Ch. B. 
       fidm              : in  std_logic; -- Frame start at fsync = 0, when 0. Frame start at fsync = 1, when 1.                 
-      --Tx interface data 
-      DIQ               : out std_logic_vector(g_IQ_WIDTH-1 downto 0);
-      fsync             : out std_logic;
+      --Tx interface data
+      diq_h             : out std_logic_vector(g_IQ_WIDTH downto 0); --! fsync + DIQ
+      diq_l             : out std_logic_vector(g_IQ_WIDTH downto 0); --! fsync + DIQ
       --! @virtualbus s_axis_tx @dir in Transmit AXIS bus
       s_axis_areset_n   : in  std_logic;  --! AXIS reset
       s_axis_aclk       : in  std_logic;  --! AXIS clock
@@ -55,42 +53,18 @@ end lms7002_tx;
 architecture arch of lms7002_tx is
 --declare signals,  components here
 
---FIFO MUX
-signal inst0_inst1_q_mux   : std_logic_vector(63 downto 0);
 
---inst2
-signal inst2_diq_in        : std_logic_vector(63 downto 0);
-signal inst2_diq_out       : std_logic_vector(63 downto 0);
-signal inst2_data_req      : std_logic;
-signal inst2_data_valid    : std_logic;
-
-
---inst4
-signal inst4_fifo_rdreq    : std_logic;
-signal inst4_DIQ_h         : std_logic_vector(g_IQ_WIDTH downto 0);
-signal inst4_DIQ_l         : std_logic_vector(g_IQ_WIDTH downto 0);
-signal inst4_fifo_q        : std_logic_vector(g_IQ_WIDTH*4-1 downto 0);
-signal inst4_rdempty       : std_logic;
-
---inst5 
-signal inst5_diq_h         : std_logic_vector(g_IQ_WIDTH downto 0);
-signal inst5_diq_l         : std_logic_vector(g_IQ_WIDTH downto 0);
-
-signal axis_fifo_aresetn: std_logic;
-signal axis_fifo_tvalid : std_logic;
-signal axis_fifo_tready : std_logic;
-signal axis_fifo_tdata  : std_logic_vector(s_axis_tdata'LENGTH-1 downto 0);
-signal axis_fifo_tlast  : std_logic;
+signal s_axis_tready_reg   : std_logic;
 
 type t_DIQ_SHIFT_REG_TYPE is array (0 to 1) of std_logic_vector(15 downto 0);
-signal diq_l : t_DIQ_SHIFT_REG_TYPE;
-signal diq_h : t_DIQ_SHIFT_REG_TYPE;
+signal diq_l_reg : t_DIQ_SHIFT_REG_TYPE;
+signal diq_h_reg : t_DIQ_SHIFT_REG_TYPE;
 
 
-alias a_AXIS_FIFO_AI is axis_fifo_tdata(63 downto 48);
-alias a_AXIS_FIFO_AQ is axis_fifo_tdata(47 downto 32);
-alias a_AXIS_FIFO_BI is axis_fifo_tdata(31 downto 16);
-alias a_AXIS_FIFO_BQ is axis_fifo_tdata(15 downto  0);
+alias a_AXIS_FIFO_AI is s_axis_tdata(63 downto 48);
+alias a_AXIS_FIFO_AQ is s_axis_tdata(47 downto 32);
+alias a_AXIS_FIFO_BI is s_axis_tdata(31 downto 16);
+alias a_AXIS_FIFO_BQ is s_axis_tdata(15 downto  0);
 
 signal fsync_l : std_logic_vector(3 downto 0);
 signal fsync_h : std_logic_vector(3 downto 0);
@@ -104,48 +78,22 @@ signal int_fsync_H   : std_logic_vector(3 downto 0);
  
 begin
 
--- ----------------------------------------------------------------------------
--- FIFO for storing TX samples
--- ----------------------------------------------------------------------------
-   axis_fifo_aresetn <= s_axis_areset_n AND reset_n;
-
-   -- This FIFO is used for CDC between s_axis_aclk and clk clocks. 
-   inst1_s_axis_fifo: entity work.fifo_axis_wrap
-   generic map(
-      g_CLOCKING_MODE   => "independent_clock",
-      g_FIFO_DEPTH      => g_S_AXIS_FIFO_WORDS,
-      g_TDATA_WIDTH     => s_axis_tdata'LENGTH
-   )
-   port map(
-      s_axis_aresetn    => axis_fifo_aresetn,
-      s_axis_aclk       => s_axis_aclk,
-      s_axis_tvalid     => s_axis_tvalid,
-      s_axis_tready     => s_axis_tready,
-      s_axis_tdata      => s_axis_tdata,
-      s_axis_tlast      => s_axis_tlast,
-      m_axis_aclk       => clk,
-      m_axis_tvalid     => axis_fifo_tvalid,
-      m_axis_tready     => axis_fifo_tready,
-      m_axis_tdata      => axis_fifo_tdata, 
-      m_axis_tlast      => axis_fifo_tlast        
-   );
-   
    -- According to axi stream protocol:
    -- A Receiver is permitted to wait for TVALID to be asserted before asserting TREADY. It is permitted that a
    -- Receiver asserts and deasserts TREADY without TVALID being asserted.
    process(clk, reset_n)
    begin 
       if reset_n = '0' then 
-         axis_fifo_tready <= '0';
+         s_axis_tready_reg <= '0';
       elsif rising_edge(clk) then 
-         if axis_fifo_tvalid = '1' then 
+         if s_axis_tvalid = '1' then 
             if ddr_en = '1' AND mimo_en = '0' then 
-               axis_fifo_tready <= '1';
+               s_axis_tready_reg <= '1';
             else 
-               axis_fifo_tready <= NOT axis_fifo_tready;
+               s_axis_tready_reg <= NOT s_axis_tready_reg;
             end if;
          else 
-            axis_fifo_tready <= '0';
+            s_axis_tready_reg <= '0';
          end if;
       end if;
    end process;
@@ -154,14 +102,14 @@ begin
    process(clk, reset_n)
    begin 
       if reset_n = '0' then 
-         diq_h <=(others=>(others=>'0'));
+         diq_h_reg <=(others=>(others=>'0'));
       elsif rising_edge(clk) then 
-         if axis_fifo_tready = '1' AND axis_fifo_tvalid ='1' then 
-            diq_h(0) <= a_AXIS_FIFO_AI;
-            diq_h(1) <= a_AXIS_FIFO_BI;
+         if s_axis_tready_reg = '1' AND s_axis_tvalid ='1' then 
+            diq_h_reg(0) <= a_AXIS_FIFO_AI;
+            diq_h_reg(1) <= a_AXIS_FIFO_BI;
          else 
-            diq_h(0) <= diq_h(1);
-            diq_h(1) <= (others=>'0');
+            diq_h_reg(0) <= diq_h_reg(1);
+            diq_h_reg(1) <= (others=>'0');
          end if;
       end if;
    end process;
@@ -169,14 +117,14 @@ begin
    process(clk, reset_n)
    begin 
       if reset_n = '0' then 
-         diq_l <=(others=>(others=>'0'));
+         diq_l_reg <=(others=>(others=>'0'));
       elsif rising_edge(clk) then 
-         if axis_fifo_tready = '1' AND axis_fifo_tvalid ='1' then 
-            diq_l(0) <= a_AXIS_FIFO_AQ;
-            diq_l(1) <= a_AXIS_FIFO_BQ;
+         if s_axis_tready_reg = '1' AND s_axis_tvalid ='1' then 
+            diq_l_reg(0) <= a_AXIS_FIFO_AQ;
+            diq_l_reg(1) <= a_AXIS_FIFO_BQ;
          else 
-            diq_l(0) <= diq_l(1);
-            diq_l(1) <= (others=>'0');
+            diq_l_reg(0) <= diq_l_reg(1);
+            diq_l_reg(1) <= (others=>'0');
          end if;
       end if;
    end process;
@@ -205,7 +153,7 @@ begin
          fsync_l <=(others=>'0');
          fsync_h <=(others=>'0');
       elsif rising_edge(clk) then 
-         if axis_fifo_tready = '1' AND axis_fifo_tvalid ='1' then 
+         if s_axis_tready_reg = '1' AND s_axis_tvalid ='1' then 
             fsync_l <= int_fsync_L;
             fsync_h <= int_fsync_H;
          else 
@@ -216,24 +164,13 @@ begin
    end process;
       
 -- ----------------------------------------------------------------------------
--- lms7002_ddout instance. Double data rate cells
+-- Output ports
 -- ----------------------------------------------------------------------------     
-   inst6_lms7002_ddout : entity work.lms7002_ddout
-   generic map( 
-      dev_family     => g_DEV_FAMILY,
-      iq_width       => g_IQ_WIDTH
-   )
-   port map(
-      --input ports 
-      clk            => clk,
-      reset_n        => reset_n,
-      data_in_h      => fsync_h(0) & diq_h(0)(15 downto 4),--inst5_diq_h,
-      data_in_l      => fsync_l(0) & diq_l(0)(15 downto 4),--inst5_diq_l,
-      --output ports 
-      txiq           => DIQ,
-      txiqsel        => fsync
-   ); 
+   
+   diq_h <= fsync_h(0) & diq_h_reg(0)(15 downto 4);
+   diq_l <= fsync_l(0) & diq_l_reg(0)(15 downto 4);
 
+   s_axis_tready <= s_axis_tready_reg;
    
 end arch;   
 
