@@ -23,7 +23,9 @@ set DEP_FILES [ list \
 set SYNTH_SRC [list \
    $script_path/src/lms7002_top.vhd       \
    $script_path/src/lms7002_tx.vhd        \
+   $script_path/src/lms7002_rx.vhd        \
    $script_path/src/lms7002_ddout.vhd     \
+   $script_path/src/lms7002_ddin.vhd      \
 ]
 
 
