@@ -21,35 +21,35 @@ LimeLight digital modes implemented:
 
 
 
-![alt text](wavedrom_hNen0.svg "title")
+![alt text](wavedrom_LrIs0.svg "title")
 
  
 
 
 
 
-![alt text](wavedrom_EOMs1.svg "title")
+![alt text](wavedrom_x9bW1.svg "title")
 
  
 
 
 
 
-![alt text](wavedrom_irW82.svg "title")
+![alt text](wavedrom_kzFu2.svg "title")
 
  
 
 
 
 
-![alt text](wavedrom_8PpO3.svg "title")
+![alt text](wavedrom_rwXB3.svg "title")
 
  
 
 
 
 
-![alt text](wavedrom_I5824.svg "title")
+![alt text](wavedrom_6ohT4.svg "title")
 
  
 
@@ -58,24 +58,24 @@ LimeLight digital modes implemented:
 
 | Generic name           | Type    | Value     | Description           |
 | ---------------------- | ------- | --------- | --------------------- |
+| g_VENDOR               | string  | "XILINX"  |                       |
 | g_DEV_FAMILY           | string  | "Artix 7" | Device family         |
 | g_IQ_WIDTH             | integer | 12        | IQ bus width          |
 | g_S_AXIS_TX_FIFO_WORDS | integer | 16        | TX FIFO size in words |
+| g_M_AXIS_RX_FIFO_WORDS | integer | 16        | RX FIFO size in words |
 
 ## Ports
 
-| Port name | Direction | Type                                  | Description                                           |
-| --------- | --------- | ------------------------------------- | ----------------------------------------------------- |
-| tx_active | out       | std_logic                             | TX antenna enable flag                                |
-| rx_active | out       | std_logic                             | RX sample counter enable                              |
-| rx_diq_h  | out       | std_logic_vector(g_IQ_WIDTH downto 0) | Output of Direct capture on rising edge of DIQ2 port  |
-| rx_diq_l  | out       | std_logic_vector(g_IQ_WIDTH downto 0) | Output of Direct capture on falling edge of DIQ2 port |
-| cfg       | in        | Virtual bus                           | Configuration bus                                     |
-| LMS_PORT1 | out       | Virtual bus                           | interface                                             |
-| LMS_PORT2 | in        | Virtual bus                           | interface                                             |
-| LMS_MISC  | out       | Virtual bus                           | LMS miscellaneous control ports                       |
-| s_axis_tx | in        | Virtual bus                           | Transmit AXIS bus                                     |
-| m_axis_rx | out       | Virtual bus                           | Receive AXIS bus                                      |
+| Port name | Direction | Type        | Description                     |
+| --------- | --------- | ----------- | ------------------------------- |
+| tx_active | out       | std_logic   | TX antenna enable flag          |
+| rx_active | out       | std_logic   | RX sample counter enable        |
+| cfg       | in        | Virtual bus | Configuration bus               |
+| LMS_PORT1 | out       | Virtual bus | interface                       |
+| LMS_PORT2 | in        | Virtual bus | interface                       |
+| LMS_MISC  | out       | Virtual bus | LMS miscellaneous control ports |
+| s_axis_tx | in        | Virtual bus | Transmit AXIS bus               |
+| m_axis_rx | out       | Virtual bus | Receive AXIS bus                |
 
 ### Virtual Buses
 
@@ -135,26 +135,29 @@ LimeLight digital modes implemented:
 
 ## Signals
 
-| Name                   | Type                                   | Description |
-| ---------------------- | -------------------------------------- | ----------- |
-| inst2_diq_h            | std_logic_vector (g_IQ_WIDTH downto 0) |             |
-| inst2_diq_l            | std_logic_vector (g_IQ_WIDTH downto 0) |             |
-| rx_smpl_cmp_start_sync | std_logic                              |             |
-| inst0_reset_n          | std_logic                              |             |
-| inst1_fifo_0_reset_n   | std_logic                              |             |
-| inst1_fifo_1_reset_n   | std_logic                              |             |
-| inst1_clk_2x_reset_n   | std_logic                              |             |
-| inst1_txant_en         | std_logic                              |             |
-| int_mode               | std_logic                              |             |
-| int_trxiqpulse         | std_logic                              |             |
-| int_ddr_en             | std_logic                              |             |
-| int_mimo_en            | std_logic                              |             |
-| int_ch_en              | std_logic_vector(1 downto 0)           |             |
-| int_fidm               | std_logic                              |             |
-| lms_txen_int           | std_logic                              |             |
-| lms_rxen_int           | std_logic                              |             |
-| debug_tx_ptrn_en       | std_logic                              |             |
+| Name           | Type                                  | Description |
+| -------------- | ------------------------------------- | ----------- |
+| inst1_txant_en | std_logic                             |             |
+| inst1_diq_h    | std_logic_vector(g_IQ_WIDTH downto 0) |             |
+| inst1_diq_l    | std_logic_vector(g_IQ_WIDTH downto 0) |             |
+| lms_txen_int   | std_logic                             |             |
+| lms_rxen_int   | std_logic                             |             |
+| inst3_diq_h    | std_logic_vector(g_IQ_WIDTH downto 0) |             |
+| inst3_diq_l    | std_logic_vector(g_IQ_WIDTH downto 0) |             |
+| axis_tx_tvalid | std_logic                             |             |
+| axis_tx_tdata  | std_logic_vector(63 downto 0)         |             |
+| axis_tx_tready | std_logic                             |             |
+| axis_tx_tlast  | std_logic                             |             |
+| axis_rx_tvalid | std_logic                             |             |
+| axis_rx_tdata  | std_logic_vector(63 downto 0)         |             |
+| axis_rx_tready | std_logic                             |             |
+| axis_rx_tlast  | std_logic                             |             |
 
 ## Instantiations
 
-- inst0_lms7002_tx: work.lms7002_tx
+- inst0_cdc_tx_fifo: work.fifo_axis_wrap
+- inst1_lms7002_tx: work.lms7002_tx
+- inst2_lms7002_ddout: work.lms7002_ddout
+- inst3_lms7002_ddin: work.lms7002_ddin
+- inst4_lms7002_rx: work.lms7002_rx
+- inst5_cdc_rx_fifo: work.fifo_axis_wrap
