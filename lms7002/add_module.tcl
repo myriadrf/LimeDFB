@@ -4,7 +4,7 @@
 # DATE:          15:06 2023-07-03
 # AUTHOR(s):     Lime Microsystems
 # REVISIONS:
-#  2024-03-12 : Added addition code to specify VHDL version
+#  2024-03-12 : Added additional code to specify VHDL version
 # #################################################################
 
 # #################################################################
