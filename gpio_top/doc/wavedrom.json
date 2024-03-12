@@ -1,0 +1,21 @@
+
+{
+  signal: [
+    ['To Logic',
+    {name: 'GPIO_DIR', wave: 'x=.......=......', data: ['0x0000','0xFFFF']},
+    {name: 'GPIO_IN_VAL', wave: 'x=...=...=......', data:['0x5555','0xAAAA','0x5A5A']},
+    {name: 'GPIO_OVERRIDE', wave: '0....1......0...'},
+    {name: 'GPIO_OVERRIDE_VAL', wave: 'x=..............', data:['0xAAAA']},
+    {name: 'GPIO_OUT_VAL', wave: 'x=..............', data:['0x5555']},
+    ],
+    {},
+	['To IO',
+    {name: 'GPIO_I', wave: 'x........=......', data: ['0x5A5A']},
+    {name: 'GPIO_O', wave: 'x=...=...x......', data: ['0x5555','0xAAAA']},
+    {name: 'GPIO_T', wave: 'x=.......=......', data: ['0x0000','0xFFFF']}
+    ]
+],
+    head: {text:['tspan',{'font-weight':'bold'}, 'port behavior']}
+}
+
+

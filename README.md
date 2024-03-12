@@ -23,4 +23,5 @@ Here you can find summary of available modules and their status. <br>
 |[m_to_axi_lite](https://github.com/myriadrf/LimeIP_HDL/tree/main/m_to_axi_lite)| v0.0 | :yellow_circle: dev | Converts general data bus with data valid signals to AXI4-Lite master interface |
 |[gt_channel](https://github.com/myriadrf/LimeIP_HDL/tree/main/gt_channel)| v0.0 | :yellow_circle: dev | Send/receive data trough transceivers (Aurora 8b10b) |
 |[lms7002](https://github.com/myriadrf/LimeIP_HDL/tree/main/lms7002)| v0.0 | :yellow_circle: dev | Top module for LMS7002M IC digital interface |
+|[gpio_top](https://github.com/myriadrf/LimeIP_HDL/tree/main/gpio_top)| v0.0 | :yellow_circle: dev | Basic Module for GPIO control
 
