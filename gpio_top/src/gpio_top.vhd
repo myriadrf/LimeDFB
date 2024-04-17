@@ -28,6 +28,7 @@ entity GPIO_TOP is
       GPIO_OUT_VAL      : in    std_logic_vector(G_GPIO_WIDTH - 1 downto 0); --! GPIO output value
       GPIO_IN_VAL       : out   std_logic_vector(G_GPIO_WIDTH - 1 downto 0); --! GPIO input value
       GPIO_OVERRIDE     : in    std_logic_vector(G_GPIO_WIDTH - 1 downto 0); --! GPIO output override enable
+      GPIO_OVERRIDE_DIR : in    std_logic_vector(G_GPIO_WIDTH - 1 downto 0); --! GPIO output override direction (0 - Output, 1 - Input)
       GPIO_OVERRIDE_VAL : in    std_logic_vector(G_GPIO_WIDTH - 1 downto 0); --! GPIO output override value
       -- to io ports
       GPIO_I            : in    std_logic_vector(G_GPIO_WIDTH - 1 downto 0); --! GPIO input (from IO)
@@ -54,8 +55,10 @@ begin
 
          if (GPIO_OVERRIDE(i) = '0') then
             internal_gpio_out(i) <= GPIO_OUT_VAL(i);
+            GPIO_T               <= GPIO_DIR;
          else
             internal_gpio_out(i) <= GPIO_OVERRIDE_VAL(i);
+            GPIO_T               <= GPIO_OVERRIDE_DIR;
          end if;
 
       end loop gpio_internal_assign;
@@ -71,7 +74,7 @@ begin
       end loop gpio_in_assign;
 
       GPIO_O <= internal_gpio_out;
-      GPIO_T <= GPIO_DIR;
+      
 
    end process MUX;
 
