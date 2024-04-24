@@ -13,9 +13,6 @@
 library ieee;
    use ieee.std_logic_1164.all;
    use ieee.numeric_std.all;
-   use work.fpgacfg_pkg.all;
-   use work.tstcfg_pkg.all;
-   use work.memcfg_pkg.all;
 
 -- ----------------------------------------------------------------------------
 -- Entity declaration
@@ -30,46 +27,49 @@ end entity LMS7002_TOP_TB;
 
 architecture TB_BEHAVE of LMS7002_TOP_TB is
 
-   constant CLK0_PERIOD             : time := 8 ns;
-   constant CLK1_PERIOD             : time := 8 ns;
-   constant SYS_CLK_PERIOD          : time := 8 ns;
+   constant C_CLK0_PERIOD                       : time := 8 ns;
+   constant C_CLK1_PERIOD                       : time := 8 ns;
+   constant C_SYS_CLK_PERIOD                    : time := 8 ns;
 
-   constant C_MIMO_DDR_SAMPLES      : integer := 16;
+   constant C_MIMO_DDR_SAMPLES                  : integer := 16;
    -- signals
-   signal clk0, clk1                : std_logic;
-   signal sys_clk                   : std_logic;
-   signal reset_n                   : std_logic;
+   signal clk0, clk1                            : std_logic;
+   signal sys_clk                               : std_logic;
+   signal reset_n                               : std_logic;
 
-   signal dut1_diq1                 : std_logic_vector(11 downto 0);
-   signal dut1_enable_iqsel1        : std_logic;
+   signal dut1_diq1                             : std_logic_vector(11 downto 0);
+   signal dut1_enable_iqsel1                    : std_logic;
 
-   signal dut1_from_fpgacfg         : t_FROM_FPGACFG;
-   signal dut1_from_tstcfg          : t_FROM_TSTCFG;
-   signal dut1_from_memcfg          : t_FROM_MEMCFG;
+   signal dut1_trxiq_pulse                      : std_logic;
+   signal dut1_ddr_en                           : std_logic;
+   signal dut1_mimo_int_en                      : std_logic;
+   signal dut1_tx_en                            : std_logic;
 
-   signal s_axis_tx_tvalid          : std_logic;
-   signal s_axis_tx_tdata           : std_logic_vector(63 downto 0);
-   signal s_axis_tx_tready          : std_logic;
-   signal s_axis_tx_tlast           : std_logic;
+   signal s_axis_tx_tvalid                      : std_logic;
+   signal s_axis_tx_tdata                       : std_logic_vector(63 downto 0);
+   signal s_axis_tx_tready                      : std_logic;
+   signal s_axis_tx_tlast                       : std_logic;
 
-   alias s_axis_tx_tdata_ai         is s_axis_tx_tdata(63 downto 52);
-   alias s_axis_tx_tdata_aq         is s_axis_tx_tdata(47 downto 36);
-   alias s_axis_tx_tdata_bi         is s_axis_tx_tdata(31 downto 20);
-   alias s_axis_tx_tdata_bq         is s_axis_tx_tdata(15 downto  4);
+   alias s_axis_tx_tdata_ai                     is s_axis_tx_tdata(63 downto 52);
+   alias s_axis_tx_tdata_aq                     is s_axis_tx_tdata(47 downto 36);
+   alias s_axis_tx_tdata_bi                     is s_axis_tx_tdata(31 downto 20);
+   alias s_axis_tx_tdata_bq                     is s_axis_tx_tdata(15 downto  4);
 
    type T_TXIQ_MODE is (MIMO_DDR, SISO_DDR, TXIQ_PULSE);
 
-   signal txiq_mode                 : T_TXIQ_MODE;
+   signal dut1_txiq_mode                        : T_TXIQ_MODE;
 
-   signal ch_en                     : std_logic_vector(1 downto 0);
+   signal dut1_ch_en                            : std_logic_vector(1 downto 0);
 
-   signal wait_cycles               : integer;
+   signal wait_cycles                           : integer;
 
    procedure set_txiq_mode (
-      signal clk          : in  std_logic;
-      signal txiq_mode    : in  T_TXIQ_MODE;
-      signal ch_en        : in  std_logic_vector(1 downto 0);
-      signal from_fpgacfg : out t_FROM_FPGACFG
+      signal clk         : in  std_logic;
+      signal txiq_mode   : in  T_TXIQ_MODE;
+      signal trxiq_pulse : out std_logic;
+      signal ddr_en      : out std_logic;
+      signal mimo_int_en : out std_logic
+
    ) is
    begin
 
@@ -80,32 +80,24 @@ architecture TB_BEHAVE of LMS7002_TOP_TB is
       case txiq_mode is
 
          when MIMO_DDR =>
-            from_fpgacfg.mode              <= '0';
-            from_fpgacfg.trxiq_pulse       <= '0';
-            from_fpgacfg.ddr_en            <= '1';
-            from_fpgacfg.mimo_int_en       <= '1';
-            from_fpgacfg.ch_en(1 downto 0) <= ch_en;
+            trxiq_pulse <= '0';
+            ddr_en      <= '1';
+            mimo_int_en <= '1';
 
          when SISO_DDR =>
-            from_fpgacfg.mode              <= '0';
-            from_fpgacfg.trxiq_pulse       <= '0';
-            from_fpgacfg.ddr_en            <= '1';
-            from_fpgacfg.mimo_int_en       <= '0';
-            from_fpgacfg.ch_en(1 downto 0) <= ch_en;
+            trxiq_pulse <= '0';
+            ddr_en      <= '1';
+            mimo_int_en <= '0';
 
          when TXIQ_PULSE =>
-            from_fpgacfg.mode              <= '0';
-            from_fpgacfg.trxiq_pulse       <= '1';
-            from_fpgacfg.ddr_en            <= '0';
-            from_fpgacfg.mimo_int_en       <= '0';
-            from_fpgacfg.ch_en(1 downto 0) <= ch_en;
+            trxiq_pulse <= '1';
+            ddr_en      <= '0';
+            mimo_int_en <= '0';
 
          when others =>
-            from_fpgacfg.mode              <= '0';
-            from_fpgacfg.trxiq_pulse       <= '0';
-            from_fpgacfg.ddr_en            <= '0';
-            from_fpgacfg.mimo_int_en       <= '0';
-            from_fpgacfg.ch_en(1 downto 0) <= "00";
+            trxiq_pulse <= '0';
+            ddr_en      <= '0';
+            mimo_int_en <= '0';
 
       end case;
 
@@ -115,9 +107,9 @@ architecture TB_BEHAVE of LMS7002_TOP_TB is
    end procedure;
 
    procedure generate_axis_data (
-      signal reset_n       : in     std_logic;
       signal clk           : in     std_logic;
       signal txiq_mode     : in     T_TXIQ_MODE;
+      signal ch_en         : in     std_logic_vector(1 downto 0);
       signal s_axis_tvalid : out    std_logic;
       signal s_axis_tdata  : inout  std_logic_vector(63 downto 0);
       signal s_axis_tready : in     std_logic;
@@ -248,9 +240,9 @@ begin
    begin
 
       clk0 <= '0';
-      wait for CLK0_PERIOD / 2;
+      wait for C_CLK0_PERIOD / 2;
       clk0 <= '1';
-      wait for CLK0_PERIOD / 2;
+      wait for C_CLK0_PERIOD / 2;
 
    end process CLOCK0;
 
@@ -258,14 +250,14 @@ begin
    begin
 
       -- Simulate 90deg phase shift
-      wait for CLK1_PERIOD / 4;
+      wait for C_CLK1_PERIOD / 4;
 
       loop
 
          clk1 <= '0';
-         wait for CLK1_PERIOD / 2;
+         wait for C_CLK1_PERIOD / 2;
          clk1 <= '1';
-         wait for CLK1_PERIOD / 2;
+         wait for C_CLK1_PERIOD / 2;
 
       end loop;
 
@@ -275,9 +267,9 @@ begin
    begin
 
       sys_clk <= '0';
-      wait for SYS_CLK_PERIOD / 2;
+      wait for C_SYS_CLK_PERIOD / 2;
       sys_clk <= '1';
-      wait for SYS_CLK_PERIOD / 2;
+      wait for C_SYS_CLK_PERIOD / 2;
 
    end process SYS_CLOCK;
 
@@ -298,10 +290,6 @@ begin
          G_IQ_WIDTH   => 12
       )
       port map (
-         --! @virtualbus cfg @dir in Configuration bus
-         FROM_FPGACFG => dut1_from_fpgacfg,
-         FROM_TSTCFG  => dut1_from_tstcfg,
-         FROM_MEMCFG  => dut1_from_memcfg,
          --! @virtualbus LMS_PORT1 @dir out interface
          MCLK1         => clk0,
          FCLK1         => open,
@@ -334,31 +322,45 @@ begin
          M_AXIS_RX_TREADY   => '1',
          -- misc
          TX_ACTIVE => open,
-         RX_ACTIVE => open
+         RX_ACTIVE => open,
+         --! @virtualbus interface_cfg @dir in Interface configuration pins
+         TX_EN              => dut1_tx_en,
+         TRXIQ_PULSE        => dut1_trxiq_pulse,
+         DDR_EN             => dut1_ddr_en,
+         MIMO_INT_EN        => dut1_mimo_int_en,
+         CH_EN              => dut1_ch_en,
+         LMS1_TXEN          => '0',
+         LMS_TXRXEN_MUX_SEL => '0',
+         LMS1_RXEN          => '0',
+         LMS1_RESET         => '0',
+         LMS_TXRXEN_INV     => '0',
+         LMS1_CORE_LDO_EN   => '0',
+         LMS1_TXNRX1        => '0',
+         LMS1_TXNRX2        => '0'
       );
 
    TB_TRANSMIT_PROC : process is
    begin
 
-      dut1_from_fpgacfg.tx_en <= '0';
+      dut1_tx_en <= '0';
       wait until reset_n='1' and rising_edge(sys_clk);
 
       -- ----------------------------------------------------------------------------
       -- Set txiq_mode and enable A AND B channels
-      txiq_mode <= MIMO_DDR;
-      ch_en     <= "11";
+      dut1_txiq_mode <= MIMO_DDR;
+      dut1_ch_en     <= "11";
       wait until rising_edge(sys_clk);
-      set_txiq_mode(clk=> sys_clk, txiq_mode => txiq_mode, ch_en => ch_en, from_fpgacfg => dut1_from_fpgacfg);
+      set_txiq_mode(clk=> sys_clk, txiq_mode => dut1_txiq_mode, trxiq_pulse => dut1_trxiq_pulse, ddr_en => dut1_ddr_en, mimo_int_en => dut1_mimo_int_en);
 
       -- Enable TX
       wait until rising_edge(sys_clk);
-      dut1_from_fpgacfg.tx_en <= '1';
+      dut1_tx_en <= '1';
 
       -- Generate IQ data
       generate_axis_data (
-                          reset_n       => reset_n,
                           clk           => sys_clk,
-                          txiq_mode     => txiq_mode,
+                          txiq_mode     => dut1_txiq_mode,
+                          ch_en         => dut1_ch_en,
                           s_axis_tvalid => s_axis_tx_tvalid,
                           s_axis_tdata  => s_axis_tx_tdata,
                           s_axis_tready => s_axis_tx_tready,
@@ -373,26 +375,26 @@ begin
       wait until rising_edge(sys_clk);
       report "Disabling tx"
          severity NOTE;
-      dut1_from_fpgacfg.tx_en <= '0';
+      dut1_tx_en <= '0';
 
       wait_cycles <= 64;
       wait_sync_cycles(sys_clk, wait_cycles);
 
       -- ----------------------------------------------------------------------------
       -- Set txiq_mode and enable A channels
-      txiq_mode <= MIMO_DDR;
-      ch_en     <= "01";
-      set_txiq_mode(clk=> sys_clk, txiq_mode => txiq_mode, ch_en => ch_en, from_fpgacfg => dut1_from_fpgacfg);
+      dut1_txiq_mode <= MIMO_DDR;
+      dut1_ch_en     <= "01";
+      set_txiq_mode(clk=> sys_clk, txiq_mode => dut1_txiq_mode, trxiq_pulse => dut1_trxiq_pulse, ddr_en => dut1_ddr_en, mimo_int_en => dut1_mimo_int_en);
 
       -- Enable TX
       wait until rising_edge(sys_clk);
-      dut1_from_fpgacfg.tx_en <= '1';
+      dut1_tx_en <= '1';
 
       -- Generate IQ data
       generate_axis_data (
-                          reset_n       => reset_n,
                           clk           => sys_clk,
-                          txiq_mode     => txiq_mode,
+                          txiq_mode     => dut1_txiq_mode,
+                          ch_en         => dut1_ch_en,
                           s_axis_tvalid => s_axis_tx_tvalid,
                           s_axis_tdata  => s_axis_tx_tdata,
                           s_axis_tready => s_axis_tx_tready,
@@ -404,26 +406,25 @@ begin
 
       -- Disable TX
       wait until rising_edge(sys_clk);
-      dut1_from_fpgacfg.tx_en <= '0';
+      dut1_tx_en <= '0';
 
       wait_cycles <= 64;
       wait_sync_cycles(sys_clk, wait_cycles);
 
       -- ----------------------------------------------------------------------------
       -- Set txiq_mode and enable B channel
-      txiq_mode <= MIMO_DDR;
-      ch_en     <= "10";
-      set_txiq_mode(clk=> sys_clk, txiq_mode => txiq_mode, ch_en => ch_en, from_fpgacfg => dut1_from_fpgacfg);
-
+      dut1_txiq_mode <= MIMO_DDR;
+      dut1_ch_en     <= "10";
+      set_txiq_mode(clk=> sys_clk, txiq_mode => dut1_txiq_mode, trxiq_pulse => dut1_trxiq_pulse, ddr_en => dut1_ddr_en, mimo_int_en => dut1_mimo_int_en);
       -- Enable TX
       wait until rising_edge(sys_clk);
-      dut1_from_fpgacfg.tx_en <= '1';
+      dut1_tx_en <= '1';
 
       -- Generate IQ data
       generate_axis_data (
-                          reset_n       => reset_n,
                           clk           => sys_clk,
-                          txiq_mode     => txiq_mode,
+                          txiq_mode     => dut1_txiq_mode,
+                          ch_en         => dut1_ch_en,
                           s_axis_tvalid => s_axis_tx_tvalid,
                           s_axis_tdata  => s_axis_tx_tdata,
                           s_axis_tready => s_axis_tx_tready,
@@ -435,26 +436,26 @@ begin
 
       -- Disable TX
       wait until rising_edge(sys_clk);
-      dut1_from_fpgacfg.tx_en <= '0';
+      dut1_tx_en <= '0';
 
       wait_cycles <= 64;
       wait_sync_cycles(sys_clk, wait_cycles);
 
       -- ----------------------------------------------------------------------------
       -- Set txiq_mode and enable A channel
-      txiq_mode <= SISO_DDR;
-      ch_en     <= "01";  -- Does not matter in SISO DDR
-      set_txiq_mode(clk=> sys_clk, txiq_mode => txiq_mode, ch_en => ch_en, from_fpgacfg => dut1_from_fpgacfg);
+      dut1_txiq_mode <= SISO_DDR;
+      dut1_ch_en     <= "01";  -- Does not matter in SISO DDR
+      set_txiq_mode(clk=> sys_clk, txiq_mode => dut1_txiq_mode, trxiq_pulse => dut1_trxiq_pulse, ddr_en => dut1_ddr_en, mimo_int_en => dut1_mimo_int_en);
 
       -- Enable TX
       wait until rising_edge(sys_clk);
-      dut1_from_fpgacfg.tx_en <= '1';
+      dut1_tx_en <= '1';
 
       -- Generate IQ data
       generate_axis_data (
-                          reset_n       => reset_n,
                           clk           => sys_clk,
-                          txiq_mode     => txiq_mode,
+                          txiq_mode     => dut1_txiq_mode,
+                          ch_en         => dut1_ch_en,
                           s_axis_tvalid => s_axis_tx_tvalid,
                           s_axis_tdata  => s_axis_tx_tdata,
                           s_axis_tready => s_axis_tx_tready,
@@ -465,23 +466,23 @@ begin
 
       -- Disable TX
       wait until rising_edge(sys_clk);
-      dut1_from_fpgacfg.tx_en <= '0';
+      dut1_tx_en <= '0';
 
       -- ----------------------------------------------------------------------------
       -- Set txiq_mode and enable A channel
-      txiq_mode <= TXIQ_PULSE;
-      ch_en     <= "01";  -- Does not matter in TXIQ_PULSE
-      set_txiq_mode(clk=> sys_clk, txiq_mode => txiq_mode, ch_en => ch_en, from_fpgacfg => dut1_from_fpgacfg);
+      dut1_txiq_mode <= TXIQ_PULSE;
+      dut1_ch_en     <= "01";  -- Does not matter in TXIQ_PULSE
+      set_txiq_mode(clk=> sys_clk, txiq_mode => dut1_txiq_mode, trxiq_pulse => dut1_trxiq_pulse, ddr_en => dut1_ddr_en, mimo_int_en => dut1_mimo_int_en);
 
       -- Enable TX
       wait until rising_edge(sys_clk);
-      dut1_from_fpgacfg.tx_en <= '1';
+      dut1_tx_en <= '1';
 
       -- Generate IQ data
       generate_axis_data (
-                          reset_n       => reset_n,
                           clk           => sys_clk,
-                          txiq_mode     => txiq_mode,
+                          txiq_mode     => dut1_txiq_mode,
+                          ch_en         => dut1_ch_en,
                           s_axis_tvalid => s_axis_tx_tvalid,
                           s_axis_tdata  => s_axis_tx_tdata,
                           s_axis_tready => s_axis_tx_tready,
@@ -492,7 +493,7 @@ begin
 
       -- Disable TX
       wait until rising_edge(sys_clk);
-      dut1_from_fpgacfg.tx_en <= '0';
+      dut1_tx_en <= '0';
 
       wait;
 
