@@ -11,9 +11,6 @@ set DEP_MODULES [list \
 ]
 
 set DEP_FILES [ list \
-   $script_path/../spicfg/src/fpgacfg_pkg.vhd \
-   $script_path/../spicfg/src/memcfg_pkg.vhd  \
-   $script_path/../spicfg/src/tstcfg_pkg.vhd  \
 ]
 
 

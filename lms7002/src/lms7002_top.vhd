@@ -160,9 +160,6 @@
 library ieee;
    use ieee.std_logic_1164.all;
    use ieee.numeric_std.all;
-   use work.fpgacfg_pkg.all;
-   use work.tstcfg_pkg.all;
-   use work.memcfg_pkg.all;
 
 -- ----------------------------------------------------------------------------
 -- Entity declaration
@@ -177,44 +174,55 @@ entity LMS7002_TOP is
       G_M_AXIS_RX_FIFO_WORDS     : integer   := 16          --! RX FIFO size in words
    );
    port (
-      --! @virtualbus cfg @dir in Configuration bus
-      FROM_FPGACFG         : in    t_FROM_FPGACFG;                            --! Signals from FPGACFG registers
-      FROM_TSTCFG          : in    t_FROM_TSTCFG;                             --! Signals from TSTCFG registers
-      FROM_MEMCFG          : in    t_FROM_MEMCFG;                             --! Signals from MEMCFG registers @end
       --! @virtualbus LMS_PORT1 @dir out interface
-      MCLK1                : in    std_logic;                                 --! TX interface clock
-      FCLK1                : out   std_logic;                                 --! TX interface feedback clock
-      DIQ1                 : out   std_logic_vector(G_IQ_WIDTH - 1 downto 0); --! DIQ1 data bus
-      ENABLE_IQSEL1        : out   std_logic;                                 --! IQ select flag for DIQ1 data
-      TXNRX1               : out   std_logic;                                 --! LMS_PORT1 direction select @end
+      MCLK1                : in    std_logic;                                  --! TX interface clock
+      FCLK1                : out   std_logic;                                  --! TX interface feedback clock
+      DIQ1                 : out   std_logic_vector(G_IQ_WIDTH - 1 downto 0);  --! DIQ1 data bus
+      ENABLE_IQSEL1        : out   std_logic;                                  --! IQ select flag for DIQ1 data
+      TXNRX1               : out   std_logic;                                  --! LMS_PORT1 direction select @end
       --! @virtualbus LMS_PORT2 @dir in interface
-      MCLK2                : in    std_logic;                                 --! RX interface clock
-      FCLK2                : out   std_logic;                                 --! RX interface feedback clock
-      DIQ2                 : in    std_logic_vector(G_IQ_WIDTH - 1 downto 0); --! DIQ2 data bus
-      ENABLE_IQSEL2        : in    std_logic;                                 --! IQ select flag for DIQ2 data
-      TXNRX2               : out   std_logic;                                 --! LMS_PORT2 direction select @end
+      MCLK2                : in    std_logic;                                  --! RX interface clock
+      FCLK2                : out   std_logic;                                  --! RX interface feedback clock
+      DIQ2                 : in    std_logic_vector(G_IQ_WIDTH - 1 downto 0);  --! DIQ2 data bus
+      ENABLE_IQSEL2        : in    std_logic;                                  --! IQ select flag for DIQ2 data
+      TXNRX2               : out   std_logic;                                  --! LMS_PORT2 direction select @end
       --! @virtualbus LMS_MISC @dir out LMS miscellaneous control ports
-      RESET                : out   std_logic;                                 --! LMS hardware reset, active low
-      TXEN                 : out   std_logic;                                 --! TX hard power off
-      RXEN                 : out   std_logic;                                 --! RX hard power off
-      CORE_LDO_EN          : out   std_logic;                                 --! LMS internal LDO enable control @end
+      RESET                : out   std_logic;                                  --! LMS hardware reset, active low
+      TXEN                 : out   std_logic;                                  --! TX hard power off
+      RXEN                 : out   std_logic;                                  --! RX hard power off
+      CORE_LDO_EN          : out   std_logic;                                  --! LMS internal LDO enable control @end
       --! @virtualbus s_axis_tx @dir in Transmit AXIS bus
-      S_AXIS_TX_ARESET_N   : in    std_logic;                                 --! TX interface active low reset
-      S_AXIS_TX_ACLK       : in    std_logic;                                 --! TX FIFO write clock
-      S_AXIS_TX_TVALID     : in    std_logic;                                 --! TX FIFO write request
-      S_AXIS_TX_TDATA      : in    std_logic_vector(63 downto 0);             --! TX FIFO data
-      S_AXIS_TX_TREADY     : out   std_logic;                                 --! TX FIFO write full
-      S_AXIS_TX_TLAST      : in    std_logic;                                 --! @end
+      S_AXIS_TX_ARESET_N   : in    std_logic;                                  --! TX interface active low reset
+      S_AXIS_TX_ACLK       : in    std_logic;                                  --! TX FIFO write clock
+      S_AXIS_TX_TVALID     : in    std_logic;                                  --! TX FIFO write request
+      S_AXIS_TX_TDATA      : in    std_logic_vector(63 downto 0);              --! TX FIFO data
+      S_AXIS_TX_TREADY     : out   std_logic;                                  --! TX FIFO write full
+      S_AXIS_TX_TLAST      : in    std_logic;                                  --! @end
       --! @virtualbus m_axis_rx @dir out Receive AXIS bus
-      M_AXIS_RX_ARESET_N   : in    std_logic;                                 --! RX interface active low reset
-      M_AXIS_RX_ACLK       : in    std_logic;                                 --! RX FIFO read clock
-      M_AXIS_RX_TVALID     : out   std_logic;                                 --! Received data from DIQ2 port valid signal
-      M_AXIS_RX_TDATA      : out   std_logic_vector(63 downto 0);             --! Received data from DIQ2 port
+      M_AXIS_RX_ARESET_N   : in    std_logic;                                  --! RX interface active low reset
+      M_AXIS_RX_ACLK       : in    std_logic;                                  --! RX FIFO read clock
+      M_AXIS_RX_TVALID     : out   std_logic;                                  --! Received data from DIQ2 port valid signal
+      M_AXIS_RX_TDATA      : out   std_logic_vector(63 downto 0);              --! Received data from DIQ2 port
       M_AXIS_RX_TREADY     : in    std_logic;
-      M_AXIS_RX_TLAST      : out   std_logic;                                 --! @end
+      M_AXIS_RX_TLAST      : out   std_logic;                                  --! @end
       -- misc
-      TX_ACTIVE            : out   std_logic;                                 --! TX antenna enable flag
-      RX_ACTIVE            : out   std_logic                                  --! RX sample counter enable
+      TX_ACTIVE            : out   std_logic;                                  --! TX antenna enable flag
+      RX_ACTIVE            : out   std_logic;                                  --! RX sample counter enable
+      -- previously fpgacfg
+      --! @virtualbus interface_cfg @dir in Interface configuration pins
+      TX_EN                : in    std_logic;                                  --! TX enable signal
+      TRXIQ_PULSE          : in    std_logic;                                  --! TRXIQ pulse mode
+      DDR_EN               : in    std_logic;                                  --! DIQ DDR mode enable
+      MIMO_INT_EN          : in    std_logic;                                  --! MIMO enable
+      CH_EN                : in    std_logic_vector(1 downto 0);              --! Channel enable vector
+      LMS1_TXEN            : in    std_logic;                                  --! TX hard enable
+      LMS_TXRXEN_MUX_SEL   : in    std_logic;                                  --! Control TX/RX EN signals by internal TDD signal
+      LMS1_RXEN            : in    std_logic;                                  --! RX hard enable
+      LMS1_RESET           : in    std_logic;                                  --! Hardware reset
+      LMS_TXRXEN_INV       : in    std_logic;                                  --! TX/RX EN signal invert
+      LMS1_CORE_LDO_EN     : in    std_logic;                                  --! LMS core LDO enable
+      LMS1_TXNRX1          : in    std_logic;                                  --! DIQ1 TX/RX direction select (1 - RX)
+      LMS1_TXNRX2          : in    std_logic                                   --! DIQ2 TX/RX direction select (1 - RX) @end
    );
 end entity LMS7002_TOP;
 
@@ -277,15 +285,13 @@ begin
          G_IQ_WIDTH => G_IQ_WIDTH
       )
       port map (
-         CLK          => MCLK1,
-         RESET_N      => from_fpgacfg.tx_en,
-         FROM_FPGACFG => FROM_FPGACFG,
+         CLK     => MCLK1,
+         RESET_N => TX_EN,
          -- Mode settings
-         MODE       => from_fpgacfg.mode,
-         TRXIQPULSE => from_fpgacfg.trxiq_pulse,
-         DDR_EN     => from_fpgacfg.ddr_en,
-         MIMO_EN    => from_fpgacfg.mimo_int_en,
-         CH_EN      => from_fpgacfg.ch_en(1 downto 0),
+         TRXIQPULSE => TRXIQ_PULSE,
+         DDR_EN     => DDR_EN,
+         MIMO_EN    => MIMO_INT_EN,
+         CH_EN      => CH_EN(1 downto 0),
          FIDM       => '0',
          -- Tx interface data
          DIQ_H => inst1_diq_h,
@@ -308,7 +314,7 @@ begin
       port map (
          -- input ports
          CLK       => MCLK1,
-         RESET_N   => from_fpgacfg.tx_en,
+         RESET_N   => TX_EN,
          DATA_IN_H => inst1_diq_h,
          DATA_IN_L => inst1_diq_l,
          -- output ports
@@ -330,7 +336,7 @@ begin
       port map (
          -- input ports
          CLK     => MCLK2,
-         RESET_N => from_fpgacfg.tx_en,
+         RESET_N => TX_EN,
          RXIQ    => DIQ2,
          RXIQSEL => ENABLE_IQSEL2,
          -- output ports
@@ -345,15 +351,13 @@ begin
          G_M_AXIS_FIFO_WORDS => G_M_AXIS_RX_FIFO_WORDS
       )
       port map (
-         CLK          => MCLK2,
-         RESET_N      => from_fpgacfg.tx_en,
-         FROM_FPGACFG => FROM_FPGACFG,
+         CLK     => MCLK2,
+         RESET_N => TX_EN,
          -- Mode settings
-         MODE       => from_fpgacfg.mode,
-         TRXIQPULSE => from_fpgacfg.trxiq_pulse,
-         DDR_EN     => from_fpgacfg.ddr_en,
-         MIMO_EN    => from_fpgacfg.mimo_int_en,
-         CH_EN      => from_fpgacfg.ch_en(1 downto 0),
+         TRXIQPULSE => TRXIQ_PULSE,
+         DDR_EN     => DDR_EN,
+         MIMO_EN    => MIMO_INT_EN,
+         CH_EN      => CH_EN(1 downto 0),
          FIDM       => '0',
          -- Tx interface data
          DIQ_H => inst3_diq_h,
@@ -375,7 +379,7 @@ begin
          G_TDATA_WIDTH   => M_AXIS_RX_TDATA'LENGTH
       )
       port map (
-         S_AXIS_ARESETN => from_fpgacfg.tx_en,
+         S_AXIS_ARESETN => TX_EN,
          S_AXIS_ACLK    => MCLK2,
          S_AXIS_TVALID  => axis_rx_tvalid,
          S_AXIS_TREADY  => axis_rx_tready,
@@ -391,19 +395,19 @@ begin
    -- ----------------------------------------------------------------------------
    -- Output ports
    -- ----------------------------------------------------------------------------
-   lms_txen_int <= from_fpgacfg.LMS1_TXEN when from_fpgacfg.LMS_TXRXEN_MUX_SEL = '0' else
+   lms_txen_int <= LMS1_TXEN when LMS_TXRXEN_MUX_SEL = '0' else
                    inst1_txant_en;
-   lms_rxen_int <= from_fpgacfg.LMS1_RXEN when from_fpgacfg.LMS_TXRXEN_MUX_SEL = '0' else
+   lms_rxen_int <= LMS1_RXEN when LMS_TXRXEN_MUX_SEL = '0' else
                    not inst1_txant_en;
 
-   RESET       <= from_fpgacfg.LMS1_RESET;
-   TXEN        <= lms_txen_int when from_fpgacfg.LMS_TXRXEN_INV='0' else
+   RESET       <= LMS1_RESET;
+   TXEN        <= lms_txen_int when LMS_TXRXEN_INV='0' else
                   not lms_txen_int;
-   RXEN        <= lms_rxen_int when from_fpgacfg.LMS_TXRXEN_INV='0' else
+   RXEN        <= lms_rxen_int when LMS_TXRXEN_INV='0' else
                   not lms_rxen_int;
-   CORE_LDO_EN <= from_fpgacfg.LMS1_CORE_LDO_EN;
-   TXNRX1      <= from_fpgacfg.LMS1_TXNRX1;
-   TXNRX2      <= from_fpgacfg.LMS1_TXNRX2;
+   CORE_LDO_EN <= LMS1_CORE_LDO_EN;
+   TXNRX1      <= LMS1_TXNRX1;
+   TXNRX2      <= LMS1_TXNRX2;
 
    TX_ACTIVE <= inst1_txant_en;
 
