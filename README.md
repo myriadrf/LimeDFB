@@ -24,4 +24,5 @@ Here you can find summary of available modules and their status. <br>
 |[gt_channel](https://github.com/myriadrf/LimeIP_HDL/tree/main/gt_channel)| v0.0 | :yellow_circle: dev | Send/receive data trough transceivers (Aurora 8b10b) |
 |[lms7002](https://github.com/myriadrf/LimeIP_HDL/tree/main/lms7002)| v0.0 | :yellow_circle: dev | Top module for LMS7002M IC digital interface |
 |[gpio_top](https://github.com/myriadrf/LimeIP_HDL/tree/main/gpio_top)| v0.0 | :yellow_circle: dev | Basic Module for GPIO control
+|[rx_path_top](./rx_path_top/)| v0.0 | :yellow_circle: dev | Receive and pack IQ samples into Stream packets
 
