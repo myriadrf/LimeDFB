@@ -15,7 +15,6 @@
 library ieee;
    use ieee.std_logic_1164.all;
    use ieee.numeric_std.all;
-   
    use work.axis_pkg.all;
 
 -- ----------------------------------------------------------------------------
@@ -34,7 +33,7 @@ entity RX_PATH_TOP is
       S_AXIS_IQSMPLS_ACLK     : in    std_logic;
       S_AXIS_IQSMPLS_ARESETN  : in    std_logic;
       S_AXIS_IQSMPLS_TVALID   : in    std_logic;
-      S_AXIS_IQSMPLS_TREADY   : out   std_logic;  --Indicates when FIFO comes out of reset. Slave can allways accept data
+      S_AXIS_IQSMPLS_TREADY   : out   std_logic;  -- Indicates when FIFO comes out of reset. Slave can allways accept data
       S_AXIS_IQSMPLS_TDATA    : in    std_logic_vector(63 downto 0);
       S_AXIS_IQSMPLS_TKEEP    : in    std_logic_vector(7 downto 0);
       S_AXIS_IQSMPLS_TLAST    : in    std_logic;
@@ -46,7 +45,7 @@ entity RX_PATH_TOP is
       M_AXIS_IQPACKET_TDATA   : out   std_logic_vector(127 downto 0);
       M_AXIS_IQPACKET_TKEEP   : out   std_logic_vector(15 downto 0);
       M_AXIS_IQPACKET_TLAST   : out   std_logic;
-      -- Configuration ports 
+      -- Configuration ports
       CFG_CH_EN               : in    std_logic_vector(1 downto 0);
       CFG_PKT_SIZE            : in    std_logic_vector(15 downto 0);
       -- Sample Nr.
@@ -74,29 +73,31 @@ architecture ARCH of RX_PATH_TOP is
    signal axis_iqsmpls_fifo            : t_AXI_STREAM(tdata(127 downto 0), tkeep(15 downto 0));
    signal axis_iqpacket_fifo           : t_AXI_STREAM(tdata(127 downto 0), tkeep(15 downto 0));
    signal axis_iqpacket_wr_data_count  : std_logic_vector(8 downto 0);
-   
+
    signal sample_nr_counter            : unsigned(63 downto 0);
    signal bitpacked_sample_nr_counter  : unsigned(63 downto 0);
 
 begin
 
--- ----------------------------------------------------------------------------
--- Sample counter dedicated for TX stream synchronization with RX
--- ----------------------------------------------------------------------------
-   sample_cnt_proc: process(S_AXIS_IQSMPLS_ACLK, S_AXIS_IQSMPLS_ARESETN)
+   -- ----------------------------------------------------------------------------
+   -- Sample counter dedicated for TX stream synchronization with RX
+   -- ----------------------------------------------------------------------------
+   SAMPLE_CNT_PROC : process (S_AXIS_IQSMPLS_ACLK, S_AXIS_IQSMPLS_ARESETN) is
    begin
-      if S_AXIS_IQSMPLS_ARESETN='0' then
+
+      if (S_AXIS_IQSMPLS_ARESETN='0') then
          sample_nr_counter <= (others => '0');
-      elsif(rising_edge(S_AXIS_IQSMPLS_ACLK)) then
-         if SMPL_NR_CLR='1' then
+      elsif (rising_edge(S_AXIS_IQSMPLS_ACLK)) then
+         if (SMPL_NR_CLR='1') then
             sample_nr_counter <= (others => '0');
-         elsif SMPL_NR_LD='1' then
+         elsif (SMPL_NR_LD='1') then
             sample_nr_counter <= unsigned(SMPL_NR_IN);
-         elsif S_AXIS_IQSMPLS_TVALID='1' AND axis_iq128.tready='1' then
+         elsif (S_AXIS_IQSMPLS_TVALID='1' and axis_iq128.tready='1') then
             sample_nr_counter <= sample_nr_counter + 1;
-         end if; 
+         end if;
       end if;
-   end process;
+
+   end process SAMPLE_CNT_PROC;
 
    -- ----------------------------------------------------------------------------
    -- AXI Stream packager (removes null bytes from axi stream)
@@ -113,7 +114,7 @@ begin
          S_AXIS_TDATA  => S_AXIS_IQSMPLS_TDATA,
          S_AXIS_TKEEP  => S_AXIS_IQSMPLS_TKEEP,
          M_AXIS_TVALID => axis_iqcombined.tvalid,
-         M_AXIS_TDATA  => axis_iqcombined.tdata, 
+         M_AXIS_TDATA  => axis_iqcombined.tdata,
          M_AXIS_TKEEP  => axis_iqcombined.tkeep
       );
 
@@ -162,7 +163,7 @@ begin
    -- It is neccesary to have it because we want to stall few cycles on continous IQ stream when
    -- packing header.
    -- Since data bus is converted from 64b to 128b, data2packets_fsm can safely buffer continous
-   -- IQ stream. 
+   -- IQ stream.
    -- ----------------------------------------------------------------------------
    inst_axis_iqsmpls_fifo : entity work.fifo_axis_wrap
       generic map (
@@ -185,30 +186,31 @@ begin
          M_AXIS_TKEEP   => axis_iqsmpls_fifo.tkeep,
          M_AXIS_TLAST   => axis_iqsmpls_fifo.tlast
       );
-      
--- ----------------------------------------------------------------------------
--- Sample counter dedicated for forming RX packets
--- ----------------------------------------------------------------------------      
-   packet_sample_cnt_proc: process(CLK, RESET_N)
+
+   -- ----------------------------------------------------------------------------
+   -- Sample counter dedicated for forming RX packets
+   -- ----------------------------------------------------------------------------
+   PACKET_SAMPLE_CNT_PROC : process (CLK, RESET_N) is
    begin
-      if RESET_N='0' then
+
+      if (RESET_N='0') then
          bitpacked_sample_nr_counter <= (others => '0');
-      elsif(rising_edge(CLK)) then
-         if SMPL_NR_CLR='1' then
+      elsif (rising_edge(CLK)) then
+         if (SMPL_NR_CLR='1') then
             bitpacked_sample_nr_counter <= (others => '0');
-         elsif SMPL_NR_LD='1' then
+         elsif (SMPL_NR_LD='1') then
             bitpacked_sample_nr_counter <= unsigned(SMPL_NR_IN);
-         elsif axis_iqsmpls_fifo.tvalid='1' AND axis_iqsmpls_fifo.tlast='1' AND axis_iqsmpls_fifo.tready ='1' then
+         elsif (axis_iqsmpls_fifo.tvalid='1' and axis_iqsmpls_fifo.tlast='1' and axis_iqsmpls_fifo.tready ='1') then
             -- If both channels are enabled in one frame we have packed 8 samples for each A and B channel
-            if CFG_CH_EN = "11" then
+            if (CFG_CH_EN = "11") then
                bitpacked_sample_nr_counter <= bitpacked_sample_nr_counter + 8;
-            else 
+            else
                bitpacked_sample_nr_counter <= bitpacked_sample_nr_counter + 16;
             end if;
-         end if; 
+         end if;
       end if;
-   end process;
-   
+
+   end process PACKET_SAMPLE_CNT_PROC;
 
    inst_data2packets_fsm : entity work.data2packets_fsm
       port map (
@@ -269,12 +271,10 @@ begin
       M_AXIS_IQPACKET_TDATA     <= axis_iqpacket_fifo.tdata;
       M_AXIS_IQPACKET_TLAST     <= axis_iqpacket_fifo.tlast;
    end generate WITHOUT_M_AXIS_IQPACKET_BUFFER;
-   
-   
-   
--- ----------------------------------------------------------------------------
--- Output ports
--- ----------------------------------------------------------------------------
+
+   -- ----------------------------------------------------------------------------
+   -- Output ports
+   -- ----------------------------------------------------------------------------
    -- Connecting to FIFO because iq_stream_combiner, bit_pack, axis_nto1_converter
    -- are always ready to accept data after reset. FIFO needs some time to become ready
    -- after reset

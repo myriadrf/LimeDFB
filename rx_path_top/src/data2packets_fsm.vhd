@@ -9,214 +9,231 @@
 -- ----------------------------------------------------------------------------
 -- NOTES:
 -- ----------------------------------------------------------------------------
+
 library ieee;
-use ieee.std_logic_1164.all;
-use ieee.numeric_std.all;
+   use ieee.std_logic_1164.all;
+   use ieee.numeric_std.all;
 
 -- ----------------------------------------------------------------------------
 -- Entity declaration
 -- ----------------------------------------------------------------------------
-entity data2packets_fsm is
+
+entity DATA2PACKETS_FSM is
    port (
-      aclk                 : in  std_logic;
-      areset_n             : in  std_logic;
-      
-      pct_size             : in  std_logic_vector(15 downto 0); -- Packet size
-      pct_hdr_0            : in  std_logic_vector(63 downto 0);
-      pct_hdr_1            : in  std_logic_vector(63 downto 0);
-      --AXIS Slave
-      s_axis_tvalid        : in  std_logic;
-      s_axis_tready        : out std_logic;
-      s_axis_tdata         : in  std_logic_vector(127 downto 0);
-      s_axis_tlast         : in  std_logic;
-      --AXIS Master 
-      m_axis_tvalid        : out std_logic;
-      m_axis_tready        : in  std_logic;
-      m_axis_tdata         : out std_logic_vector(127 downto 0);
-      m_axis_tlast         : out std_logic;
-      --Misc
-      wr_data_count_axis   : in  std_logic_vector(8 downto 0)
-      
+      ACLK                 : in    std_logic;
+      ARESET_N             : in    std_logic;
+
+      PCT_SIZE             : in    std_logic_vector(15 downto 0); -- Packet size
+      PCT_HDR_0            : in    std_logic_vector(63 downto 0);
+      PCT_HDR_1            : in    std_logic_vector(63 downto 0);
+      -- AXIS Slave
+      S_AXIS_TVALID        : in    std_logic;
+      S_AXIS_TREADY        : out   std_logic;
+      S_AXIS_TDATA         : in    std_logic_vector(127 downto 0);
+      S_AXIS_TLAST         : in    std_logic;
+      -- AXIS Master
+      M_AXIS_TVALID        : out   std_logic;
+      M_AXIS_TREADY        : in    std_logic;
+      M_AXIS_TDATA         : out   std_logic_vector(127 downto 0);
+      M_AXIS_TLAST         : out   std_logic;
+      -- Misc
+      WR_DATA_COUNT_AXIS   : in    std_logic_vector(8 downto 0)
    );
-end data2packets_fsm;
+end entity DATA2PACKETS_FSM;
 
 -- ----------------------------------------------------------------------------
 -- Architecture
 -- ----------------------------------------------------------------------------
-architecture arch of data2packets_fsm is
---declare signals,  components here
 
-type state_type is (idle, drop_samples, wr_header, wr_payload, pct_end);
-signal current_state, next_state : state_type;
+architecture ARCH of DATA2PACKETS_FSM is
 
-signal space_required : unsigned(15 downto 0);
+   -- declare signals,  components here
 
-constant max_buffer_words : unsigned(15 downto 0) := x"0200";
+   type STATE_TYPE is (IDLE, DROP_SAMPLES, WR_HEADER, WR_PAYLOAD, PCT_END);
 
-signal s_axis_tready_reg   : std_logic;
+   signal current_state, next_state : STATE_TYPE;
 
-signal m_axis_tvalid_reg   : std_logic;
-signal m_axis_tdata_reg    : std_logic_vector(m_axis_tdata'LENGTH-1 downto 0);
-signal m_axis_tlast_reg    : std_logic;
+   signal space_required            : unsigned(15 downto 0);
 
+   constant MAX_BUFFER_WORDS        : unsigned(15 downto 0) := x"0200";
 
-signal pct_wrcnt           : unsigned(15 downto 0);
+   signal s_axis_tready_reg         : std_logic;
 
+   signal m_axis_tvalid_reg         : std_logic;
+   signal m_axis_tdata_reg          : std_logic_vector(M_AXIS_TDATA'length-1 downto 0);
+   signal m_axis_tlast_reg          : std_logic;
+
+   signal pct_wrcnt                 : unsigned(15 downto 0);
 
 begin
 
+   process (ACLK, ARESET_N) is
+   begin
 
-   process (aclk, areset_n) begin
-      if(areset_n = '0')then
-         space_required <= (others=>'0');
-      elsif rising_edge(aclk) then 
-         space_required <= unsigned(wr_data_count_axis) + unsigned(pct_size);
-      end if;	
+      if (ARESET_N = '0') then
+         space_required <= (others => '0');
+      elsif rising_edge(ACLK) then
+         space_required <= unsigned(WR_DATA_COUNT_AXIS) + unsigned(PCT_SIZE);
+      end if;
+
    end process;
 
--- ----------------------------------------------------------------------------
--- State machine
--- ----------------------------------------------------------------------------
-   fsm_f : process (aclk, areset_n) begin
-      if(areset_n = '0')then
-         current_state <= idle;
-      elsif rising_edge(aclk) then 
+   -- ----------------------------------------------------------------------------
+   -- State machine
+   -- ----------------------------------------------------------------------------
+   FSM_F : process (ACLK, ARESET_N) is
+   begin
+
+      if (ARESET_N = '0') then
+         current_state <= IDLE;
+      elsif rising_edge(ACLK) then
          current_state <= next_state;
-      end if;	
-   end process;
+      end if;
 
--- ----------------------------------------------------------------------------
--- state machine combo
--- ----------------------------------------------------------------------------
-   fsm : process(all) begin
+   end process FSM_F;
+
+   -- ----------------------------------------------------------------------------
+   -- state machine combo
+   -- ----------------------------------------------------------------------------
+   FSM : process (all) is
+   begin
+
       next_state <= current_state;
+
       case current_state is
-      
-         when idle => -- state
-         if s_axis_tvalid = '1' then
-            if space_required >= max_buffer_words then 
-               next_state <= drop_samples;
+
+         when IDLE => -- state
+
+            if (S_AXIS_TVALID = '1') then
+               if (space_required >= MAX_BUFFER_WORDS) then
+                  next_state <= DROP_SAMPLES;
+               else
+                  next_state <= WR_HEADER;
+               end if;
             else
-               next_state <= wr_header;
+               next_state <= IDLE;
             end if;
-         else
-            next_state <= idle;
-         end if;
-         
+
          -- Droping samples until there is enough space in buffer and making sure that whole frame of bit packed samples are droped.
-         when drop_samples =>
-            if space_required <= max_buffer_words  AND s_axis_tlast = '1' then 
-               next_state <= idle;
-            else 
-               next_state <= drop_samples;
-            end if;
-            
-            
-         when wr_header =>
-            next_state <= wr_payload;
+         when DROP_SAMPLES =>
 
-         when wr_payload =>
-            if pct_wrcnt < unsigned(pct_size) then 
-               next_state <= wr_payload;
-            else 
-               next_state <= pct_end;
+            if (space_required <= MAX_BUFFER_WORDS  and S_AXIS_TLAST = '1') then
+               next_state <= IDLE;
+            else
+               next_state <= DROP_SAMPLES;
             end if;
-         
-         when pct_end =>
-            next_state <= idle;
-         
-         when others => 
-            next_state <= idle;
-            
-            
+
+         when WR_HEADER =>
+            next_state <= WR_PAYLOAD;
+
+         when WR_PAYLOAD =>
+
+            if (pct_wrcnt < unsigned(PCT_SIZE)) then
+               next_state <= WR_PAYLOAD;
+            else
+               next_state <= PCT_END;
+            end if;
+
+         when PCT_END =>
+            next_state <= IDLE;
+
+         when others =>
+            next_state <= IDLE;
+
       end case;
-   end process;
 
+   end process FSM;
 
-   process (aclk, areset_n) begin
-      if(areset_n = '0')then
+   process (ACLK, ARESET_N) is
+   begin
+
+      if (ARESET_N = '0') then
          m_axis_tvalid_reg <= '0';
-      elsif rising_edge(aclk) then 
-         if current_state = wr_header OR (current_state = wr_payload AND s_axis_tvalid='1' AND s_axis_tready_reg='1') then 
+      elsif rising_edge(ACLK) then
+         if (current_state = WR_HEADER or (current_state = WR_PAYLOAD and S_AXIS_TVALID='1' and s_axis_tready_reg='1')) then
             m_axis_tvalid_reg <= '1';
-         else 
+         else
             m_axis_tvalid_reg <= '0';
          end if;
-      end if;	
+      end if;
+
    end process;
-   
-   process (aclk, areset_n) begin
-      if(areset_n = '0')then
+
+   process (ACLK, ARESET_N) is
+   begin
+
+      if (ARESET_N = '0') then
          s_axis_tready_reg <= '0';
-      elsif rising_edge(aclk) then 
-         if (current_state = wr_payload AND m_axis_tready = '1' AND pct_wrcnt = 1) OR current_state = drop_samples then 
+      elsif rising_edge(ACLK) then
+         if ((current_state = WR_PAYLOAD and M_AXIS_TREADY = '1' and pct_wrcnt = 1) or current_state = DROP_SAMPLES) then
             s_axis_tready_reg <= '1';
-         elsif current_state = wr_payload AND s_axis_tvalid='1' AND s_axis_tready_reg='1' AND pct_wrcnt=unsigned(pct_size) -1 then
+         elsif (current_state = WR_PAYLOAD and S_AXIS_TVALID='1' and s_axis_tready_reg='1' and pct_wrcnt=unsigned(PCT_SIZE) - 1) then
             s_axis_tready_reg <= '0';
-         else 
+         else
             s_axis_tready_reg <= s_axis_tready_reg;
          end if;
-      end if;	
+      end if;
+
    end process;
-   
-   process (aclk, areset_n) begin
-      if(areset_n = '0')then
-         pct_wrcnt <= (others=>'0');
-      elsif rising_edge(aclk) then 
-         if current_state = wr_header OR (current_state = wr_payload AND s_axis_tvalid='1' AND s_axis_tready_reg='1') then 
+
+   process (ACLK, ARESET_N) is
+   begin
+
+      if (ARESET_N = '0') then
+         pct_wrcnt <= (others => '0');
+      elsif rising_edge(ACLK) then
+         if (current_state = WR_HEADER or (current_state = WR_PAYLOAD and S_AXIS_TVALID='1' and s_axis_tready_reg='1')) then
             pct_wrcnt <= pct_wrcnt + 1;
-         elsif current_state = pct_end then 
-            pct_wrcnt <= (others=>'0');
-         else 
+         elsif (current_state = PCT_END) then
+            pct_wrcnt <= (others => '0');
+         else
             pct_wrcnt <= pct_wrcnt;
          end if;
-      end if;	
+      end if;
+
    end process;
-   
-   
-   process (aclk, areset_n) begin
-      if(areset_n = '0')then
+
+   process (ACLK, ARESET_N) is
+   begin
+
+      if (ARESET_N = '0') then
          m_axis_tlast_reg <= '0';
-      elsif rising_edge(aclk) then 
-         if current_state = wr_payload AND pct_wrcnt=unsigned(pct_size) -1 then 
+      elsif rising_edge(ACLK) then
+         if (current_state = WR_PAYLOAD and pct_wrcnt=unsigned(PCT_SIZE) - 1) then
             m_axis_tlast_reg <= '1';
-         else 
+         else
             m_axis_tlast_reg <= '0';
          end if;
-      end if;	
+      end if;
+
    end process;
-   
-   process (aclk, areset_n) begin
-      if(areset_n = '0')then
-         m_axis_tdata_reg  <= (others=>'0');
-      elsif rising_edge(aclk) then 
-         if current_state = wr_header then 
-            m_axis_tdata_reg <= pct_hdr_1 & pct_hdr_0;
-         elsif current_state = wr_payload AND s_axis_tvalid = '1' AND s_axis_tready_reg = '1' then 
-            m_axis_tdata_reg <= s_axis_tdata;
+
+   process (ACLK, ARESET_N) is
+   begin
+
+      if (ARESET_N = '0') then
+         m_axis_tdata_reg <= (others => '0');
+      elsif rising_edge(ACLK) then
+         if (current_state = WR_HEADER) then
+            m_axis_tdata_reg <= PCT_HDR_1 & PCT_HDR_0;
+         elsif (current_state = WR_PAYLOAD and S_AXIS_TVALID = '1' and s_axis_tready_reg = '1') then
+            m_axis_tdata_reg <= S_AXIS_TDATA;
          else
             m_axis_tdata_reg <= m_axis_tdata_reg;
          end if;
-      end if;	
+      end if;
+
    end process;
-   
-   
-   
-   
-   
-   
-   
-   
--- ----------------------------------------------------------------------------
--- Output ports
--- ---------------------------------------------------------------------------- 
-s_axis_tready <= s_axis_tready_reg;
 
-m_axis_tvalid <= m_axis_tvalid_reg;
-m_axis_tdata  <= m_axis_tdata_reg;
-m_axis_tlast  <= m_axis_tlast_reg;
+   -- ----------------------------------------------------------------------------
+   -- Output ports
+   -- ----------------------------------------------------------------------------
+   S_AXIS_TREADY <= s_axis_tready_reg;
 
-  
-end arch;   
+   M_AXIS_TVALID <= m_axis_tvalid_reg;
+   M_AXIS_TDATA  <= m_axis_tdata_reg;
+   M_AXIS_TLAST  <= m_axis_tlast_reg;
+
+end architecture ARCH;
 
 
