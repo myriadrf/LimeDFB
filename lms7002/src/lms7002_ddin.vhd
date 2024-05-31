@@ -1,127 +1,135 @@
--- ----------------------------------------------------------------------------   
+-- ----------------------------------------------------------------------------
 -- FILE:          lms7002_ddin.vhd
 -- DESCRIPTION:   takes data from lms7002 in double data rate
 -- DATE:          Mar 14, 2016
 -- AUTHOR(s):     Lime Microsystems
 -- REVISIONS:
 -- Apr 17, 2019 - Added Xilinx support
--- ----------------------------------------------------------------------------   
-library ieee;
-use ieee.std_logic_1164.all;
-use ieee.numeric_std.all;
+-- ----------------------------------------------------------------------------
 
-LIBRARY altera_mf; --altera
-USE altera_mf.all;
-Library UNISIM;
-use UNISIM.vcomponents.all;
+library ieee;
+   use ieee.std_logic_1164.all;
+   use ieee.numeric_std.all;
+
+library altera_mf; -- altera
+   use altera_mf.all;
+
+library UNISIM;
+   use unisim.vcomponents.all;
 
 -- ----------------------------------------------------------------------------
 -- Entity declaration
 -- ----------------------------------------------------------------------------
-entity lms7002_ddin is
-   generic( 
-      g_VENDOR                 : string  := "XILINX"; -- Valid values: "ALTERA", "XILINX"
-      g_DEV_FAMILY             : string  := "";       -- Reserved
-      g_IQ_WIDTH               : integer := 12;
-      g_INVERT_INPUT_CLOCKS    : string  := "ON"
+
+entity LMS7002_DDIN is
+   generic (
+      G_VENDOR                 : string  := "XILINX"; -- Valid values: "ALTERA", "XILINX"
+      G_DEV_FAMILY             : string  := "";       -- Reserved
+      G_IQ_WIDTH               : integer := 12;
+      G_INVERT_INPUT_CLOCKS    : string  := "ON"
    );
    port (
-      --input ports 
-      clk             : in std_logic;
-      reset_n         : in std_logic;
-      rxiq            : in std_logic_vector(g_IQ_WIDTH-1 downto 0);
-      rxiqsel         : in std_logic;
-      --output ports 
-      data_out_h      : out std_logic_vector(g_IQ_WIDTH downto 0);
-      data_out_l      : out std_logic_vector(g_IQ_WIDTH downto 0)
+      -- input ports
+      CLK             : in    std_logic;
+      RESET_N         : in    std_logic;
+      RXIQ            : in    std_logic_vector(G_IQ_WIDTH - 1 downto 0);
+      RXIQSEL         : in    std_logic;
+      -- output ports
+      DATA_OUT_H      : out   std_logic_vector(G_IQ_WIDTH downto 0);
+      DATA_OUT_L      : out   std_logic_vector(G_IQ_WIDTH downto 0)
    );
-end lms7002_ddin;
+end entity LMS7002_DDIN;
 
 -- ----------------------------------------------------------------------------
 -- Architecture
 -- ----------------------------------------------------------------------------
-architecture arch of lms7002_ddin is
---declare signals,  components here
-signal aclr         : std_logic;
-signal datain       : std_logic_vector(g_IQ_WIDTH downto 0);
-signal int_data_Q1  : std_logic_vector(g_IQ_WIDTH downto 0);
-signal int_data_Q2  : std_logic_vector(g_IQ_WIDTH downto 0);
 
+architecture ARCH of LMS7002_DDIN is
 
-component altddio_in
-   generic (
-      intended_device_family       :   string := "unused";
-      implement_input_in_lcell     :   string := "ON";
-      invert_input_clocks          :   string := "OFF";
-      power_up_high                :   string := "OFF";
-      width                        :   natural;
-      lpm_hint                     :   string := "UNUSED";
-      lpm_type                     :   string := "altddio_in"
-   );
-   port(
-      aclr                         :   in std_logic := '0';
-      aset                         :   in std_logic := '0';
-      datain                       :   in std_logic_vector(width-1 downto 0);
-      dataout_h                    :   out std_logic_vector(width-1 downto 0);
-      dataout_l                    :   out std_logic_vector(width-1 downto 0);
-      inclock                      :   in std_logic;
-      inclocken                    :   in std_logic := '1';
-      sclr                         :   in std_logic := '0';
-      sset                         :   in std_logic := '0'
-   );
-end component;
+   -- declare signals,  components here
+   signal aclr         : std_logic;
+   signal datain       : std_logic_vector(G_IQ_WIDTH downto 0);
+   signal int_data_q1  : std_logic_vector(G_IQ_WIDTH downto 0);
+   signal int_data_q2  : std_logic_vector(G_IQ_WIDTH downto 0);
 
+   component ALTDDIO_IN is
+      generic (
+         INTENDED_DEVICE_FAMILY       : string := "unused";
+         IMPLEMENT_INPUT_IN_LCELL     : string := "ON";
+         INVERT_INPUT_CLOCKS          : string := "OFF";
+         POWER_UP_HIGH                : string := "OFF";
+         WIDTH                        : natural;
+         LPM_HINT                     : string := "UNUSED";
+         LPM_TYPE                     : string := "altddio_in"
+      );
+      port (
+         ACLR                         : in    std_logic := '0';
+         ASET                         : in    std_logic := '0';
+         DATAIN                       : in    std_logic_vector(WIDTH - 1 downto 0);
+         DATAOUT_H                    : out   std_logic_vector(WIDTH - 1 downto 0);
+         DATAOUT_L                    : out   std_logic_vector(WIDTH - 1 downto 0);
+         INCLOCK                      : in    std_logic;
+         INCLOCKEN                    : in    std_logic := '1';
+         SCLR                         : in    std_logic := '0';
+         SSET                         : in    std_logic := '0'
+      );
+   end component;
 
 begin
 
-   aclr<=not reset_n;
-   
-   datain<=rxiqsel & rxiq;
-   
-   
-   ALTERA_DDR_IN : if g_VENDOR = "ALTERA" generate
-      ALTDDIO_IN_component : ALTDDIO_IN
-      GENERIC MAP (
-         intended_device_family    => g_DEV_FAMILY,
-         invert_input_clocks       => g_INVERT_INPUT_CLOCKS,
-         lpm_hint                  => "UNUSED",
-         lpm_type                  => "altddio_in",
-         power_up_high             => "OFF",
-         width                     => g_IQ_WIDTH+1
-      )
-      PORT MAP (
-         aclr                      => aclr,
-         datain                    => datain,
-         inclock                   => clk,
-         dataout_h                 => data_out_h,
-         dataout_l                 => data_out_l
-      );
-   end generate;
-   
-   XILINX_DDR_IN : if g_VENDOR = "XILINX" generate
-   
-      XILINX_DDR_IN_REG : for i in 0 to g_IQ_WIDTH generate
-         IDDR_inst : IDDR
-         GENERIC MAP(
-            DDR_CLK_EDGE   => "SAME_EDGE_PIPELINED",
-            INIT_Q1        => '0',
-            INIT_Q2        => '0',
-            SRTYPE         => "ASYNC" 
+   aclr <= not RESET_N;
+
+   datain <= RXIQSEL & RXIQ;
+
+   ALTERA_DDR_IN : if G_VENDOR = "ALTERA" generate
+
+      altddio_in_component : ALTDDIO_IN
+         generic map (
+            INTENDED_DEVICE_FAMILY => G_DEV_FAMILY,
+            INVERT_INPUT_CLOCKS    => G_INVERT_INPUT_CLOCKS,
+            LPM_HINT               => "UNUSED",
+            LPM_TYPE               => "altddio_in",
+            POWER_UP_HIGH          => "OFF",
+            WIDTH                  => G_IQ_WIDTH + 1
          )
-         PORT MAP(
-            Q1             => int_data_Q1(i),
-            Q2             => int_data_Q2(i),
-            C              => clk,
-            CE             => '1',
-            D              => datain(i),
-            R              => aclr,
-            S              => '0'      
+         port map (
+            ACLR      => aclr,
+            DATAIN    => datain,
+            INCLOCK   => CLK,
+            DATAOUT_H => DATA_OUT_H,
+            DATAOUT_L => DATA_OUT_L
          );
-      end generate;
-      
-      data_out_h <= int_data_Q1 when g_INVERT_INPUT_CLOCKS = "OFF" else int_data_Q2;
-      data_out_l <= int_data_Q2 when g_INVERT_INPUT_CLOCKS = "OFF" else int_data_Q1;
-   end generate;
-  
-end arch;   
+
+   end generate ALTERA_DDR_IN;
+
+   XILINX_DDR_IN : if G_VENDOR = "XILINX" generate
+
+      XILINX_DDR_IN_REG : for i in 0 to G_IQ_WIDTH generate
+
+         iddr_inst : IDDR
+            generic map (
+               DDR_CLK_EDGE => "SAME_EDGE_PIPELINED",
+               INIT_Q1      => '0',
+               INIT_Q2      => '0',
+               SRTYPE       => "ASYNC"
+            )
+            port map (
+               Q1 => int_data_q1(i),
+               Q2 => int_data_q2(i),
+               C  => CLK,
+               CE => '1',
+               D  => datain(i),
+               R  => aclr,
+               S  => '0'
+            );
+
+      end generate XILINX_DDR_IN_REG;
+
+      DATA_OUT_H <= int_data_q1 when G_INVERT_INPUT_CLOCKS = "OFF" else
+                    int_data_q2;
+      DATA_OUT_L <= int_data_q2 when G_INVERT_INPUT_CLOCKS = "OFF" else
+                    int_data_q1;
+   end generate XILINX_DDR_IN;
+
+end architecture ARCH;
 

@@ -1,142 +1,150 @@
--- ----------------------------------------------------------------------------   
+-- ----------------------------------------------------------------------------
 -- FILE:    lms7002_ddout.vhd
 -- DESCRIPTION:   takes data in SDR and ouputs double data rate
 -- DATE:   Mar 14, 2016
 -- AUTHOR(s):   Lime Microsystems
 -- REVISIONS:
 -- Apr 17, 2019 - added Xilinx support
--- ----------------------------------------------------------------------------   
-library ieee;
-use ieee.std_logic_1164.all;
-use ieee.numeric_std.all;
-use work.fpgacfg_pkg.all;
+-- ----------------------------------------------------------------------------
 
-LIBRARY altera_mf;
-USE altera_mf.all;
-Library UNISIM;
-use UNISIM.vcomponents.all;
+library ieee;
+   use ieee.std_logic_1164.all;
+   use ieee.numeric_std.all;
+   use work.fpgacfg_pkg.all;
+
+library altera_mf;
+   use altera_mf.all;
+
+library UNISIM;
+   use unisim.vcomponents.all;
 
 -- ----------------------------------------------------------------------------
 -- Entity declaration
 -- ----------------------------------------------------------------------------
-entity lms7002_ddout is
-   generic(
-      vendor        : string := "XILINX"; -- valid vals are "ALTERA", "XILINX"
-      dev_family    : string := "Cyclone IV E";
-      iq_width      : integer:= 12
+
+entity LMS7002_DDOUT is
+   generic (
+      VENDOR        : string := "XILINX"; -- valid vals are "ALTERA", "XILINX"
+      DEV_FAMILY    : string := "Cyclone IV E";
+      IQ_WIDTH      : integer:= 12
    );
    port (
-      --input ports 
-      clk           : in std_logic;
-      reset_n       : in std_logic;
-      data_in_h     : in std_logic_vector(iq_width downto 0);
-      data_in_l     : in std_logic_vector(iq_width downto 0);
-      --output ports 
-      txiq          : out std_logic_vector(iq_width-1 downto 0);
-      txiqsel       : out std_logic
-      
-        );
-end lms7002_ddout;
+      -- input ports
+      CLK           : in    std_logic;
+      RESET_N       : in    std_logic;
+      DATA_IN_H     : in    std_logic_vector(IQ_WIDTH downto 0);
+      DATA_IN_L     : in    std_logic_vector(IQ_WIDTH downto 0);
+      -- output ports
+      TXIQ          : out   std_logic_vector(IQ_WIDTH - 1 downto 0);
+      TXIQSEL       : out   std_logic
+   );
+end entity LMS7002_DDOUT;
 
 -- ----------------------------------------------------------------------------
 -- Architecture
 -- ----------------------------------------------------------------------------
-architecture arch of lms7002_ddout is
---declare signals,  components here
 
-signal aclr       : std_logic;
-signal datout     : std_logic_vector(iq_width downto 0);
+architecture ARCH of LMS7002_DDOUT is
 
-signal data_reg_l : std_logic_vector(iq_width downto 0);
-signal data_reg_h : std_logic_vector(iq_width downto 0);
+   -- declare signals,  components here
 
-COMPONENT ALTDDIO_OUT
-GENERIC(
-   intended_device_family   :   string := "unused";
-   extend_oe_disable        :   string := "OFF";
-   invert_output            :   string := "OFF";
-   oe_reg                   :   string := "UNREGISTERED";
-   power_up_high            :   string := "OFF";
-   width                    :   natural;
-   lpm_hint                 :   string := "UNUSED";
-   lpm_type                 :   string := "altddio_out"
-);
-PORT(
-   aclr         :   in std_logic := '0';
-   aset         :   in std_logic := '0';
-   datain_h     :   in std_logic_vector(width-1 downto 0);
-   datain_l     :   in std_logic_vector(width-1 downto 0);
-   dataout      :   out std_logic_vector(width-1 downto 0);
-   oe           :   in std_logic := '1';
-   oe_out       :   out std_logic_vector(width-1 downto 0);
-   outclock     :   in std_logic;
-   outclocken   :   in std_logic := '1';
-   sclr         :   in std_logic := '0';
-   sset         :   in std_logic := '0'
-);
-END COMPONENT;
+   signal aclr       : std_logic;
+   signal datout     : std_logic_vector(IQ_WIDTH downto 0);
 
+   signal data_reg_l : std_logic_vector(IQ_WIDTH downto 0);
+   signal data_reg_h : std_logic_vector(IQ_WIDTH downto 0);
+
+   component ALTDDIO_OUT is
+      generic (
+         INTENDED_DEVICE_FAMILY   : string := "unused";
+         EXTEND_OE_DISABLE        : string := "OFF";
+         INVERT_OUTPUT            : string := "OFF";
+         OE_REG                   : string := "UNREGISTERED";
+         POWER_UP_HIGH            : string := "OFF";
+         WIDTH                    : natural;
+         LPM_HINT                 : string := "UNUSED";
+         LPM_TYPE                 : string := "altddio_out"
+      );
+      port (
+         ACLR         : in    std_logic := '0';
+         ASET         : in    std_logic := '0';
+         DATAIN_H     : in    std_logic_vector(WIDTH - 1 downto 0);
+         DATAIN_L     : in    std_logic_vector(WIDTH - 1 downto 0);
+         DATAOUT      : out   std_logic_vector(WIDTH - 1 downto 0);
+         OE           : in    std_logic := '1';
+         OE_OUT       : out   std_logic_vector(WIDTH - 1 downto 0);
+         OUTCLOCK     : in    std_logic;
+         OUTCLOCKEN   : in    std_logic := '1';
+         SCLR         : in    std_logic := '0';
+         SSET         : in    std_logic := '0'
+      );
+   end component;
 
 begin
 
-   process(clk)
+   process (CLK) is
    begin
-      if rising_edge(clk) then
-         data_reg_l <= data_in_l;
-         data_reg_h <= data_in_h;
-      end if;      
+
+      if rising_edge(CLK) then
+         data_reg_l <= DATA_IN_L;
+         data_reg_h <= DATA_IN_H;
+      end if;
+
    end process;
 
-   aclr<=not reset_n;
+   aclr <= not RESET_N;
 
-   ALTERA_DDR_OUT : if vendor = "ALTERA" generate
-      ALTDDIO_OUT_component : ALTDDIO_OUT
-      GENERIC MAP (
-         extend_oe_disable         => "OFF",
-         intended_device_family    => "Cyclone IV E",
-         invert_output             => "OFF",
-         lpm_hint                  => "UNUSED",
-         lpm_type                  => "altddio_out",
-         oe_reg                    => "UNREGISTERED",
-         power_up_high             => "OFF",
-         width                     => iq_width+1
-      )
-      PORT MAP (
-         aclr          => aclr,
-         datain_h      => data_in_h,
-         datain_l      => data_in_l,
-         outclock      => clk,
-         dataout       => datout
-      );
-   end generate;
-   
-   
-   XILINX_DDR_OUT : if vendor = "XILINX" generate
-      XILINX_DDR_OUT_REG : for i in 0 to iq_width generate
-         ODDR_inst : ODDR
-         GENERIC MAP(
-            DDR_CLK_EDGE => "SAME_EDGE",  -- "OPPOSITE_EDGE" or "SAME_EDGE" 
-            INIT         => '0',          -- Initial value for Q port ('1' or '0')
-            SRTYPE       => "ASYNC"       -- Reset Type ("ASYNC" or "SYNC"
+   ALTERA_DDR_OUT : if VENDOR = "ALTERA" generate
+
+      altddio_out_component : ALTDDIO_OUT
+         generic map (
+            EXTEND_OE_DISABLE      => "OFF",
+            INTENDED_DEVICE_FAMILY => "Cyclone IV E",
+            INVERT_OUTPUT          => "OFF",
+            LPM_HINT               => "UNUSED",
+            LPM_TYPE               => "altddio_out",
+            OE_REG                 => "UNREGISTERED",
+            POWER_UP_HIGH          => "OFF",
+            WIDTH                  => IQ_WIDTH + 1
          )
-         PORT MAP(
-            Q  => datout(i),     -- 1-bit DDR output
-            C  => clk,           -- 1-bit clock input
-            CE => '1',           -- 1-bit clock enable input
-            D1 => data_reg_h(i), -- 1-bit data input (positive edge)
-            D2 => data_reg_l(i), -- 1-bit data input (negative edge)
-            R  => aclr,          -- 1-bit reset input
-            S  => '0'            -- 1-bit set input
-         );      
-      end generate;
-   end generate;
-  
+         port map (
+            ACLR     => aclr,
+            DATAIN_H => DATA_IN_H,
+            DATAIN_L => DATA_IN_L,
+            OUTCLOCK => CLK,
+            DATAOUT  => datout
+         );
 
-   txiq      <= datout(11 downto 0);
-   txiqsel   <= datout(12);
-   
-  
-end arch;   
+   end generate ALTERA_DDR_OUT;
+
+   XILINX_DDR_OUT : if VENDOR = "XILINX" generate
+
+      XILINX_DDR_OUT_REG : for i in 0 to IQ_WIDTH generate
+
+         oddr_inst : ODDR
+            generic map (
+               DDR_CLK_EDGE => "SAME_EDGE",
+               INIT         => '0',
+               SRTYPE       => "ASYNC"
+            )
+            port map (
+               Q  => datout(i),
+               C  => CLK,
+               CE => '1',
+               D1 => data_reg_h(i),
+               D2 => data_reg_l(i),
+               R  => aclr,
+               S  => '0'
+            );
+
+      end generate XILINX_DDR_OUT_REG;
+
+   end generate XILINX_DDR_OUT;
+
+   TXIQ    <= datout(11 downto 0);
+   TXIQSEL <= datout(12);
+
+end architecture ARCH;
 
 
 
