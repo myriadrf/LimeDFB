@@ -42,7 +42,8 @@ entity lms7002_rx is
       m_axis_areset_n   : in  std_logic;  --! AXIS reset
       m_axis_aclk       : in  std_logic;  --! AXIS clock
       m_axis_tvalid     : out std_logic;  --! AXIS valid transfer
-      m_axis_tdata      : out std_logic_vector(63 downto 0); --! AXIS data
+      m_axis_tdata      : out std_logic_vector(63 downto 0);   --! AXIS data
+      m_axis_tkeep      : out std_logic_vector(7 downto 0);    --! AXIS byte qualifier 
       m_axis_tready     : in  std_logic;  --! AXIS ready 
       m_axis_tlast      : out std_logic   --! AXIS last packet boundary @end
    );
@@ -62,6 +63,8 @@ signal frame_valid    : std_logic;
 
 type t_TXIQ_MODE is (MIMO_DDR, SISO_DDR, TXIQ_PULSE, SISO_SDR);
 signal txiq_mode : t_TXIQ_MODE;
+
+signal m_axis_tkeep_async : std_logic_vector(m_axis_tkeep'LENGTH -1 downto 0);
    
 begin
 
@@ -142,6 +145,26 @@ begin
       end if;
    end process;
    
+   process(all)
+   begin 
+      case txiq_mode is 
+         when MIMO_DDR => 
+            if ch_en = "01" then 
+               m_axis_tkeep_async <= "11110000";
+            elsif ch_en = "10" then 
+               m_axis_tkeep_async <= "00001111";
+            else 
+               m_axis_tkeep_async <= (others=>'1');
+            end if;
+         when TXIQ_PULSE => 
+            m_axis_tkeep_async <= (others=>'1');
+         when SISO_DDR => 
+            m_axis_tkeep_async <= "11110000";
+         when others =>
+            m_axis_tkeep_async <= (others=>'0');
+      end case;
+   end process;
+   
    
 -- ----------------------------------------------------------------------------
 -- Output ports
@@ -151,6 +174,7 @@ begin
    m_axis_tdata(47 downto 32) <= aq & "0000";
    m_axis_tdata(31 downto 16) <= bi & "0000";
    m_axis_tdata(15 downto  0) <= bq & "0000";
+   m_axis_tkeep               <= m_axis_tkeep_async;
    m_axis_tlast               <= '0';
    
    

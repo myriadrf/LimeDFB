@@ -51,6 +51,12 @@ architecture tb_behave of lms7002_top_tb is
    signal s_axis_tx_tready    : std_logic;
    signal s_axis_tx_tlast     : std_logic;
    
+   signal m_axis_rx_tvalid    : std_logic;
+   signal m_axis_rx_tdata     : std_logic_vector(63 downto 0);
+   signal m_axis_rx_tkeep     : std_logic_vector(7 downto 0);
+   
+   
+   
    alias s_axis_tx_tdata_AI is s_axis_tx_tdata(63 downto 52);
    alias s_axis_tx_tdata_AQ is s_axis_tx_tdata(47 downto 36);
    alias s_axis_tx_tdata_BI is s_axis_tx_tdata(31 downto 20);
@@ -281,8 +287,9 @@ begin
       --! @virtualbus m_axis_rx @dir out Receive AXIS bus
       m_axis_rx_areset_n   => reset_n,       -- RX interface active low reset
       m_axis_rx_aclk       => sys_clk,       -- RX FIFO read clock
-      m_axis_rx_tvalid     => open,          -- Received data from DIQ2 port valid signal
-      m_axis_rx_tdata      => open, -- Received data from DIQ2 port 
+      m_axis_rx_tvalid     => m_axis_rx_tvalid,          -- Received data from DIQ2 port valid signal
+      m_axis_rx_tdata      => m_axis_rx_tdata, -- Received data from DIQ2 port 
+      m_axis_rx_tkeep      => m_axis_rx_tkeep,
       m_axis_rx_tready     => '1',  -- @end
       -- misc
       tx_active            => open, -- TX antenna enable flag

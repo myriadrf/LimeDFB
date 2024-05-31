@@ -208,6 +208,7 @@ entity lms7002_top is
       m_axis_rx_aclk       : in  std_logic;  --! RX FIFO read clock
       m_axis_rx_tvalid     : out std_logic;  --! Received data from DIQ2 port valid signal
       m_axis_rx_tdata      : out std_logic_vector(63 downto 0);   --! Received data from DIQ2 port 
+      m_axis_rx_tkeep      : out std_logic_vector(7 downto 0);    --! Received data byte qualifier
       m_axis_rx_tready     : in  std_logic;   
       m_axis_rx_tlast      : out std_logic;--! @end
       -- misc
@@ -238,6 +239,7 @@ signal axis_tx_tlast    : std_logic;
 
 signal axis_rx_tvalid   : std_logic;
 signal axis_rx_tdata    : std_logic_vector(63 downto 0);
+signal axis_rx_tkeep    : std_logic_vector(7 downto 0);
 signal axis_rx_tready   : std_logic;
 signal axis_rx_tlast    : std_logic;
 
@@ -365,6 +367,7 @@ begin
       m_axis_aclk       => MCLK2,
       m_axis_tvalid     => axis_rx_tvalid,
       m_axis_tdata      => axis_rx_tdata ,
+      m_axis_tkeep      => axis_rx_tkeep, 
       m_axis_tready     => axis_rx_tready,
       m_axis_tlast      => axis_rx_tlast 
    );
@@ -383,11 +386,13 @@ begin
       s_axis_tvalid     => axis_rx_tvalid,
       s_axis_tready     => axis_rx_tready,
       s_axis_tdata      => axis_rx_tdata,
+      s_axis_tkeep      => axis_rx_tkeep,
       s_axis_tlast      => axis_rx_tlast,
       m_axis_aclk       => m_axis_rx_aclk,
       m_axis_tvalid     => m_axis_rx_tvalid,
       m_axis_tready     => m_axis_rx_tready,
       m_axis_tdata      => m_axis_rx_tdata, 
+      m_axis_tkeep      => m_axis_rx_tkeep,
       m_axis_tlast      => m_axis_rx_tlast        
    );
 
