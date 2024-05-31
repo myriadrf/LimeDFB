@@ -34,11 +34,13 @@ entity fifo_axis_wrap is
       s_axis_tvalid        : in  std_logic;
       s_axis_tready        : out std_logic;
       s_axis_tdata         : in  std_logic_vector(g_TDATA_WIDTH-1 downto 0);
+      s_axis_tkeep         : in  std_logic_vector(g_TDATA_WIDTH/8-1 downto 0) := (others=>'1');
       s_axis_tlast         : in  std_logic;
       m_axis_aclk          : in  std_logic;
       m_axis_tvalid        : out std_logic;
       m_axis_tready        : in  std_logic;
       m_axis_tdata         : out std_logic_vector(g_TDATA_WIDTH-1 downto 0);
+      m_axis_tkeep         : out std_logic_vector(g_TDATA_WIDTH/8-1 downto 0);
       m_axis_tlast         : out std_logic;
       almost_empty_axis    : out std_logic;
       almost_full_axis     : out std_logic;
@@ -102,7 +104,7 @@ begin
          m_axis_tid => open,                       -- TID_WIDTH-bit output: TID: The data stream identifier that
                                                    -- indicates different streams of data.
       
-         m_axis_tkeep => open,                     -- TDATA_WIDTH/8-bit output: TKEEP: The byte qualifier that
+         m_axis_tkeep => m_axis_tkeep,             -- TDATA_WIDTH/8-bit output: TKEEP: The byte qualifier that
                                                    -- indicates whether the content of the associated byte of
                                                    -- TDATA is processed as part of the data stream. Associated
                                                    -- bytes that have the TKEEP byte qualifier deasserted are null
@@ -182,7 +184,7 @@ begin
          s_axis_tid => "0",                        -- TID_WIDTH-bit input: TID: The data stream identifier that
                                                    -- indicates different streams of data.
       
-         s_axis_tkeep => (others=>'1'),            -- TDATA_WIDTH/8-bit input: TKEEP: The byte qualifier that
+         s_axis_tkeep => s_axis_tkeep,            -- TDATA_WIDTH/8-bit input: TKEEP: The byte qualifier that
                                                    -- indicates whether the content of the associated byte of
                                                    -- TDATA is processed as part of the data stream. Associated
                                                    -- bytes that have the TKEEP byte qualifier deasserted are null
