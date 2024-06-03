@@ -6,6 +6,55 @@
 -- REVISIONS:     v2.0
 -- ----------------------------------------------------------------------------
 
+-- TerosHDL module description
+--! Top module for packaging IQ samples received from lms7002 module into stream packets.
+--!
+--! Functionality:
+--! - Pack IQ samples from s_axis_iqsmpls stream int Stream packets
+--! - Store Stream packets into AXIS buffer.
+--!
+--!
+
+-- WaveDrom timing diagrams
+
+-- s_axis_tx bus timing (MIMO DDR mode, A and B channels enabled)
+--! { signal: [
+--! { name: "CLK",  wave: "P........" , period: 2},
+--! { name: "RESET_N", wave: "0.1......|...|...." },
+--! { name: "CFG_CH_EN[1:0]",  wave: "x.=......|=.=|....", data: ["0x3", "0x3", ""] },
+--! { name: "CFG_PKT_SIZE[15:0]",  wave: "x.=......|=.=|....", data: ["0x100", "0x100", ""] },
+--! ['S_AXIS_IQSMPLS',
+--!  { name: "S_AXIS_IQSMPLS_ACLK",  wave: "P........" , period: 2},
+--!  { name: "S_AXIS_IQSMPLS_ARESETN", wave: "0.1......|...|...." },
+--!  { name: "S_AXIS_IQSMPLS_TVALID", wave: "0...1....|...|...." },
+--!  { name: "S_AXIS_IQSMPLS_TDATA[63:48]",  wave: "x...=.=.=|=.=|....", data: ["AI(0)", "AI(n+5)", "", "AI(679)", "", "AI(5)"] },
+--!  { name: "S_AXIS_IQSMPLS_TDATA[47:32]",  wave: "x...=.=.=|=.=|....", data: ["AQ(0)", "AQ(n+5)", "", "AQ(679)", "", "AQ(5)"] },
+--!  { name: "S_AXIS_IQSMPLS_TDATA[31:16]",  wave: "x...=.=.=|=.=|....", data: ["BI(0)", "BI(n+5)", "", "BI(679)", "", "BI(5)"] },
+--!  { name: "S_AXIS_IQSMPLS_TDATA[15: 0]",  wave: "x...=.=.=|=.=|....", data: ["BQ(0)", "BQ(n+5)", "", "BQ(679)", "", "BQ(5)"] },
+--!  { name: "S_AXIS_IQSMPLS_TKEEP[7: 0]",  wave: "x...=...=|=.=|....", data: ["0xFF", "", "0xFF", ""] },
+--!  { name: "S_AXIS_IQSMPLS_TREADY", wave: "0...1....|...|...." },
+--!  { name: "S_AXIS_IQSMPLS_TLAST", wave: "0........|...|...." },
+--! ],
+--! { name: "SMPL_NR_OUT[63: 0]",  wave: "x...=.=.=|=.=|....", data: ["0", "n+5", "", "679", ""] },
+--! ['M_AXIS_IQPACKET',
+--!  { name: "M_AXIS_IQPACKET_ACLK",  wave: "P........" , period: 2},
+--!  { name: "M_AXIS_IQPACKET_ARESETN", wave: "0.1..............." },
+--!  { name: "M_AXIS_IQPACKET_TVALID", wave: "0.......1........." },
+--!  { name: "M_AXIS_IQPACKET_TDATA[127:0]",  wave: "x.......=.=.=|=.=.", data: ["HDR", "PLD(0)", "", "PLD(254)", "",] },
+--!  { name: "M_AXIS_IQPACKET_TKEEP[7: 0]",  wave: "x.......=...=|=...", data: ["0xFF", "", "0xFF"] },
+--!  { name: "M_AXIS_IQPACKET_TREADY", wave: "0...1............." },
+--!  { name: "M_AXIS_IQPACKETS_TLAST", wave: "0............|1.0." },
+--! ]
+--! ],
+--!
+--! "config" : { "hscale" : 1 },
+--!  head:{
+--!     text: ['tspan',
+--!           ['tspan', {'font-weight':'bold'}, 'rx_path_top module timing (MIMO DDR mode, A and B channels enabled, 4096B packet size)']],
+--!     tick:0,
+--!     every:2
+--!   }}
+
 -- ----------------------------------------------------------------------------
 -- NOTES:
 -- If S_AXIS_IQSMPLS_BUFFER or M_AXIS_IQPACKET_BUFFER are bypassed, respective bus
@@ -27,36 +76,37 @@ entity RX_PATH_TOP is
       G_M_AXIS_IQPACKET_BUFFER_WORDS   : integer := 512
    );
    port (
-      CLK                     : in    std_logic;
-      RESET_N                 : in    std_logic;
-      -- AXI Stream Slave bus for IQ samples
-      S_AXIS_IQSMPLS_ACLK     : in    std_logic;
-      S_AXIS_IQSMPLS_ARESETN  : in    std_logic;
-      S_AXIS_IQSMPLS_TVALID   : in    std_logic;
-      S_AXIS_IQSMPLS_TREADY   : out   std_logic;  -- Indicates when FIFO comes out of reset. Slave can allways accept data
-      S_AXIS_IQSMPLS_TDATA    : in    std_logic_vector(63 downto 0);
-      S_AXIS_IQSMPLS_TKEEP    : in    std_logic_vector(7 downto 0);
-      S_AXIS_IQSMPLS_TLAST    : in    std_logic;
-      -- AXI Stream Master bus for IQ packets
+      CLK                     : in    std_logic;                     --! Sys clock
+      RESET_N                 : in    std_logic;                     --! Sys active low reset
+      --! @virtualbus S_AXIS_IQSMPLS @dir in AXI Stream Slave bus for IQ samples
+      S_AXIS_IQSMPLS_ACLK     : in    std_logic;                     --!
+      S_AXIS_IQSMPLS_ARESETN  : in    std_logic;                     --!
+      S_AXIS_IQSMPLS_TVALID   : in    std_logic;                     --!
+      S_AXIS_IQSMPLS_TREADY   : out   std_logic;                     --! Indicates when FIFO comes out of reset. Slave can allways accept data
+      S_AXIS_IQSMPLS_TDATA    : in    std_logic_vector(63 downto 0); --!
+      S_AXIS_IQSMPLS_TKEEP    : in    std_logic_vector(7 downto 0);  --!
+      S_AXIS_IQSMPLS_TLAST    : in    std_logic;                     --! @end
+      --! @virtualbus M_AXIS_IQPACKET @dir out AXI Stream Master bus for Stream packets
       M_AXIS_IQPACKET_ACLK    : in    std_logic;
       M_AXIS_IQPACKET_ARESETN : in    std_logic;
       M_AXIS_IQPACKET_TVALID  : out   std_logic;
       M_AXIS_IQPACKET_TREADY  : in    std_logic;
       M_AXIS_IQPACKET_TDATA   : out   std_logic_vector(127 downto 0);
       M_AXIS_IQPACKET_TKEEP   : out   std_logic_vector(15 downto 0);
-      M_AXIS_IQPACKET_TLAST   : out   std_logic;
+      M_AXIS_IQPACKET_TLAST   : out   std_logic;                     --! @end
       -- Configuration ports
-      CFG_CH_EN               : in    std_logic_vector(1 downto 0);
-      CFG_PKT_SIZE            : in    std_logic_vector(15 downto 0);
-      -- Sample Nr.
-      SMPL_NR_EN              : in    std_logic;
-      SMPL_NR_CLR             : in    std_logic;
-      SMPL_NR_LD              : in    std_logic;
-      SMPL_NR_IN              : in    std_logic_vector(63 downto 0);
-      SMPL_NR_OUT             : out   std_logic_vector(63 downto 0);
-      -- Flag control
-      TXFLAGS_PCT_LOSS        : in    std_logic;
-      TXFLAGS_PCT_LOSS_CLR    : in    std_logic
+      --! @virtualbus CFG @dir in Configuration signals
+      CFG_CH_EN               : in    std_logic_vector(1 downto 0);  --! Channel enable. 0- Channel Disabled, 1-Channel Enabled
+      CFG_PKT_SIZE            : in    std_logic_vector(15 downto 0); --! Paket size in 128b words. Min=4, Max=256. @end
+      --! @virtualbus SMPL_NR_IN @dir in Sample Nr. input
+      SMPL_NR_EN              : in    std_logic;                     --! Enable sample number
+      SMPL_NR_CLR             : in    std_logic;                     --! Cleas sample number
+      SMPL_NR_LD              : in    std_logic;                     --! Load sample number
+      SMPL_NR_IN              : in    std_logic_vector(63 downto 0); --! Sample Nr. when loading @end
+      SMPL_NR_OUT             : out   std_logic_vector(63 downto 0); --! Sample Nr. output, synchronous to S_AXIS_IQSMPLS_ACLK
+      --! @virtualbus TXFLAGS @dir in TX Flag capture
+      TXFLAGS_PCT_LOSS        : in    std_logic;                     --! TX packet loss flag input
+      TXFLAGS_PCT_LOSS_CLR    : in    std_logic                      --! TX packet loss flag clear @end
    );
 end entity RX_PATH_TOP;
 
@@ -281,6 +331,8 @@ begin
    S_AXIS_IQSMPLS_TREADY <= axis_iq128.tready;
 
 end architecture ARCH;
+
+
 
 
 

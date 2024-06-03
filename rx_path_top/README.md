@@ -8,7 +8,7 @@ Top module for packaging IQ samples received from [lms7002](./../lms7002/) modul
 - Store Stream packets into AXIS buffer.
 
 
-**TODO**: Detailed IO port description and waveforms can be found 
+Detailed IO port description and waveforms can be found [here](./doc/rx_path_top.md).
 
 ## Main block diagram:
 
