@@ -70,6 +70,29 @@ architecture arch of ram_mem_wrapper is
    type fifo_ram_type is array (0 to g_RAM_DEPTH-1) of std_logic_vector(g_RAM_WIDTH-1 downto 0);
    signal fifo_ram   : fifo_ram_type;
    signal ram_data   : std_logic_vector(g_RAM_WIDTH-1 downto 0);
+   
+   component xilinx_simple_dual_port_2_clock_ram is
+   generic (
+      RAM_WIDTH : integer := 64;                   -- Specify RAM data width
+      RAM_DEPTH : integer := 512;                  -- Specify RAM depth (number of entries)
+      RAM_PERFORMANCE : string := "LOW_LATENCY";   -- Select "HIGH_PERFORMANCE" or "LOW_LATENCY" 
+      INIT_FILE : string := "RAM_INIT.dat"         -- Specify name/location of RAM initialization file if using one (leave blank if not)
+      );
+   
+   port (
+         addra : in std_logic_vector((clogb2(RAM_DEPTH)-1) downto 0);     -- Write address bus, width determined from RAM_DEPTH
+         addrb : in std_logic_vector((clogb2(RAM_DEPTH)-1) downto 0);     -- Read address bus, width determined from RAM_DEPTH
+         dina  : in std_logic_vector(RAM_WIDTH-1 downto 0);    -- RAM input data
+         clka  : in std_logic;                       			   -- Write Clock
+         clkb  : in std_logic;                       			   -- Read Clock
+         wea   : in std_logic;                       			   -- Write enable
+         enb   : in std_logic;                       			   -- RAM Enable, for additional power savings, disable port when not in use
+         rstb  : in std_logic;                       			   -- Output reset (does not affect memory contents)
+         regceb: in std_logic;                       			   -- Output register enable
+         doutb : out std_logic_vector(RAM_WIDTH-1 downto 0)    -- RAM output data
+      );
+   
+   end component;
 
 begin
 
@@ -121,7 +144,7 @@ begin
    -- XILINX recomended Dual port RAM memory implementation
    -- ----------------------------------------------------------------------------
    XILINX_RAM : if g_VENDOR = "XILINX" generate
-      ram_mem_inst : entity work.xilinx_simple_dual_port_2_clock_ram
+      ram_mem_inst : xilinx_simple_dual_port_2_clock_ram
          generic map (
             RAM_WIDTH         => g_RAM_WIDTH,
             RAM_DEPTH         => g_RAM_DEPTH,
