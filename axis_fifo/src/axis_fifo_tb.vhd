@@ -26,7 +26,7 @@ end axis_fifo_tb;
 
 architecture tb_behave of axis_fifo_tb is
    constant clk0_period    : time := 1 ns;
-   constant clk1_period    : time := 1 ns; 
+   constant clk1_period    : time := 25 ns; 
    --signals
    signal clk0,clk1        : std_logic;
    signal reset_n          : std_logic; 

@@ -37,6 +37,7 @@ entity axi_stream_fifo is
       s_axis_tlast   : in  std_logic;
       s_axis_tvalid  : in  std_logic;
       s_axis_tready  : out std_logic;
+      wrusedw        : out std_logic_vector(log2ceil(g_FIFO_DEPTH) downto 0);
       
       -- AXI Stream Read Interface
       m_axis_aclk    : in  std_logic;
@@ -45,7 +46,8 @@ entity axi_stream_fifo is
       m_axis_tkeep   : out std_logic_vector(g_DATA_WIDTH/8-1 downto 0);
       m_axis_tlast   : out std_logic;
       m_axis_tvalid  : out std_logic;
-      m_axis_tready  : in  std_logic
+      m_axis_tready  : in  std_logic;
+      rdusedw        : out std_logic_vector(log2ceil(g_FIFO_DEPTH) downto 0)
    );
 end entity axi_stream_fifo;
 
@@ -94,6 +96,7 @@ architecture rtl of axi_stream_fifo is
       g_rptr_sync : in  std_logic_vector(PTR_WIDTH downto 0);
       b_wptr      : out std_logic_vector(PTR_WIDTH downto 0);
       g_wptr      : out std_logic_vector(PTR_WIDTH downto 0);
+      usedw       : out std_logic_vector(PTR_WIDTH downto 0);
       full        : out std_logic
    );
    end component;
@@ -109,6 +112,7 @@ architecture rtl of axi_stream_fifo is
       g_wptr_sync : in  std_logic_vector(PTR_WIDTH downto 0);
       b_rptr      : out std_logic_vector(PTR_WIDTH downto 0);
       g_rptr      : out std_logic_vector(PTR_WIDTH downto 0);
+      usedw       : out std_logic_vector(PTR_WIDTH downto 0);
       empty       : out std_logic
    );
    end component;
@@ -159,7 +163,7 @@ begin
    generic map( 
       PTR_WIDTH => c_PTR_WIDTH
    )
-   port map (s_axis_aclk, s_axis_aresetn, wr_en, g_rptr_sync, b_wptr, g_wptr, full);
+   port map (s_axis_aclk, s_axis_aresetn, wr_en, g_rptr_sync, b_wptr, g_wptr, wrusedw, full);
    
    -- Read pointer
    rd_en <= '1' when empty='0' AND (fwft_valid = '0' OR m_axis_tready = '1') else '0';
@@ -168,7 +172,7 @@ begin
    generic map( 
       PTR_WIDTH => c_PTR_WIDTH
    )
-   port map (m_axis_aclk, m_axis_aresetn, rd_en, g_wptr_sync, b_rptr, g_rptr, empty);
+   port map (m_axis_aclk, m_axis_aresetn, rd_en, g_wptr_sync, b_rptr, g_rptr, rdusedw, empty);
    
    
   
