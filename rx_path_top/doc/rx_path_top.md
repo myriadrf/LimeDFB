@@ -16,7 +16,7 @@ Functionality:
 
 
 
-![alt text](wavedrom_FE2p0.svg "title")
+![alt text](wavedrom_TgPf0.svg "title")
 
  
 
@@ -67,10 +67,11 @@ Functionality:
 | M_AXIS_IQPACKET_TLAST   | out       | std_logic                      |             |
 #### CFG
 
-| Port name    | Direction | Type                          | Description                                            |
-| ------------ | --------- | ----------------------------- | ------------------------------------------------------ |
-| CFG_CH_EN    | in        | std_logic_vector(1 downto 0)  | Channel enable. 0- Channel Disabled, 1-Channel Enabled |
-| CFG_PKT_SIZE | in        | std_logic_vector(15 downto 0) | Paket size in 128b words. Min=4, Max=256.              |
+| Port name      | Direction | Type                          | Description                                                 |
+| -------------- | --------- | ----------------------------- | ----------------------------------------------------------- |
+| CFG_CH_EN      | in        | std_logic_vector(1 downto 0)  | Channel enable. 0- Channel Disabled, 1-Channel Enabled      |
+| CFG_SMPL_WIDTH | in        | std_logic_vector(1 downto 0)  | Sample width selection. "10"-12bit, "01"-14bit, "00"-16bit; |
+| CFG_PKT_SIZE   | in        | std_logic_vector(15 downto 0) | Paket size in 128b words. Min=4, Max=256.                   |
 #### SMPL_NR_IN
 
 | Port name   | Direction | Type                          | Description             |

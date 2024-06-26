@@ -22,6 +22,7 @@
 --! { name: "CLK",  wave: "P........" , period: 2},
 --! { name: "RESET_N", wave: "0.1......|...|...." },
 --! { name: "CFG_CH_EN[1:0]",  wave: "x.=......|=.=|....", data: ["0x3", "0x3", ""] },
+--! { name: "CFG_SMPL_WIDTH[1:0]",  wave: "x.=......|=.=|....", data: ["0x2", "0x2", ""] },
 --! { name: "CFG_PKT_SIZE[15:0]",  wave: "x.=......|=.=|....", data: ["0x100", "0x100", ""] },
 --! ['S_AXIS_IQSMPLS',
 --!  { name: "S_AXIS_IQSMPLS_ACLK",  wave: "P........" , period: 2},
@@ -50,7 +51,7 @@
 --! "config" : { "hscale" : 1 },
 --!  head:{
 --!     text: ['tspan',
---!           ['tspan', {'font-weight':'bold'}, 'rx_path_top module timing (MIMO DDR mode, A and B channels enabled, 4096B packet size)']],
+--!           ['tspan', {'font-weight':'bold'}, 'rx_path_top module timing (MIMO DDR mode, A and B channels enabled, 12b samples, 4096B packet size)']],
 --!     tick:0,
 --!     every:2
 --!   }}
