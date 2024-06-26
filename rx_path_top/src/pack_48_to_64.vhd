@@ -104,8 +104,8 @@ begin
    elsif (clk'event and clk = '1') then
       if wr_cnt = 1 and data_in_wrreq = '1' then 
 --         word64_0 <= data48_in(15 downto 0) & data48_in_reg;
-         --word64_0 <= data48_in(c_busdif-1 downto 0) & data48_in_reg;
-         word64_0 <= data48_in_reg & data48_in(47 downto 32);
+         word64_0 <= data48_in(c_busdif-1 downto 0) & data48_in_reg;
+         --word64_0 <= data48_in_reg & data48_in(47 downto 32);
          word64_0_valid <= '1';
       else 
          word64_0 <= word64_0;
@@ -122,8 +122,8 @@ begin
    elsif (clk'event and clk = '1') then
       if wr_cnt = 2 and data_in_wrreq = '1' then 
 --         word64_1 <= data48_in(31 downto 0) & data48_in_reg(47 downto 16);
-         --word64_1 <= data48_in((c_small_bus-c_busdif)-1 downto 0) & data48_in_reg(c_small_bus-1 downto c_busdif);
-         word64_1 <= data48_in_reg(31 downto 0) & data48_in(47 downto 16);
+         word64_1 <= data48_in((c_small_bus-c_busdif)-1 downto 0) & data48_in_reg(c_small_bus-1 downto c_busdif);
+         --word64_1 <= data48_in_reg(31 downto 0) & data48_in(47 downto 16);
          word64_1_valid <= '1';
       else 
          word64_1 <= word64_1;
@@ -140,8 +140,8 @@ begin
    elsif (clk'event and clk = '1') then
       if wr_cnt = 3 and data_in_wrreq = '1' then
 --         word64_2 <= data48_in(47 downto 0) & data48_in_reg(47 downto 32);
-         --word64_2 <= data48_in(c_small_bus-1 downto 0) & data48_in_reg(c_small_bus-1 downto c_small_bus-c_busdif);
-         word64_2 <= data48_in_reg(15 downto 0) & data48_in(47 downto 0);
+         word64_2 <= data48_in(c_small_bus-1 downto 0) & data48_in_reg(c_small_bus-1 downto c_small_bus-c_busdif);
+         --word64_2 <= data48_in_reg(15 downto 0) & data48_in(47 downto 0);
          word64_2_valid <= '1';
       else 
          word64_2 <= word64_2;

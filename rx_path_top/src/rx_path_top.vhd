@@ -97,6 +97,7 @@ entity RX_PATH_TOP is
       -- Configuration ports
       --! @virtualbus CFG @dir in Configuration signals
       CFG_CH_EN               : in    std_logic_vector(1 downto 0);  --! Channel enable. 0- Channel Disabled, 1-Channel Enabled
+      CFG_SMPL_WIDTH          : in    std_logic_vector(1 downto 0);  --! Sample width selection. "10"-12bit, "01"-14bit, "00"-16bit;
       CFG_PKT_SIZE            : in    std_logic_vector(15 downto 0); --! Paket size in 128b words. Min=4, Max=256. @end
       --! @virtualbus SMPL_NR_IN @dir in Sample Nr. input
       SMPL_NR_EN              : in    std_logic;                     --! Enable sample number
@@ -182,7 +183,7 @@ begin
          RESET_N       => S_AXIS_IQSMPLS_ARESETN,
          DATA_IN       => axis_iqcombined.tdata,
          DATA_IN_VALID => axis_iqcombined.tvalid,
-         SAMPLE_WIDTH  => "10",
+         SAMPLE_WIDTH  => CFG_SMPL_WIDTH,
          -- output ports
          DATA_OUT       => axis_iqbitpacked.tdata,
          DATA_OUT_VALID => axis_iqbitpacked.tvalid,

@@ -162,7 +162,7 @@ begin
    S_AXIS_TREADY <= s_axis_tready_reg;
 
    M_AXIS_TVALID <= m_axis_tvalid_reg;
-   M_AXIS_TDATA  <= data_reg_array(1) & data_reg_array(0);
+   M_AXIS_TDATA  <= data_reg_array(0) & data_reg_array(1);
    M_AXIS_TLAST  <= m_axis_tlast_reg;
 
 end architecture ARCH;
