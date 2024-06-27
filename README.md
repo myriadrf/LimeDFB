@@ -26,4 +26,5 @@ Here you can find summary of available modules and their status. <br>
 |[lms7002](https://github.com/myriadrf/LimeIP_HDL/tree/main/lms7002)| v0.0 | :yellow_circle: dev | Top module for LMS7002M IC digital interface |
 |[gpio_top](https://github.com/myriadrf/LimeIP_HDL/tree/main/gpio_top)| v0.0 | :yellow_circle: dev | Basic Module for GPIO control
 |[rx_path_top](./rx_path_top/)| v0.0 | :yellow_circle: dev | Receive and pack IQ samples into Stream packets
+|[tx_path_top](./tx_path_top/)| v0.0 | :yellow_circle: dev | Unpack packets into IQ samples, perform synchronisation
 
