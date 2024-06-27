@@ -1,4 +1,4 @@
-# lms7002_top
+# tx_path_top
 
 ## Description
 Top module for unpacking stream packets, performing timestamp synchronisation if needed.
