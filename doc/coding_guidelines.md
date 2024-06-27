@@ -9,6 +9,10 @@ coding practices for the HDL modules implementation.
 
 If supported by the tools it is prefered to use **VHDL-2008** language version.  
 
+A configuration file for VHDL VSG can be found in Annex 3.
+In the event of any discrepancies between the VSG config and guidelines described herein,
+the guidelines take precedence.
+
 ## 1. Layout
 
 - **Indentation** - spaces must be used insted of tabs (Tab size: 3)
@@ -63,11 +67,12 @@ use ieee.numeric_std.all;
 
 ## 3. Annexes
 ### Annex 1: VHDL module template
-[my_module.vhd](https://gitlab.com/myriadrf/limeip_hdl/-/blob/6fa19378a3db8195ce9c18d5723c461fdc8e9f2d/templates/my_module.vhd)
+[my_module.vhd](./my_module.vhd)
 
 ### Annex 2: VHDL testbench template
-[my_module_tb.vhd](https://gitlab.com/myriadrf/limeip_hdl/-/blob/6fa19378a3db8195ce9c18d5723c461fdc8e9f2d/templates/my_module_tb.vhd)
+[my_module_tb.vhd](./my_module_tb.vhd)
 
-
+### Annex 3: Configuration file for VHDL VSG
+[vhdl_vsg_cfg.yml](./vhdl_vsg_cfg.yml)
 
 
