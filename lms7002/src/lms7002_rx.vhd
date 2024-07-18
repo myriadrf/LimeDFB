@@ -13,8 +13,6 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-use work.fpgacfg_pkg.all;
-use work.memcfg_pkg.all;
 
 -- ----------------------------------------------------------------------------
 -- Entity declaration
@@ -27,7 +25,6 @@ entity lms7002_rx is
    port (
       clk               : in  std_logic;
       reset_n           : in  std_logic;
-      from_fpgacfg      : in  t_FROM_FPGACFG;
       --Mode settings
       mode              : in  std_logic; -- JESD207: 1; TRXIQ: 0
       trxiqpulse        : in  std_logic; -- trxiqpulse on: 1; trxiqpulse off: 0
