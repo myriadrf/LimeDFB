@@ -333,14 +333,14 @@ begin
 -- ----------------------------------------------------------------------------
 
 
-   rx_pll_inst : entity work.rx_pll
-   port map(
-      clk_out1  => mclk2_pll_out1,
-      clk_out2  => mclk2_pll_out2,
-      resetn    => '1',
-      locked    => open, 
-      clk_in1   => MCLK2
-   );
+   --rx_pll_inst : entity work.rx_pll
+   --port map(
+      --clk_out1  => mclk2_pll_out1,
+      --clk_out2  => mclk2_pll_out2,
+      --resetn    => '1',
+      --locked    => open, 
+      --clk_in1   => MCLK2
+   --);
 
 
    -- Vendor specific double data rate IO instance 
@@ -353,7 +353,7 @@ begin
    )
    port map(
       --input ports 
-      clk             => mclk2_pll_out2,
+      clk             => MCLK2,
       reset_n         => CFG_tx_en,
       rxiq            => DIQ2,
       rxiqsel         => ENABLE_IQSEL2,
@@ -370,7 +370,7 @@ begin
       g_M_AXIS_FIFO_WORDS  => g_M_AXIS_RX_FIFO_WORDS
    )
    port map(
-      clk               => mclk2_pll_out2,
+      clk               => MCLK2,
       reset_n           => CFG_tx_en,
       --Mode settings
       mode              => '0'             ,  -- JESD207: 1; TRXIQ: 0
@@ -384,7 +384,7 @@ begin
       diq_l             => inst3_diq_l,
       -- Transmit AXIS bus
       m_axis_areset_n   => '1',
-      m_axis_aclk       => mclk2_pll_out2,
+      m_axis_aclk       => MCLK2,
       m_axis_tvalid     => axis_rx_tvalid,
       m_axis_tdata      => axis_rx_tdata ,
       m_axis_tkeep      => axis_rx_tkeep, 
@@ -402,7 +402,7 @@ begin
    )
    port map(
       s_axis_aresetn    => CFG_tx_en,
-      s_axis_aclk       => mclk2_pll_out2,
+      s_axis_aclk       => MCLK2,
       s_axis_tvalid     => axis_rx_tvalid,
       s_axis_tready     => axis_rx_tready,
       s_axis_tdata      => axis_rx_tdata,

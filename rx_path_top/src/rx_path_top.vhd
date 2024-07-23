@@ -92,8 +92,8 @@ entity RX_PATH_TOP is
       M_AXIS_IQPACKET_ARESETN : in    std_logic;
       M_AXIS_IQPACKET_TVALID  : out   std_logic;
       M_AXIS_IQPACKET_TREADY  : in    std_logic;
-      M_AXIS_IQPACKET_TDATA   : out   std_logic_vector(127 downto 0);
-      M_AXIS_IQPACKET_TKEEP   : out   std_logic_vector(15 downto 0);
+      M_AXIS_IQPACKET_TDATA   : out   std_logic_vector(63 downto 0);
+      M_AXIS_IQPACKET_TKEEP   : out   std_logic_vector(7 downto 0);
       M_AXIS_IQPACKET_TLAST   : out   std_logic;                     --! @end
       -- Configuration ports
       --! @virtualbus CFG @dir in Configuration signals
@@ -124,10 +124,26 @@ architecture ARCH of RX_PATH_TOP is
    signal axis_iq128                   : t_AXI_STREAM(tdata(127 downto 0), tkeep(15 downto 0));
    signal axis_iqsmpls_fifo            : t_AXI_STREAM(tdata(127 downto 0), tkeep(15 downto 0));
    signal axis_iqpacket_fifo           : t_AXI_STREAM(tdata(127 downto 0), tkeep(15 downto 0));
+   signal axis_iqpacket                : t_AXI_STREAM(tdata(127 downto 0), tkeep(15 downto 0));
    signal axis_iqpacket_wr_data_count  : std_logic_vector(8 downto 0);
 
    signal sample_nr_counter            : unsigned(63 downto 0);
    signal bitpacked_sample_nr_counter  : unsigned(63 downto 0);
+   
+   COMPONENT axis_dwidth_converter_128_to_64
+  PORT (
+    aclk : IN STD_LOGIC;
+    aresetn : IN STD_LOGIC;
+    s_axis_tvalid : IN STD_LOGIC;
+    s_axis_tready : OUT STD_LOGIC;
+    s_axis_tdata : IN STD_LOGIC_VECTOR(127 DOWNTO 0);
+    s_axis_tlast : IN STD_LOGIC;
+    m_axis_tvalid : OUT STD_LOGIC;
+    m_axis_tready : IN STD_LOGIC;
+    m_axis_tdata : OUT STD_LOGIC_VECTOR(63 DOWNTO 0);
+    m_axis_tlast : OUT STD_LOGIC 
+  );
+END COMPONENT;
 
 begin
 
@@ -306,10 +322,10 @@ begin
             S_AXIS_TDATA       => axis_iqpacket_fifo.tdata,
             S_AXIS_TLAST       => axis_iqpacket_fifo.tlast,
             M_AXIS_ACLK        => M_AXIS_IQPACKET_ACLK,
-            M_AXIS_TVALID      => M_AXIS_IQPACKET_TVALID,
-            M_AXIS_TREADY      => M_AXIS_IQPACKET_TREADY,
-            M_AXIS_TDATA       => M_AXIS_IQPACKET_TDATA,
-            M_AXIS_TLAST       => M_AXIS_IQPACKET_TLAST,
+            M_AXIS_TVALID      => axis_iqpacket.tvalid,
+            M_AXIS_TREADY      => axis_iqpacket.tready,
+            M_AXIS_TDATA       => axis_iqpacket.tdata,
+            M_AXIS_TLAST       => axis_iqpacket.tlast,
             WR_DATA_COUNT_AXIS => axis_iqpacket_wr_data_count
          );
 
@@ -323,6 +339,23 @@ begin
       M_AXIS_IQPACKET_TDATA     <= axis_iqpacket_fifo.tdata;
       M_AXIS_IQPACKET_TLAST     <= axis_iqpacket_fifo.tlast;
    end generate WITHOUT_M_AXIS_IQPACKET_BUFFER;
+   
+  
+  inst_axis_dwidth_converter_128_to_64 : axis_dwidth_converter_128_to_64
+  PORT MAP (
+    aclk 		    => M_AXIS_IQPACKET_ACLK,
+    aresetn 		=> '1',
+    s_axis_tvalid 	=> axis_iqpacket.tvalid,
+    s_axis_tready 	=> axis_iqpacket.tready,
+    s_axis_tdata 	=> axis_iqpacket.tdata,
+    s_axis_tlast 	=> axis_iqpacket.tlast,
+    m_axis_tvalid 	=> M_AXIS_IQPACKET_TVALID,
+    m_axis_tready 	=> M_AXIS_IQPACKET_TREADY,
+    m_axis_tdata 	=> M_AXIS_IQPACKET_TDATA,
+    m_axis_tlast    => M_AXIS_IQPACKET_TLAST
+  );
+  
+  M_AXIS_IQPACKET_TKEEP <= (others=>'1');
 
    -- ----------------------------------------------------------------------------
    -- Output ports
