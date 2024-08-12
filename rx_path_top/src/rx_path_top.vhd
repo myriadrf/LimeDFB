@@ -130,6 +130,10 @@ architecture ARCH of RX_PATH_TOP is
    signal sample_nr_counter            : unsigned(63 downto 0);
    signal bitpacked_sample_nr_counter  : unsigned(63 downto 0);
    
+   signal cfg_pkt_size_mul8            : std_logic_vector(15 downto 0);
+   signal cfg_pkt_size_div128          : std_logic_vector(15 downto 0);
+   signal pkt_size                     : std_logic_vector(15 downto 0);
+   
    COMPONENT axis_dwidth_converter_128_to_64
   PORT (
     aclk : IN STD_LOGIC;
@@ -279,12 +283,20 @@ begin
       end if;
 
    end process PACKET_SAMPLE_CNT_PROC;
+   
+   -- Convert packet size from bytes to 128b words
+   process(all)
+   begin
+        cfg_pkt_size_mul8   <= CFG_PKT_SIZE sll 3;
+        cfg_pkt_size_div128 <= cfg_pkt_size_mul8 srl 7;
+        pkt_size <= cfg_pkt_size_div128;
+   end process;
 
    inst_data2packets_fsm : entity work.data2packets_fsm
       port map (
          ACLK      => CLK,
          ARESET_N  => RESET_N,
-         PCT_SIZE  => CFG_PKT_SIZE,
+         PCT_SIZE  => pkt_size,
          PCT_HDR_0 => x"7766554433221100",
          PCT_HDR_1 => std_logic_vector(bitpacked_sample_nr_counter),
          -- AXIS Slave
