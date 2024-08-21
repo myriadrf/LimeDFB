@@ -220,7 +220,15 @@ entity lms7002_top is
       m_axis_rx_tlast      : out std_logic;--! @end
       -- misc
       tx_active            : out std_logic;  --! TX antenna enable flag
-      rx_active            : out std_logic   --! RX sample counter enable
+      rx_active            : out std_logic;  --! RX sample counter enable
+      -- sample compare
+      cmp_start            : in  std_logic; --! Start sample comparison
+      cmp_length           : in  std_logic_vector(15 downto 0); --! Number of samples to compare
+      cmp_done             : out std_logic; --! Sample comparison done
+      cmp_error            : out std_logic; --! Sample comparison error
+      -- test pattern enable
+      test_ptrn_en         : in std_logic
+
    );
 end lms7002_top;
 
@@ -232,12 +240,17 @@ architecture arch of lms7002_top is
 signal inst1_txant_en   : std_logic;
 signal inst1_diq_h      : std_logic_vector(g_IQ_WIDTH downto 0);
 signal inst1_diq_l      : std_logic_vector(g_IQ_WIDTH downto 0);
+signal test_diq_h       : std_logic_vector(g_IQ_WIDTH downto 0);
+signal test_diq_l       : std_logic_vector(g_IQ_WIDTH downto 0);
+signal inst2_diq_h      : std_logic_vector(g_IQ_WIDTH downto 0);
+signal inst2_diq_l      : std_logic_vector(g_IQ_WIDTH downto 0);
 
 signal lms_txen_int     : std_logic;
 signal lms_rxen_int     : std_logic;
 
 signal inst3_diq_h      : std_logic_vector(g_IQ_WIDTH downto 0);
 signal inst3_diq_l      : std_logic_vector(g_IQ_WIDTH downto 0);
+
 
 signal axis_tx_tvalid   : std_logic;
 signal axis_tx_tdata    : std_logic_vector(63 downto 0);
@@ -249,9 +262,6 @@ signal axis_rx_tdata    : std_logic_vector(63 downto 0);
 signal axis_rx_tkeep    : std_logic_vector(7 downto 0);
 signal axis_rx_tready   : std_logic;
 signal axis_rx_tlast    : std_logic;
-
-signal mclk2_pll_out1   : std_logic;
-signal mclk2_pll_out2   : std_logic;
 
 
 begin
@@ -283,7 +293,7 @@ begin
 
 
    -- Transmit module, converts axi stream to DIQ samples
-   inst1_lms7002_tx : entity work.lms7002_tx
+   inst1_0_lms7002_tx : entity work.lms7002_tx
    generic map( 
       g_IQ_WIDTH           => g_IQ_WIDTH
    )
@@ -309,6 +319,19 @@ begin
       s_axis_tlast      => axis_tx_tlast   
    );
    
+   inst1_1_tst_ptrn : entity work.txiq_tst_ptrn
+   generic map(
+      diq_width   => g_IQ_WIDTH
+   )
+   port map(
+      clk     => MCLK1,
+      reset_n => test_ptrn_en,
+      diq_h   => test_diq_h, 
+      diq_l   => test_diq_l 
+   );
+   
+   inst2_diq_h <= test_diq_h when test_ptrn_en = '1' else inst1_diq_h;
+   inst2_diq_l <= test_diq_l when test_ptrn_en = '1' else inst1_diq_l;
    
    -- Vendor specific double data rate IO instance
    inst2_lms7002_ddout : entity work.lms7002_ddout
@@ -319,9 +342,9 @@ begin
    port map(
       --input ports 
       clk            => MCLK1,
-      reset_n        => CFG_tx_en,
-      data_in_h      => inst1_diq_h,
-      data_in_l      => inst1_diq_l,
+      reset_n        => CFG_tx_en or test_ptrn_en,
+      data_in_h      => inst2_diq_h,
+      data_in_l      => inst2_diq_l,
       --output ports 
       txiq           => DIQ1,
       txiqsel        => ENABLE_IQSEL1
@@ -331,18 +354,6 @@ begin
 -- ----------------------------------------------------------------------------
 -- RX interface
 -- ----------------------------------------------------------------------------
-
-
-   --rx_pll_inst : entity work.rx_pll
-   --port map(
-      --clk_out1  => mclk2_pll_out1,
-      --clk_out2  => mclk2_pll_out2,
-      --resetn    => '1',
-      --locked    => open, 
-      --clk_in1   => MCLK2
-   --);
-
-
    -- Vendor specific double data rate IO instance 
    inst3_lms7002_ddin : entity work.lms7002_ddin
    generic map( 
@@ -354,7 +365,7 @@ begin
    port map(
       --input ports 
       clk             => MCLK2,
-      reset_n         => CFG_tx_en,
+      reset_n         => CFG_tx_en or cmp_start,
       rxiq            => DIQ2,
       rxiqsel         => ENABLE_IQSEL2,
       --output ports 
@@ -362,9 +373,27 @@ begin
       data_out_l      => inst3_diq_l
    );
 
+   inst4_0_smpl_cmp : entity work.smpl_cmp
+   generic map(
+      smpl_width => g_IQ_WIDTH
+   )
+   port map(
+      clk        => MCLK2,
+      reset_n    => cmp_start,
+      diq_h      => inst3_diq_h,
+      diq_l      => inst3_diq_l,
+      -- Control signals
+      cmp_start  => cmp_start  , 
+      cmp_length => cmp_length , 
+      cmp_done   => cmp_done   , 
+      cmp_error  => cmp_error   
+   );
+
+
+
 
    -- LMS7002 RX interface
-   inst4_lms7002_rx : entity work.lms7002_rx
+   inst4_1_lms7002_rx : entity work.lms7002_rx
    generic map( 
       g_IQ_WIDTH           => g_IQ_WIDTH,
       g_M_AXIS_FIFO_WORDS  => g_M_AXIS_RX_FIFO_WORDS
@@ -432,8 +461,6 @@ begin
    TXNRX2      	<= CFG_LMS_TXNRX2;
    
    tx_active      <= inst1_txant_en;
-   
-   FCLK1        <= mclk2_pll_out1;
    
    
 end arch;   
