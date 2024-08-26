@@ -376,6 +376,9 @@ begin
    -- are always ready to accept data after reset. FIFO needs some time to become ready
    -- after reset
    S_AXIS_IQSMPLS_TREADY <= axis_iq128.tready;
+   
+   SMPL_NR_OUT <= std_logic_vector(sample_nr_counter);
+   
 
 end architecture ARCH;
 
