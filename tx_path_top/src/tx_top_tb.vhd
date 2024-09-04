@@ -40,6 +40,11 @@ architecture BENCH of TX_TOP_TB is
    signal m_axis_tready                   : std_logic;
    signal m_axis_tlast                    : std_logic;
 
+   signal output_tvalid                   : std_logic;      
+   signal output_tready                   : std_logic;
+   signal output_tdata                    : std_logic_vector(63 downto 0);
+   signal output_req                      : std_logic;
+
    signal s_axis_in                       : T_S_AXIS_IN;
    signal s_axis_out                      : T_S_AXIS_OUT;
 
@@ -211,6 +216,36 @@ axis_dwidth_converter_128_to_64_inst : axis_dwidth_converter_128_to_64
          CFG_CH_EN        => ch_en,
          CFG_SAMPLE_WIDTH => sample_width,
          RESET_N          => s_axis_in.ARESET_N
+      );
+
+
+   output_fifo : entity work.fifo_axis_wrap
+      generic map (
+         G_CLOCKING_MODE       => "common_clock",
+         G_PACKET_FIFO         => "false",
+         G_FIFO_DEPTH          => 32,
+         G_TDATA_WIDTH         => 64,
+         G_RD_DATA_COUNT_WIDTH => 6,
+         G_WR_DATA_COUNT_WIDTH => 6
+      )
+      port map (
+         S_AXIS_ARESETN     => m_axis_areset_n,
+         S_AXIS_ACLK        => m_axis_aclk,
+         S_AXIS_TVALID      => m_axis_tvalid,
+         S_AXIS_TREADY      => m_axis_tready,
+         S_AXIS_TDATA       => m_axis_tdata,
+         S_AXIS_TLAST       => '0',
+
+         M_AXIS_ACLK        => m_axis_aclk,
+         M_AXIS_TVALID      => output_tvalid,
+         M_AXIS_TREADY      => output_tready,
+         M_AXIS_TDATA       => output_tdata ,
+         M_AXIS_TLAST       => open,
+
+         ALMOST_EMPTY_AXIS  => open,
+         ALMOST_FULL_AXIS   => open,
+         RD_DATA_COUNT_AXIS => open,
+         WR_DATA_COUNT_AXIS => open
       );
 
    ------------------------------------------
@@ -407,28 +442,47 @@ axis_dwidth_converter_128_to_64_inst : axis_dwidth_converter_128_to_64
 
    end process DATA_GEN;
 
+   -- Receive data from the axis interface and store it in the arrays
    DATA_RECV : process (m_axis_aclk, m_axis_areset_n) is
    begin
 
       if (m_axis_areset_n = '0') then
-         m_axis_tready <= '0';
+         -- Reset values
          data_counter  <= 0;
+         output_req    <= '0';
       elsif rising_edge(m_axis_aclk) then
+         -- Default value
+         output_tready <= '0';
          if (data_counter_rst = '0') then
-            m_axis_tready <= '1';
-            if (m_axis_tvalid = '1') then
-               ai_data_arr(data_counter) <= m_axis_tdata(63   downto   48);
-               aq_data_arr(data_counter) <= m_axis_tdata(47   downto   32);
-               bi_data_arr(data_counter) <= m_axis_tdata(31   downto   16);
-               bq_data_arr(data_counter) <= m_axis_tdata(15   downto   0);
-               ai_data                   <= m_axis_tdata(63   downto   48);
-               aq_data                   <= m_axis_tdata(47   downto   32);
-               bi_data                   <= m_axis_tdata(31   downto   16);
-               bq_data                   <= m_axis_tdata(15   downto   0);
-               data_counter              <= data_counter + 1;
+            -- If the request signal is low and the data counter is not reset
+            if output_req = '0' then
+               -- Set the request signal to high
+               output_req <= '1';
+            else
+               -- If there is data available on the axis interface
+               if (output_tvalid = '1') then
+                  output_tready <= '1';
+                  -- Set the request and ready signals to low
+                  output_req    <= '0';
+                  -- Store the data in the arrays
+                  ai_data_arr(data_counter) <= output_tdata(63   downto   48);
+                  aq_data_arr(data_counter) <= output_tdata(47   downto   32);
+                  bi_data_arr(data_counter) <= output_tdata(31   downto   16);
+                  bq_data_arr(data_counter) <= output_tdata(15   downto   0);
+                  -- Store the data in the signals
+                  ai_data                   <= output_tdata(63   downto   48);
+                  aq_data                   <= output_tdata(47   downto   32);
+                  bi_data                   <= output_tdata(31   downto   16);
+                  bq_data                   <= output_tdata(15   downto   0);
+                  -- Increment the data counter
+                  data_counter              <= data_counter + 1;
+               end if;
             end if;
          else
+            -- Reset the data counter
             data_counter <= 0;
+            -- Reset the request signal
+            output_req   <= '0';
          end if;
       end if;
 

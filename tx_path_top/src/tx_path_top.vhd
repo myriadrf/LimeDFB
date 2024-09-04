@@ -152,6 +152,8 @@ architecture BEHAVIORAL of TX_PATH_TOP is
    signal pct_loss_flg_clr_reg               : std_logic;
    signal pct_loss_flg_clr_reg_reg           : std_logic;
 
+   signal unpack_bypass                      : std_logic;   
+
    attribute async_reg                         : string;
    attribute async_reg of pct_loss_flg_clr_reg     : signal is "true";
    attribute async_reg of pct_loss_flg_clr_reg_reg : signal is "true";
@@ -169,6 +171,8 @@ architecture BEHAVIORAL of TX_PATH_TOP is
    signal p2d_wr_axis                        : T_AXIS_ARRAY;
    signal p2d_rd_axis                        : T_AXIS_ARRAY;
    signal smpl_unpack_axis                   : t_AXI_STREAM(tdata(127 downto 0), tkeep(0 downto 0));
+   signal smpl_buf_axis                      : t_AXI_STREAM(tdata(127 downto 0), tkeep(0 downto 0));
+   signal data_pad_axis                      : t_AXI_STREAM(tdata(127 downto 0), tkeep(0 downto 0));
    
    COMPONENT axis_dwidth_converter_64_to_128
    PORT (
@@ -321,10 +325,10 @@ begin
          S_AXIS_TREADY      => p2d_rd_s_axis_tready,
          S_AXIS_TLAST       => p2d_rd_s_axis_tlast,
          M_AXIS_ARESET_N    => M_AXIS_IQSAMPLE_ARESET_N,
-         M_AXIS_TVALID      => smpl_unpack_axis.tvalid,
-         M_AXIS_TDATA       => smpl_unpack_axis.tdata,
-         M_AXIS_TREADY      => smpl_unpack_axis.tready,
-         M_AXIS_TLAST       => smpl_unpack_axis.tlast,
+         M_AXIS_TVALID      => data_pad_axis.tvalid,
+         M_AXIS_TDATA       => data_pad_axis.tdata,
+         M_AXIS_TREADY      => data_pad_axis.tready,
+         M_AXIS_TLAST       => data_pad_axis.tlast,
          RESET_N            => RESET_N,
          SYNCH_DIS          => PCT_SYNC_DIS,
          SAMPLE_NR          => rx_sample_nr_reg,
@@ -340,6 +344,60 @@ begin
       p2d_rd_axis(i).tkeep    <= (others => '1');
    end generate P2D_RD_LOOP;
 
+-- ----------------------------------------------------------------------------
+-- Pad 12 bit samples to 16 bit samples, bypass logic if no padding is needed 
+-- ----------------------------------------------------------------------------
+  unpack_bypass <= '1' when CFG_SAMPLE_WIDTH = "00" else '0';
+  inst3_0_unpack_128_to_48 : entity work.sample_padder
+  port map (
+    --input ports 
+    clk       		=> M_AXIS_IQSAMPLE_ACLK,
+    reset_n   		=> RESET_N,
+    --
+    S_AXIS_TVALID	=> data_pad_axis.tvalid,
+    S_AXIS_TDATA  => data_pad_axis.tdata,
+    S_AXIS_TREADY => data_pad_axis.tready,
+    S_AXIS_TLAST	=> data_pad_axis.tlast,
+    --
+    M_AXIS_TDATA  => smpl_buf_axis.tdata,
+    M_AXIS_TVALID	=> smpl_buf_axis.tvalid,
+    M_AXIS_TREADY => smpl_buf_axis.tready,
+    M_AXIS_TLAST	=> smpl_buf_axis.tlast,
+    --
+    BYPASS			=> unpack_bypass
+  );
+
+
+
+   inst3_1_mini_sample_buffer : entity work.fifo_axis_wrap
+   generic map (
+      G_CLOCKING_MODE       => "common_clock",
+      G_PACKET_FIFO         => "false",
+      G_FIFO_DEPTH          => 16,
+      G_TDATA_WIDTH         => 128,
+      G_RD_DATA_COUNT_WIDTH => 5,
+      G_WR_DATA_COUNT_WIDTH => 5
+   )
+   port map (
+      S_AXIS_ARESETN     => RESET_N,
+      S_AXIS_ACLK        => M_AXIS_IQSAMPLE_ACLK,
+      S_AXIS_TVALID      => smpl_buf_axis.tvalid,
+      S_AXIS_TREADY      => smpl_buf_axis.tready,
+      S_AXIS_TDATA       => smpl_buf_axis.tdata,
+      S_AXIS_TLAST       => smpl_buf_axis.tlast,
+      M_AXIS_ACLK        => M_AXIS_IQSAMPLE_ACLK,
+      M_AXIS_TVALID      => smpl_unpack_axis.tvalid,
+      M_AXIS_TREADY      => smpl_unpack_axis.tready,
+      M_AXIS_TDATA       => smpl_unpack_axis.tdata,
+      M_AXIS_TLAST       => smpl_unpack_axis.tlast,
+      ALMOST_EMPTY_AXIS  => open,
+      ALMOST_FULL_AXIS   => open,
+      RD_DATA_COUNT_AXIS => open,
+      WR_DATA_COUNT_AXIS => open
+   );
+
+   
+
    inst3_sample_unpack : entity work.sample_unpack
       port map (
          RESET_N       => RESET_N,
@@ -352,8 +410,7 @@ begin
          M_AXIS_TDATA  => M_AXIS_IQSAMPLE_TDATA,
          M_AXIS_TREADY => M_AXIS_IQSAMPLE_TREADY,
          M_AXIS_TVALID => M_AXIS_IQSAMPLE_TVALID,
-         CH_EN         => CFG_CH_EN,
-         SAMPLE_WIDTH  => CFG_SAMPLE_WIDTH
+         CH_EN         => CFG_CH_EN
       );
 
    M_AXIS_IQSAMPLE_TLAST <= '0';

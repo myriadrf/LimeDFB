@@ -312,7 +312,7 @@ begin
       diq_l             => inst1_diq_l,
       --! @virtualbus s_axis_tx @dir in Transmit AXIS bus
       s_axis_areset_n   => s_axis_tx_areset_n,
-      s_axis_aclk       => MCLK1,
+      s_axis_aclk       => s_axis_tx_aclk ,
       s_axis_tvalid     => axis_tx_tvalid ,
       s_axis_tdata      => axis_tx_tdata  ,
       s_axis_tready     => axis_tx_tready ,

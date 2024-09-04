@@ -272,12 +272,23 @@ begin
             bitpacked_sample_nr_counter <= (others => '0');
          elsif (SMPL_NR_LD='1') then
             bitpacked_sample_nr_counter <= unsigned(SMPL_NR_IN);
-         elsif (axis_iqsmpls_fifo.tvalid='1' and axis_iqsmpls_fifo.tlast='1' and axis_iqsmpls_fifo.tready ='1') then
-            -- If both channels are enabled in one frame we have packed 8 samples for each A and B channel
-            if (CFG_CH_EN = "11") then
-               bitpacked_sample_nr_counter <= bitpacked_sample_nr_counter + 8;
-            else
-               bitpacked_sample_nr_counter <= bitpacked_sample_nr_counter + 16;
+         -- elsif (axis_iqsmpls_fifo.tvalid='1' and axis_iqsmpls_fifo.tlast='1' and axis_iqsmpls_fifo.tready ='1') then
+         elsif (axis_iqsmpls_fifo.tvalid='1' and axis_iqsmpls_fifo.tready ='1') then
+            if (CFG_SMPL_WIDTH = "10") then -- 12 bit format
+               if (axis_iqsmpls_fifo.tlast='1') then -- 12 bit format needs tlatst signal for correct count
+                  -- If both channels are enabled in one frame we have packed 8 samples for each A and B channel
+                  if (CFG_CH_EN = "11") then
+                     bitpacked_sample_nr_counter <= bitpacked_sample_nr_counter + 8;
+                  else
+                     bitpacked_sample_nr_counter <= bitpacked_sample_nr_counter + 16;
+                  end if;
+               end if;
+            else -- assume 16 bit format
+               if (CFG_CH_EN = "11") then
+                  bitpacked_sample_nr_counter <= bitpacked_sample_nr_counter + 2;
+               else
+                  bitpacked_sample_nr_counter <= bitpacked_sample_nr_counter + 4;
+               end if;
             end if;
          end if;
       end if;

@@ -517,7 +517,7 @@ package body tx_top_pkg is
       end loop;
       -- wait for sisoA data to arrive before changing ch_en/sample_width
       if (data_counter < target_data_counter_sisoa) then
-         wait until data_counter = target_data_counter_sisoa;
+         wait until data_counter >= target_data_counter_sisoa;
       end if;
 
       -- SISO B
@@ -528,7 +528,7 @@ package body tx_top_pkg is
       end loop;
       -- wait for sisoA data to arrive before changing ch_en/sample_width
       if (data_counter < target_data_counter_sisob) then
-         wait until data_counter = target_data_counter_sisob;
+         wait until data_counter >= target_data_counter_sisob;
       end if;
 
       -- MIMO
@@ -539,7 +539,7 @@ package body tx_top_pkg is
       end loop;
       -- wait for sisoA data to arrive before changing ch_en/sample_width
       if (data_counter < target_data_counter_mimo) then
-         wait until data_counter = target_data_counter_mimo;
+         wait until data_counter >= target_data_counter_mimo;
       end if;
 
       -- loop through and check results
@@ -691,7 +691,7 @@ package body tx_top_pkg is
       end loop;
       -- wait for sisoA data to arrive before changing ch_en/sample_width
       if (data_counter < target_data_counter_sisoa) then
-         wait until data_counter = target_data_counter_sisoa;
+         wait until data_counter >= target_data_counter_sisoa;
       end if;
 
       -- SISO B
@@ -702,7 +702,7 @@ package body tx_top_pkg is
       end loop;
       -- wait for sisoA data to arrive before changing ch_en/sample_width
       if (data_counter < target_data_counter_sisob) then
-         wait until data_counter = target_data_counter_sisob;
+         wait until data_counter >= target_data_counter_sisob;
       end if;
 
       -- MIMO
@@ -713,7 +713,7 @@ package body tx_top_pkg is
       end loop;
       -- wait for sisoA data to arrive before changing ch_en/sample_width
       if (data_counter < target_data_counter_mimo) then
-         wait until data_counter = target_data_counter_mimo;
+         wait until data_counter >= target_data_counter_mimo;
       end if;
 
       -- loop through and check results
@@ -883,7 +883,7 @@ package body tx_top_pkg is
 
       -- wait for data to arrive
       if (data_counter < target_data_counter_mimo) then
-         wait until data_counter = target_data_counter_mimo;
+         wait until data_counter >= target_data_counter_mimo;
       end if;
 
       -- if we get here, then all data is received, no extra checking is needed
