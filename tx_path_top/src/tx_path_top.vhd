@@ -92,7 +92,7 @@ library ieee;
 
 entity TX_PATH_TOP is
    generic (
-      G_BUFF_COUNT  : integer := 4 --! Number of packet buffers to use. Recommended values are 2 or 4
+      G_BUFF_COUNT  : integer := 2 --! Number of packet buffers to use. Recommended values are 2 or 4
    );
    port (
       RESET_N                       : in    std_logic;                                   --! Reset, active low
