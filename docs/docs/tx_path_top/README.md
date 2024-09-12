@@ -8,9 +8,9 @@ Top module for unpacking stream packets, performing timestamp synchronisation if
 - Unpack stream packets
 - Output the data in a format suitable for lms7002_top module
 
-Detailed IO port description and waveforms can be found [here](./doc/tx_path_top.md).
+Detailed IO port description and waveforms can be found [here](./tx_path_top.md).
 
 ## Main block diagram:
 
-![top.svg](doc/top.svg)
+![top.svg](./top.svg)
 

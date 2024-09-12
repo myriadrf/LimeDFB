@@ -1,0 +1,4 @@
+Module,Version,Status,Description
+lms7002_top,V0.0,dev,Top module for LMS7002M IC digital interface
+rx_path_top,V0.0,dev,Receive and pack IQ samples into Stream packets
+tx_path_top,V0.0,dev,"Unpack packets into IQ samples, perform synchronization"
