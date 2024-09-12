@@ -14,9 +14,9 @@ Top module for LMS7002M IC digital interface.
 - SISO SDR
 
 
-Detailed IO port description and waveforms can be found [here](./doc/lms7002_top.md).
+Detailed IO port description and waveforms can be found [here](./lms7002_top.md).
 
 ## Main block diagram:
 
-![top.svg](doc/top.svg)
+![top.svg](./top.svg)
 

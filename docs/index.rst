@@ -7,6 +7,13 @@
    docs/contributing.rst
    docs/coding_guidelines/coding_guidelines.md
 
+.. toctree::
+   :maxdepth: 3
+   :hidden:
+   :caption: DFB List
+
+   docs/dfb_list.rst
+
 Introduction
 ============
 
