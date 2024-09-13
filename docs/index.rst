@@ -5,7 +5,6 @@
 
    Introduction <self>
    docs/contributing.rst
-   docs/coding_guidelines/coding_guidelines.md
 
 .. toctree::
    :maxdepth: 3
