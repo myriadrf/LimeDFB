@@ -212,11 +212,11 @@ begin
          compare_less  <= '0';
          compare_equal <= '0';
          -- Check if state is WAIT_HEADER and current buffer's tvalid signal is high
-         if (state = WAIT_HEADER and S_AXIS_TVALID(curbuf) = '1') then
+         if (state = WAIT_HEADER and S_AXIS_TVALID(curbuf) = '1') then 
             -- Compare timestamps and set compare_less and compare_equal signals accordingly
-            if (S_AXIS_TDATA(curbuf)(127 downto 64) < SAMPLE_NR) then
+            if (unsigned(S_AXIS_TDATA(curbuf)(127 downto 64)) < unsigned(SAMPLE_NR)) then
                compare_less <= '1';
-            elsif (S_AXIS_TDATA(curbuf)(127 downto 64) = SAMPLE_NR) then
+            elsif (unsigned(S_AXIS_TDATA(curbuf)(127 downto 64)) = unsigned(SAMPLE_NR)) then
                compare_equal <= '1';
             end if;
          end if;

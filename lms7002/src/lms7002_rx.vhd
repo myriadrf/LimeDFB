@@ -13,8 +13,6 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-use work.fpgacfg_pkg.all;
-use work.memcfg_pkg.all;
 
 -- ----------------------------------------------------------------------------
 -- Entity declaration
@@ -27,7 +25,6 @@ entity lms7002_rx is
    port (
       clk               : in  std_logic;
       reset_n           : in  std_logic;
-      from_fpgacfg      : in  t_FROM_FPGACFG;
       --Mode settings
       mode              : in  std_logic; -- JESD207: 1; TRXIQ: 0
       trxiqpulse        : in  std_logic; -- trxiqpulse on: 1; trxiqpulse off: 0
@@ -150,16 +147,16 @@ begin
       case txiq_mode is 
          when MIMO_DDR => 
             if ch_en = "01" then 
-               m_axis_tkeep_async <= "11110000";
-            elsif ch_en = "10" then 
                m_axis_tkeep_async <= "00001111";
+            elsif ch_en = "10" then 
+               m_axis_tkeep_async <= "11110000";
             else 
                m_axis_tkeep_async <= (others=>'1');
             end if;
          when TXIQ_PULSE => 
             m_axis_tkeep_async <= (others=>'1');
          when SISO_DDR => 
-            m_axis_tkeep_async <= "11110000";
+            m_axis_tkeep_async <= "00001111";
          when others =>
             m_axis_tkeep_async <= (others=>'0');
       end case;
@@ -170,10 +167,15 @@ begin
 -- Output ports
 -- ----------------------------------------------------------------------------
    m_axis_tvalid              <= frame_valid;
-   m_axis_tdata(63 downto 48) <= ai & "0000";
-   m_axis_tdata(47 downto 32) <= aq & "0000";
-   m_axis_tdata(31 downto 16) <= bi & "0000";
-   m_axis_tdata(15 downto  0) <= bq & "0000";
+   --m_axis_tdata(63 downto 48) <= ai & "0000";
+   --m_axis_tdata(47 downto 32) <= aq & "0000";
+   --m_axis_tdata(31 downto 16) <= bi & "0000";
+   --m_axis_tdata(15 downto  0) <= bq & "0000";
+   
+   m_axis_tdata(63 downto 48) <= bq & "0000";
+   m_axis_tdata(47 downto 32) <= bi & "0000";
+   m_axis_tdata(31 downto 16) <= aq & "0000";
+   m_axis_tdata(15 downto  0) <= ai & "0000";
    m_axis_tkeep               <= m_axis_tkeep_async;
    m_axis_tlast               <= '0';
    

@@ -293,7 +293,12 @@ begin
       m_axis_rx_tready     => '1',  -- @end
       -- misc
       tx_active            => open, -- TX antenna enable flag
-      rx_active            => open  -- RX sample counter enable
+      rx_active            => open,  -- RX sample counter enable
+      -- sample compare
+      cmp_start            => '0',  --! Start sample comparison
+      cmp_length           => (others => '0'),  --! Number of samples to compare
+      cmp_done             => open,  --! Sample comparison done
+      cmp_error            => open   --! Sample comparison error
    );
    
 

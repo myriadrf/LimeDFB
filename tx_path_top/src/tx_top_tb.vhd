@@ -29,7 +29,7 @@ architecture BENCH of TX_TOP_TB is
    signal s_axis_areset_n                 : std_logic;
    signal s_axis_aclk                     : std_logic;
    signal s_axis_tvalid                   : std_logic;
-   signal s_axis_tdata                    : std_logic_vector(127 downto 0);
+   signal s_axis_tdata                    : std_logic_vector(63 downto 0);
    signal s_axis_tready                   : std_logic;
    signal s_axis_tlast                    : std_logic;
 
@@ -39,6 +39,11 @@ architecture BENCH of TX_TOP_TB is
    signal m_axis_tdata                    : std_logic_vector(63 downto 0);
    signal m_axis_tready                   : std_logic;
    signal m_axis_tlast                    : std_logic;
+
+   signal output_tvalid                   : std_logic;      
+   signal output_tready                   : std_logic;
+   signal output_tdata                    : std_logic_vector(63 downto 0);
+   signal output_req                      : std_logic;
 
    signal s_axis_in                       : T_S_AXIS_IN;
    signal s_axis_out                      : T_S_AXIS_OUT;
@@ -69,6 +74,10 @@ architecture BENCH of TX_TOP_TB is
    signal pct_sync_dis                    : std_logic;
    signal pct_loss_flg                    : std_logic;
    signal pct_loss_flg_clr                : std_logic;
+   
+   signal clk_a, clk_b : std_logic;
+   signal cnt_a, cnt_b : unsigned(7 downto 0) := (others=>'0');
+   signal cnt_a_reg, cnt_b_reg : unsigned(7 downto 0):= (others=>'0');
 
    component TX_PATH_TOP is
       generic (
@@ -78,7 +87,7 @@ architecture BENCH of TX_TOP_TB is
          S_AXIS_IQPACKET_ARESET_N      : in    std_logic;
          S_AXIS_IQPACKET_ACLK          : in    std_logic;
          S_AXIS_IQPACKET_TVALID        : in    std_logic;
-         S_AXIS_IQPACKET_TDATA         : in    std_logic_vector(127 downto 0);
+         S_AXIS_IQPACKET_TDATA         : in    std_logic_vector(63 downto 0);
          S_AXIS_IQPACKET_TREADY        : out   std_logic;
          S_AXIS_IQPACKET_TLAST         : in    std_logic;
          --
@@ -99,23 +108,94 @@ architecture BENCH of TX_TOP_TB is
          RESET_N                       : in    std_logic
       );
    end component;
+   
+   COMPONENT axis_dwidth_converter_128_to_64
+  PORT (
+    aclk : IN STD_LOGIC;
+    aresetn : IN STD_LOGIC;
+    s_axis_tvalid : IN STD_LOGIC;
+    s_axis_tready : OUT STD_LOGIC;
+    s_axis_tdata : IN STD_LOGIC_VECTOR(127 DOWNTO 0);
+    s_axis_tlast : IN STD_LOGIC;
+    m_axis_tvalid : OUT STD_LOGIC;
+    m_axis_tready : IN STD_LOGIC;
+    m_axis_tdata : OUT STD_LOGIC_VECTOR(63 DOWNTO 0);
+    m_axis_tlast : OUT STD_LOGIC 
+  );
+END COMPONENT;
 
 begin
 
-   s_axis_in.ARESET_N <= s_axis_areset_n;
-   s_axis_in.ACLK     <= s_axis_aclk;
-   s_axis_in.TREADY   <= s_axis_tready;
-   s_axis_tvalid      <= s_axis_out.TVALID;
-   s_axis_tdata       <= s_axis_out.TDATA;
-   s_axis_tlast       <= s_axis_out.TLAST;
+   process is
+   begin
+
+      if (clk_a = '0') then
+         clk_a <= '1';
+      else
+         clk_a <= '0';
+      end if;
+
+      wait for C_S_AXIS_CLK_PERIOD / 2;
+
+   end process;
+
+    clk_b <= clk_a;
+    
+    
+    process(clk_a) 
+    begin 
+        if rising_edge (clk_a) then 
+            cnt_a <= cnt_a + 1;
+        end if;
+    end process;
+    
+    process(clk_b) 
+    begin 
+        if rising_edge (clk_b) then 
+            cnt_b<= cnt_b + 1;
+        end if;
+    end process;
+    
+    
+    process(clk_b)
+    begin
+        if rising_edge (clk_b) then 
+            cnt_a_reg <= cnt_a;
+            cnt_b_reg <= cnt_b;
+        end if;
+    end process;
+        
+
+
+
+axis_dwidth_converter_128_to_64_inst : axis_dwidth_converter_128_to_64
+  PORT MAP (
+    aclk            => s_axis_in.ACLK,
+    aresetn         => s_axis_in.ARESET_N,
+    s_axis_tvalid   => s_axis_out.TVALID,
+    s_axis_tready   => s_axis_in.TREADY,
+    s_axis_tdata    => s_axis_out.TDATA,
+    s_axis_tlast    => s_axis_out.TLAST,
+    m_axis_tvalid   => s_axis_tvalid,
+    m_axis_tready   => s_axis_tready,
+    m_axis_tdata    => s_axis_tdata,
+    m_axis_tlast    => s_axis_tlast
+  );
+
+   --s_axis_in.ARESET_N <= s_axis_areset_n;
+   --s_axis_in.ACLK     <= s_axis_aclk;
+   --s_axis_in.TREADY   <= s_axis_tready;
+   --s_axis_tvalid      <= s_axis_out.TVALID;
+   --s_axis_tdata       <= s_axis_out.TDATA;
+   --s_axis_tlast       <= s_axis_out.TLAST;
 
    inst0_tx_top : TX_PATH_TOP
       generic map (
          G_BUFF_COUNT => 4
       )
       port map (
-         S_AXIS_IQPACKET_ARESET_N => s_axis_areset_n,
-         S_AXIS_IQPACKET_ACLK     => s_axis_aclk,
+         S_AXIS_IQPACKET_ARESET_N => s_axis_in.ARESET_N,
+         S_AXIS_IQPACKET_ACLK     => s_axis_in.ACLK,
          S_AXIS_IQPACKET_TVALID   => s_axis_tvalid,
          S_AXIS_IQPACKET_TDATA    => s_axis_tdata,
          S_AXIS_IQPACKET_TREADY   => s_axis_tready,
@@ -135,17 +215,47 @@ begin
          PCT_LOSS_FLG_CLR => pct_loss_flg_clr,
          CFG_CH_EN        => ch_en,
          CFG_SAMPLE_WIDTH => sample_width,
-         RESET_N          => s_axis_areset_n
+         RESET_N          => s_axis_in.ARESET_N
+      );
+
+
+   output_fifo : entity work.fifo_axis_wrap
+      generic map (
+         G_CLOCKING_MODE       => "common_clock",
+         G_PACKET_FIFO         => "false",
+         G_FIFO_DEPTH          => 32,
+         G_TDATA_WIDTH         => 64,
+         G_RD_DATA_COUNT_WIDTH => 6,
+         G_WR_DATA_COUNT_WIDTH => 6
+      )
+      port map (
+         S_AXIS_ARESETN     => m_axis_areset_n,
+         S_AXIS_ACLK        => m_axis_aclk,
+         S_AXIS_TVALID      => m_axis_tvalid,
+         S_AXIS_TREADY      => m_axis_tready,
+         S_AXIS_TDATA       => m_axis_tdata,
+         S_AXIS_TLAST       => '0',
+
+         M_AXIS_ACLK        => m_axis_aclk,
+         M_AXIS_TVALID      => output_tvalid,
+         M_AXIS_TREADY      => output_tready,
+         M_AXIS_TDATA       => output_tdata ,
+         M_AXIS_TLAST       => open,
+
+         ALMOST_EMPTY_AXIS  => open,
+         ALMOST_FULL_AXIS   => open,
+         RD_DATA_COUNT_AXIS => open,
+         WR_DATA_COUNT_AXIS => open
       );
 
    ------------------------------------------
    RESET_GEN : process is
    begin
 
-      s_axis_areset_n <= '0';
+      s_axis_in.ARESET_N <= '0';
       m_axis_areset_n <= '0';
       wait for 1000 ns;
-      s_axis_areset_n <= '1';
+      s_axis_in.ARESET_N <= '1';
       m_axis_areset_n <= '1';
       wait;
 
@@ -155,10 +265,10 @@ begin
    S_AXIS_CLK_GEN : process is
    begin
 
-      if (s_axis_aclk = '0') then
-         s_axis_aclk <= '1';
+      if (s_axis_in.ACLK = '0') then
+         s_axis_in.ACLK <= '1';
       else
-         s_axis_aclk <= '0';
+         s_axis_in.ACLK <= '0';
       end if;
 
       wait for C_S_AXIS_CLK_PERIOD / 2;
@@ -195,12 +305,12 @@ begin
 
    ------------------------------------------
    -- s_axis clock counter
-   S_AXIS_CLK_CNT : process (s_axis_aclk, s_axis_areset_n) is
+   S_AXIS_CLK_CNT : process (s_axis_in.ACLK, s_axis_in.ARESET_N) is
    begin
 
-      if (s_axis_areset_n = '0') then
+      if (s_axis_in.ARESET_N = '0') then
          s_axis_clk_count <= 0;
-      elsif rising_edge(s_axis_aclk) then
+      elsif rising_edge(s_axis_in.ACLK) then
          s_axis_clk_count <= s_axis_clk_count + 1;
       end if;
 
@@ -274,8 +384,8 @@ begin
          wait until m_axis_areset_n = '1';
       end if;
 
-      if (s_axis_areset_n = '0') then
-         wait until s_axis_areset_n = '1';
+      if (s_axis_in.ARESET_N = '0') then
+         wait until s_axis_in.ARESET_N = '1';
       end if;
 
       p_test_16bit_data(
@@ -332,28 +442,47 @@ begin
 
    end process DATA_GEN;
 
+   -- Receive data from the axis interface and store it in the arrays
    DATA_RECV : process (m_axis_aclk, m_axis_areset_n) is
    begin
 
       if (m_axis_areset_n = '0') then
-         m_axis_tready <= '0';
+         -- Reset values
          data_counter  <= 0;
+         output_req    <= '0';
       elsif rising_edge(m_axis_aclk) then
+         -- Default value
+         output_tready <= '0';
          if (data_counter_rst = '0') then
-            m_axis_tready <= '1';
-            if (m_axis_tvalid = '1') then
-               ai_data_arr(data_counter) <= m_axis_tdata(63   downto   48);
-               aq_data_arr(data_counter) <= m_axis_tdata(47   downto   32);
-               bi_data_arr(data_counter) <= m_axis_tdata(31   downto   16);
-               bq_data_arr(data_counter) <= m_axis_tdata(15   downto   0);
-               ai_data                   <= m_axis_tdata(63   downto   48);
-               aq_data                   <= m_axis_tdata(47   downto   32);
-               bi_data                   <= m_axis_tdata(31   downto   16);
-               bq_data                   <= m_axis_tdata(15   downto   0);
-               data_counter              <= data_counter + 1;
+            -- If the request signal is low and the data counter is not reset
+            if output_req = '0' then
+               -- Set the request signal to high
+               output_req <= '1';
+            else
+               -- If there is data available on the axis interface
+               if (output_tvalid = '1') then
+                  output_tready <= '1';
+                  -- Set the request and ready signals to low
+                  output_req    <= '0';
+                  -- Store the data in the arrays
+                  ai_data_arr(data_counter) <= output_tdata(63   downto   48);
+                  aq_data_arr(data_counter) <= output_tdata(47   downto   32);
+                  bi_data_arr(data_counter) <= output_tdata(31   downto   16);
+                  bq_data_arr(data_counter) <= output_tdata(15   downto   0);
+                  -- Store the data in the signals
+                  ai_data                   <= output_tdata(63   downto   48);
+                  aq_data                   <= output_tdata(47   downto   32);
+                  bi_data                   <= output_tdata(31   downto   16);
+                  bq_data                   <= output_tdata(15   downto   0);
+                  -- Increment the data counter
+                  data_counter              <= data_counter + 1;
+               end if;
             end if;
          else
+            -- Reset the data counter
             data_counter <= 0;
+            -- Reset the request signal
+            output_req   <= '0';
          end if;
       end if;
 

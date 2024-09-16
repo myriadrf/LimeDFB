@@ -26,6 +26,8 @@ set SYNTH_SRC [list \
    $script_path/src/lms7002_rx.vhd        \
    $script_path/src/lms7002_ddout.vhd     \
    $script_path/src/lms7002_ddin.vhd      \
+   $script_path/src/smpl_cmp.vhd          \
+   $script_path/src/txiq_tst_ptrn.vhd     \
 ]
 
 

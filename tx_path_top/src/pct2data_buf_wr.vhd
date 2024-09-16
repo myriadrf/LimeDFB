@@ -120,13 +120,16 @@ begin
                conn_buf <= '1';
                if (S_AXIS_TVALID = '1' and M_AXIS_TREADY(curbuf) = '1') then
                   rd_cnt <= rd_cnt + 1;
-                  if (rd_cnt = rd_cnt_max - 2) then
-                     -- this will only be read during the last cycle
-                     M_AXIS_TLAST(curbuf) <= '1';
-                  elsif (rd_cnt = rd_cnt_max - 1) then
+                  if (rd_cnt = rd_cnt_max - 1) then
                      state    <= SW_BUF;
                      conn_buf <= '0';
                   end if;
+                  
+               end if;
+               
+               if (rd_cnt >= (rd_cnt_max - 1)) then
+                    -- this will only be read during the last cycle
+                    M_AXIS_TLAST(curbuf) <= '1';
                end if;
 
             when SW_BUF =>

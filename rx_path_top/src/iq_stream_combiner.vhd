@@ -46,8 +46,8 @@ architecture ARCH of IQ_STREAM_COMBINER is
    -- declare signals,  components here
 
    signal s_axis_tready_reg   : std_logic;
-   signal m_axis_tdata_reg    : std_logic_vector(S_AXIS_TDATA'length -1 downto 0);
-   signal m_axis_tvalid_reg   : std_logic_vector(1 downto 0);
+   signal m_axis_tdata_reg    : std_logic_vector(95 downto 0);
+   signal m_axis_tvalid_reg   : std_logic_vector(2 downto 0);
 
 begin
 
@@ -62,11 +62,13 @@ begin
       elsif rising_edge(CLK) then
          if (S_AXIS_TVALID = '1') then
             if (S_AXIS_TKEEP = x"FF") then
-               m_axis_tdata_reg <= S_AXIS_TDATA;
+               m_axis_tdata_reg(95 downto 32) <= S_AXIS_TDATA;
             elsif (S_AXIS_TKEEP = x"0F") then
-               m_axis_tdata_reg <= m_axis_tdata_reg(31 downto 0) & S_AXIS_TDATA(31 downto 0);
+               --m_axis_tdata_reg <= m_axis_tdata_reg(63 downto 0) & S_AXIS_TDATA(31 downto 0);
+               m_axis_tdata_reg <= S_AXIS_TDATA(31 downto 0) & m_axis_tdata_reg(95 downto 32);
             elsif (S_AXIS_TKEEP = x"F0") then
-               m_axis_tdata_reg <= m_axis_tdata_reg(31 downto 0) & S_AXIS_TDATA(63 downto 32);
+               --m_axis_tdata_reg <= m_axis_tdata_reg(63 downto 0) & S_AXIS_TDATA(63 downto 32);
+               m_axis_tdata_reg <= S_AXIS_TDATA(63 downto 32) & m_axis_tdata_reg(95 downto 32);
             else
                m_axis_tdata_reg <= m_axis_tdata_reg;
             end if;
@@ -88,18 +90,18 @@ begin
       elsif rising_edge(CLK) then
          if (S_AXIS_TVALID = '1') then
             if (S_AXIS_TKEEP = x"FF") then
-               m_axis_tvalid_reg <= "11";
+               m_axis_tvalid_reg <= "111";
             elsif (S_AXIS_TKEEP = x"0F"  or  S_AXIS_TKEEP = x"F0") then
-               if (m_axis_tvalid_reg = "11") then
-                  m_axis_tvalid_reg <= '0' & '1';
+               if (m_axis_tvalid_reg = "111") then
+                  m_axis_tvalid_reg <= "00" & '1';
                else
-                  m_axis_tvalid_reg <= m_axis_tvalid_reg(0) & '1';
+                  m_axis_tvalid_reg <= m_axis_tvalid_reg(1 downto 0) & '1';
                end if;
             else
-               m_axis_tvalid_reg <= m_axis_tvalid_reg(0) & '0';
+               m_axis_tvalid_reg <= m_axis_tvalid_reg(1 downto 0) & '0';
             end if;
-         elsif (m_axis_tvalid_reg = "11") then
-            m_axis_tvalid_reg <= (others => '0');
+         elsif (m_axis_tvalid_reg = "111") then
+            m_axis_tvalid_reg <= "00" & '1';
          else
             m_axis_tvalid_reg <= m_axis_tvalid_reg;
          end if;
@@ -123,8 +125,8 @@ begin
    -- ----------------------------------------------------------------------------
    S_AXIS_TREADY <= s_axis_tready_reg;
 
-   M_AXIS_TVALID <= m_axis_tvalid_reg(1);
-   M_AXIS_TDATA  <= m_axis_tdata_reg;
+   M_AXIS_TVALID <= m_axis_tvalid_reg(2);
+   M_AXIS_TDATA  <= m_axis_tdata_reg(95 downto 32);
    M_AXIS_TKEEP  <= (others => '1');
 
 end architecture ARCH;

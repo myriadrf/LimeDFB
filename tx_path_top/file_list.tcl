@@ -19,11 +19,12 @@ set DEP_FILES [ list \
 # Synthesis files
 ##################################################################
 set SYNTH_SRC [list \
-   $script_path/src/pct2data_buf_rd.vhd   \
-   $script_path/src/pct2data_buf_wr.vhd              \
+   $script_path/src/pct2data_buf_rd.vhd    \
+   $script_path/src/pct2data_buf_wr.vhd    \
    $script_path/src/sample_unpack.vhd      \
-   $script_path/src/tx_path_top.vhd    \
+   $script_path/src/tx_path_top.vhd        \
    $script_path/src/tx_top_pkg.vhd         \
+   $script_path/srv/sample_padder.vhd      \
 ]
 
 
