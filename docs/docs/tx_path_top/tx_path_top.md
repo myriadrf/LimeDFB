@@ -38,7 +38,7 @@ Functionality:
 
 | Generic name | Type    | Value | Description                                                    |
 | ------------ | ------- | ----- | -------------------------------------------------------------- |
-| G_BUFF_COUNT | integer | 4     | Number of packet buffers to use. Recommended values are 2 or 4 |
+| G_BUFF_COUNT | integer | 2     | Number of packet buffers to use. Recommended values are 2 or 4 |
 
 ## Ports
 
@@ -59,14 +59,14 @@ Functionality:
 
 #### s_axis_iqpacket
 
-| Port name                | Direction | Type                           | Description                         |
-| ------------------------ | --------- | ------------------------------ | ----------------------------------- |
-| S_AXIS_IQPACKET_ARESET_N | in        | std_logic                      | S_AXIS interface active low reset   |
-| S_AXIS_IQPACKET_ACLK     | in        | std_logic                      | S_AXIS interface clock              |
-| S_AXIS_IQPACKET_TVALID   | in        | std_logic                      | S_AXIS interface data valid         |
-| S_AXIS_IQPACKET_TDATA    | in        | std_logic_vector(127 downto 0) | S_AXIS interface data               |
-| S_AXIS_IQPACKET_TREADY   | out       | std_logic                      | S_AXIS interface data ready         |
-| S_AXIS_IQPACKET_TLAST    | in        | std_logic                      | S_AXIS interface data last (unused) |
+| Port name                | Direction | Type                          | Description                         |
+| ------------------------ | --------- | ----------------------------- | ----------------------------------- |
+| S_AXIS_IQPACKET_ARESET_N | in        | std_logic                     | S_AXIS interface active low reset   |
+| S_AXIS_IQPACKET_ACLK     | in        | std_logic                     | S_AXIS interface clock              |
+| S_AXIS_IQPACKET_TVALID   | in        | std_logic                     | S_AXIS interface data valid         |
+| S_AXIS_IQPACKET_TDATA    | in        | std_logic_vector(63 downto 0) | S_AXIS interface data               |
+| S_AXIS_IQPACKET_TREADY   | out       | std_logic                     | S_AXIS interface data ready         |
+| S_AXIS_IQPACKET_TLAST    | in        | std_logic                     | S_AXIS interface data last (unused) |
 #### m_axis_iqsample
 
 | Port name                | Direction | Type                          | Description                         |
@@ -82,6 +82,10 @@ Functionality:
 
 | Name                      | Type                                                                                     | Description |
 | ------------------------- | ---------------------------------------------------------------------------------------- | ----------- |
+| axis_iqpacket_tvalid      | std_logic                                                                                |             |
+| axis_iqpacket_tready      | std_logic                                                                                |             |
+| axis_iqpacket_tdata       | std_logic_vector(127 downto 0)                                                           |             |
+| axis_iqpacket_tlast       | std_logic                                                                                |             |
 | p2d_wr_m_axis_areset_n    | std_logic                                                                                |             |
 | p2d_wr_m_axis_tvalid      | std_logic_vector(G_BUFF_COUNT - 1 downto 0)                                              |             |
 | p2d_wr_m_axis_tdata       | std_logic_vector(127 downto 0)                                                           |             |
@@ -99,10 +103,13 @@ Functionality:
 | rx_sample_nr_rd           | std_logic                                                                                |             |
 | pct_loss_flg_clr_reg      | std_logic                                                                                |             |
 | pct_loss_flg_clr_reg_reg  | std_logic                                                                                |             |
+| unpack_bypass             | std_logic                                                                                |             |
 | usedw_vector              | T_USEDW_VECTOR                                                                           |             |
 | p2d_wr_axis               | T_AXIS_ARRAY                                                                             |             |
 | p2d_rd_axis               | T_AXIS_ARRAY                                                                             |             |
 | smpl_unpack_axis          | t_AXI_STREAM(tdata(127 downto 0),<br><span style="padding-left:20px"> tkeep(0 downto 0)) |             |
+| smpl_buf_axis             | t_AXI_STREAM(tdata(127 downto 0),<br><span style="padding-left:20px"> tkeep(0 downto 0)) |             |
+| data_pad_axis             | t_AXI_STREAM(tdata(127 downto 0),<br><span style="padding-left:20px"> tkeep(0 downto 0)) |             |
 
 ## Constants
 
@@ -123,6 +130,9 @@ Functionality:
 ## Instantiations
 
 - rx_sample_nr_cdc: work.fifo_axis_wrap
+- axis_dwidth_converter_64_to_128_inst: axis_dwidth_converter_64_to_128
 - inst0_pct2data_buf_wr: work.pct2data_buf_wr
 - inst2_pct2data_buf_rd: work.pct2data_buf_rd
+- inst3_0_unpack_128_to_48: work.sample_padder
+- inst3_1_mini_sample_buffer: work.fifo_axis_wrap
 - inst3_sample_unpack: work.sample_unpack
