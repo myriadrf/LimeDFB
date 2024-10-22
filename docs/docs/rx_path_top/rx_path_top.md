@@ -8,15 +8,13 @@
 
 Top module for packaging IQ samples received from lms7002 module into stream packets.
 
-Functionality:
-- Pack IQ samples from s_axis_iqsmpls stream int Stream packets
-- Store Stream packets into AXIS buffer.
+Functionality: - Pack IQ samples from s_axis_iqsmpls stream int Stream packets - Store Stream packets into AXIS buffer.
 
 
 
 
 
-![alt text](wavedrom_TgPf0.svg "title")
+![alt text](wavedrom_VZPF0.svg "title")
 
  
 
@@ -56,15 +54,15 @@ Functionality:
 | S_AXIS_IQSMPLS_TLAST   | in        | std_logic                     |                                                                       |
 #### M_AXIS_IQPACKET
 
-| Port name               | Direction | Type                           | Description |
-| ----------------------- | --------- | ------------------------------ | ----------- |
-| M_AXIS_IQPACKET_ACLK    | in        | std_logic                      |             |
-| M_AXIS_IQPACKET_ARESETN | in        | std_logic                      |             |
-| M_AXIS_IQPACKET_TVALID  | out       | std_logic                      |             |
-| M_AXIS_IQPACKET_TREADY  | in        | std_logic                      |             |
-| M_AXIS_IQPACKET_TDATA   | out       | std_logic_vector(127 downto 0) |             |
-| M_AXIS_IQPACKET_TKEEP   | out       | std_logic_vector(15 downto 0)  |             |
-| M_AXIS_IQPACKET_TLAST   | out       | std_logic                      |             |
+| Port name               | Direction | Type                          | Description |
+| ----------------------- | --------- | ----------------------------- | ----------- |
+| M_AXIS_IQPACKET_ACLK    | in        | std_logic                     |             |
+| M_AXIS_IQPACKET_ARESETN | in        | std_logic                     |             |
+| M_AXIS_IQPACKET_TVALID  | out       | std_logic                     |             |
+| M_AXIS_IQPACKET_TREADY  | in        | std_logic                     |             |
+| M_AXIS_IQPACKET_TDATA   | out       | std_logic_vector(63 downto 0) |             |
+| M_AXIS_IQPACKET_TKEEP   | out       | std_logic_vector(7 downto 0)  |             |
+| M_AXIS_IQPACKET_TLAST   | out       | std_logic                     |             |
 #### CFG
 
 | Port name      | Direction | Type                          | Description                                                 |
@@ -96,13 +94,18 @@ Functionality:
 | axis_iq128                  | t_AXI_STREAM(tdata(127 downto 0),<br><span style="padding-left:20px"> tkeep(15 downto 0)) |             |
 | axis_iqsmpls_fifo           | t_AXI_STREAM(tdata(127 downto 0),<br><span style="padding-left:20px"> tkeep(15 downto 0)) |             |
 | axis_iqpacket_fifo          | t_AXI_STREAM(tdata(127 downto 0),<br><span style="padding-left:20px"> tkeep(15 downto 0)) |             |
+| axis_iqpacket               | t_AXI_STREAM(tdata(127 downto 0),<br><span style="padding-left:20px"> tkeep(15 downto 0)) |             |
 | axis_iqpacket_wr_data_count | std_logic_vector(8 downto 0)                                                              |             |
 | sample_nr_counter           | unsigned(63 downto 0)                                                                     |             |
 | bitpacked_sample_nr_counter | unsigned(63 downto 0)                                                                     |             |
+| cfg_pkt_size_mul8           | std_logic_vector(15 downto 0)                                                             |             |
+| cfg_pkt_size_div128         | std_logic_vector(15 downto 0)                                                             |             |
+| pkt_size                    | std_logic_vector(15 downto 0)                                                             |             |
 
 ## Processes
 - SAMPLE_CNT_PROC: ( S_AXIS_IQSMPLS_ACLK, S_AXIS_IQSMPLS_ARESETN )
 - PACKET_SAMPLE_CNT_PROC: ( CLK, RESET_N )
+- unnamed: ( all )
 
 ## Instantiations
 
@@ -111,3 +114,4 @@ Functionality:
 - inst_axis_nto1_converter: work.axis_nto1_converter
 - inst_axis_iqsmpls_fifo: work.fifo_axis_wrap
 - inst_data2packets_fsm: work.data2packets_fsm
+- inst_axis_dwidth_converter_128_to_64: axis_dwidth_converter_128_to_64
