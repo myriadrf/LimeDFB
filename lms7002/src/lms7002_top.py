@@ -12,7 +12,8 @@ from litescope import LiteScopeAnalyzer
 
 from gateware.lms7002_clk import ClkCfgRegs
 from gateware.lms7002_clk import XilinxLmsMMCM
-
+from gateware.lms7002_clk import ClkMux
+from gateware.lms7002_clk import ClkDlyFxd
 
 
 class lms7002_top(LiteXModule):
@@ -121,12 +122,79 @@ class lms7002_top(LiteXModule):
 
         # # Clocking control registers
         self.CLK_CTRL = ClkCfgRegs()
+
+
+        # TX clk
+        # Xilinx MMCM is used to support configurable interface frequencies >5NHz
+        # Muxed and delayed clock version is used for interface frequencies <5MHz
+
+        # Global TX CLock
+        self.cd_txclk_global = ClockDomain()
+        self.comb += self.cd_txclk_global.clk.eq(lms7002_pads.mclk1)
+
         # TX PLL.
-        self.txclk = ClockDomain()
-        self.PLL0_TX = XilinxLmsMMCM(platform, speedgrade=-2, max_freq=122.88e6, mclk=lms7002_pads.mclk1, fclk=lms7002_pads.fclk1, logic_cd=self.txclk)
+        self.cd_txpll_clk_c0 = ClockDomain()
+        self.cd_txpll_clk_c1 = ClockDomain()
+        self.PLL0_TX = XilinxLmsMMCM(platform, speedgrade=-2, max_freq=122.88e6, mclk=self.cd_txclk_global.clk,
+                                     fclk=self.cd_txpll_clk_c0.clk, logic_cd=self.cd_txpll_clk_c1)
+
+        #TX CLK C0 mux
+        self.cd_txclk_c0_muxed = ClockDomain()
+        self.txclk_mux = ClkMux(i0=self.cd_txpll_clk_c0.clk, i1=self.cd_txclk_global.clk,
+                                o=self.cd_txclk_c0_muxed.clk, sel=self.CLK_CTRL.DRCT_TXCLK_EN.storage)
+
+        #TX CLK C1 delay
+        self.cd_txclk_c1_dly = ClockDomain()
+        self.txclk_c1_dlly = ClkDlyFxd(i=self.cd_txclk_global.clk, o=self.cd_txclk_c1_dly.clk)
+
+        #TX CLK C1 mux
+        self.cd_txclk = ClockDomain()
+        self.txclk_mux = ClkMux(i0=self.cd_txpll_clk_c1.clk, i1=self.cd_txclk_c1_dly.clk,
+                                o=self.cd_txclk.clk, sel=self.CLK_CTRL.DRCT_TXCLK_EN.storage)
+
+        platform.add_false_path_constraints(
+            self.cd_txclk_global.clk,
+            self.cd_txpll_clk_c0.clk,
+            self.cd_txpll_clk_c1.clk,
+            self.cd_txclk_c0_muxed.clk,
+            self.cd_txclk_c1_dly.clk,
+            self.cd_txclk.clk)
+
+        # RX clk
+        # Xilinx MMCM is used to support configurable interface frequencies >5NHz
+        # Muxed and delayed clock version is used for interface frequencies <5MHz
+
+        # Global RX CLock
+        self.cd_rxclk_global = ClockDomain()
+        self.comb += self.cd_rxclk_global.clk.eq(lms7002_pads.mclk2)
+
         # RX PLL.
-        self.rxclk = ClockDomain()
-        self.PLL1_RX = XilinxLmsMMCM(platform, speedgrade=-2, max_freq=122.88e6, mclk=lms7002_pads.mclk2, fclk=lms7002_pads.fclk2, logic_cd=self.rxclk)
+        self.cd_rxpll_clk_c0 = ClockDomain()
+        self.cd_rxpll_clk_c1 = ClockDomain()
+        self.PLL1_RX = XilinxLmsMMCM(platform, speedgrade=-2, max_freq=122.88e6, mclk=self.cd_rxclk_global.clk,
+                                     fclk=self.cd_rxpll_clk_c0.clk, logic_cd=self.cd_rxpll_clk_c1)
+
+        #RX CLK C0 mux
+        self.cd_rxclk_c0_muxed = ClockDomain()
+        self.rxclk_mux = ClkMux(i0=self.cd_rxpll_clk_c0.clk, i1=self.cd_rxclk_global.clk,
+                                o=self.cd_rxclk_c0_muxed.clk, sel=self.CLK_CTRL.DRCT_RXCLK_EN.storage)
+
+        #RX CLK C1 delay
+        self.cd_rxclk_c1_dly = ClockDomain()
+        self.rxclk_c1_dlly = ClkDlyFxd(i=self.cd_rxclk_global.clk, o=self.cd_rxclk_c1_dly.clk)
+
+        #RX CLK C1 mux
+        self.cd_rxclk = ClockDomain()
+        self.rxclk_mux = ClkMux(i0=self.cd_rxpll_clk_c1.clk, i1=self.cd_rxclk_c1_dly.clk,
+                                o=self.cd_rxclk.clk, sel=self.CLK_CTRL.DRCT_RXCLK_EN.storage)
+
+        platform.add_false_path_constraints(
+            self.cd_rxclk_global.clk,
+            self.cd_rxpll_clk_c0.clk,
+            self.cd_rxpll_clk_c1.clk,
+            self.cd_rxclk_c0_muxed.clk,
+            self.cd_rxclk_c1_dly.clk,
+            self.cd_rxclk.clk)
 
         # Create diq1
         self.diq1 = Signal(12)
@@ -137,6 +205,9 @@ class lms7002_top(LiteXModule):
                 target_signal = getattr(lms7002_pads, f'diq1_{i}')
                 source_signal = self.diq1[i]
                 self.comb += target_signal.eq(source_signal)
+
+        self.comb += lms7002_pads.fclk1.eq(self.cd_txclk_c0_muxed.clk)
+        self.comb += lms7002_pads.fclk2.eq(self.cd_rxclk_c0_muxed.clk)
 
         # Create params
         self.params_ios = dict()
@@ -153,13 +224,13 @@ class lms7002_top(LiteXModule):
         # Assign ports
         self.params_ios.update(
             # DIQ1
-            i_MCLK1=self.txclk.clk,
+            i_MCLK1=self.cd_txclk.clk,
             #o_FCLK1=lms7002_pads.fclk1,
             o_DIQ1=self.diq1,
             o_ENABLE_IQSEL1=lms7002_pads.iqsel1,
             o_TXNRX1=lms7002_pads.txnrx1,
             # DIQ2
-            i_MCLK2=self.rxclk.clk,
+            i_MCLK2=self.cd_rxclk.clk,
             #o_FCLK2=lms7002_pads.fclk2,
             i_DIQ2=lms7002_pads.diq2,
             i_ENABLE_IQSEL2=lms7002_pads.iqsel2,
