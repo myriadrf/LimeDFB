@@ -152,7 +152,9 @@ class lms7002_top(LiteXModule):
         self.txclk_mux = ClkMux(i0=self.cd_txpll_clk_c1.clk, i1=self.cd_txclk_c1_dly.clk,
                                 o=self.cd_txclk.clk, sel=self.CLK_CTRL.DRCT_TXCLK_EN.storage)
 
+        # Create clock groups (false paths) between sys clk and all clocks from TX interface tree
         platform.add_false_path_constraints(
+            LiteXContext.top.crg.cd_sys.clk,
             self.cd_txclk_global.clk,
             self.cd_txpll_clk_c0.clk,
             self.cd_txpll_clk_c1.clk,
@@ -188,7 +190,9 @@ class lms7002_top(LiteXModule):
         self.rxclk_mux = ClkMux(i0=self.cd_rxpll_clk_c1.clk, i1=self.cd_rxclk_c1_dly.clk,
                                 o=self.cd_rxclk.clk, sel=self.CLK_CTRL.DRCT_RXCLK_EN.storage)
 
+        # Create clock groups (false paths) between sys clk and all clocks from RX interface tree
         platform.add_false_path_constraints(
+            LiteXContext.top.crg.cd_sys.clk,
             self.cd_rxclk_global.clk,
             self.cd_rxpll_clk_c0.clk,
             self.cd_rxpll_clk_c1.clk,
