@@ -234,9 +234,11 @@ begin
 -- ---------------------------------------------------------------------------- 
 
    -- Catch pct_overflow when FIFO is full but tlast not received
-   process(s_axis_aclk)
+   process(s_axis_aclk, s_axis_aresetn)
    begin
-      if rising_edge(s_axis_aclk) then
+      if s_axis_aresetn = '0' then 
+         pct_overflow_latch <= '0';
+      elsif rising_edge(s_axis_aclk) then
          if s_axis_tvalid = '1' AND unsigned(wrusedw_sig) =  g_FIFO_DEPTH - 1 then
             pct_overflow_latch <= '1';
          elsif s_axis_tvalid = '1' AND s_axis_tlast = '1' AND full = '0' then
