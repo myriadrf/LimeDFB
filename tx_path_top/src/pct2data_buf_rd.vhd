@@ -69,6 +69,7 @@ architecture ARCH of PCT2DATA_BUF_RD is
    signal compare_equal                : std_logic;
 
    signal pct_loss_flg_int             : std_logic;
+   signal clr_buf_counter              : unsigned(2 downto 0);
 
 begin
 
@@ -113,8 +114,8 @@ begin
 
             when CLR_BUF =>
                S_AXIS_BUF_RESET_N(curbuf) <= '0';
-               -- Wait until buffer is reset
-               if (S_AXIS_TVALID(curbuf) = '0') then
+               -- Wait until buffer is reset, and min duration counter to expire
+               if (S_AXIS_TVALID(curbuf) = '0') and clr_buf_counter = "111" then
                   state <= SW_BUF;
                end if;
 
@@ -223,6 +224,27 @@ begin
       end if;
 
    end process TS_CMP;
+   
+   ---------------------
+   -- CLR_BUF counter
+   -- Make sure buffers are kept in reset for longer, so that
+   -- packet loss flags have time to propagate
+   ---------------------
+   clr_cnt : process(AXIS_ACLK, int_rst)
+   begin
+        if int_rst = '0' then
+            clr_buf_counter <= "000";
+        elsif rising_edge(AXIS_ACLK) then
+            if state = CLR_BUF then
+                clr_buf_counter <= clr_buf_counter;
+                if clr_buf_counter /= "111" then
+                    clr_buf_counter <= clr_buf_counter + 1;
+                end if;
+            else
+                clr_buf_counter <= "000";
+            end if;
+        end if;
+   end process;
 
    -- Output current buffer's data, last and valid signals to M_AXIS
    M_AXIS_TDATA  <= S_AXIS_TDATA(curbuf);                             -- Output current buffer's data to M_AXIS
