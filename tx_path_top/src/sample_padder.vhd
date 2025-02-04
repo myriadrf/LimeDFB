@@ -51,12 +51,18 @@ signal m_axis_tvalid_int : std_logic;
 signal m_axis_tlast_int  : std_logic;
 
 signal packet_in_progress : std_logic := '0';
+signal m_axis_tvalid_int_gate : std_logic;
+signal data_sent              : std_logic;
 
 
 type t_state_type is (state0, state1, state2, state3, end_packet);
 signal state : t_state_type;
+signal state_reg : t_state_type;
 				
 begin
+
+--Avoid duplicating data if input lags
+m_axis_tvalid_int_gate <= '0' when (state = state_reg) and data_sent = '1' else '1';
 
 datareg_proc : process(CLK, RESET_N, BYPASS)
 begin
@@ -82,7 +88,9 @@ fsm : process(CLK, RESET_N, BYPASS)
 begin
 	if RESET_N = '0' or BYPASS = '1' then
 		state <= state0;
+		state_reg <= state0;
 	elsif rising_edge(CLK) then
+	    state_reg <= state;
 		m_axis_tvalid_int <= '0';
 		m_axis_tlast_int  <= '0';
 		packet_end    <= '0';
@@ -90,42 +98,58 @@ begin
 		case state is 
 
 			when state0 =>
-			if S_AXIS_TVALID = '1' then
-				m_axis_tvalid_int <= '1';
-				if M_AXIS_TREADY = '1' and M_AXIS_TVALID = '1' then
-					state <= state1;
-				end if;
-			end if;
+                if M_AXIS_TREADY = '1' and M_AXIS_TVALID = '1' then
+                    data_sent <= '1';
+                end if;
+                if S_AXIS_TVALID = '1' then
+                    m_axis_tvalid_int <= '1';
+                    if (M_AXIS_TREADY = '1' and M_AXIS_TVALID = '1') or data_sent = '1' then
+                        state     <= state1;
+                        data_sent <= '0';
+                    end if;
+                end if;
 
 			when state1 =>
-			if S_AXIS_TVALID = '1' then
-				m_axis_tvalid_int <= '1';
-				if M_AXIS_TREADY = '1' and M_AXIS_TVALID = '1' then
-					state <= state2;
-				end if;
-			end if;
+                if M_AXIS_TREADY = '1' and M_AXIS_TVALID = '1' then
+                    data_sent <= '1';
+                end if;
+                if S_AXIS_TVALID = '1' then
+                    m_axis_tvalid_int <= '1';
+                    if (M_AXIS_TREADY = '1' and M_AXIS_TVALID = '1') or data_sent = '1' then
+                        state     <= state2;
+                        data_sent <= '0';
+                    end if;
+                end if;
 				
 			when state2 =>
-			if S_AXIS_TVALID = '1'  then
-				m_axis_tvalid_int <= '1';
-				if M_AXIS_TREADY = '1' and M_AXIS_TVALID = '1' then
-					state <= state3;
-					if S_AXIS_TLAST = '1' then
-						packet_end <= '1';
-					end if;
-				end if;
-			end if;
+                if (M_AXIS_TREADY = '1' and M_AXIS_TVALID = '1') or data_sent = '1' then
+                    data_sent <= '1';
+                end if;
+                if S_AXIS_TVALID = '1'  then
+                    m_axis_tvalid_int <= '1';
+                    if M_AXIS_TREADY = '1' and M_AXIS_TVALID = '1' then
+                        state     <= state3;
+                        data_sent <= '0';
+                        if S_AXIS_TLAST = '1' then
+                            packet_end <= '1';
+                        end if;
+                    end if;
+                end if;
 				
 			when state3 =>
-			
-			if S_AXIS_TVALID = '1' or packet_end = '1'  then
-				packet_end   <= packet_end; -- Maintain value while in state3
-				m_axis_tlast_int <= packet_end;
-				m_axis_tvalid_int <= '1';
-				if M_AXIS_TREADY = '1' and M_AXIS_TVALID = '1' then
-					state <= state0;
-				end if;
-			end if;
+                if M_AXIS_TREADY = '1' and M_AXIS_TVALID = '1' then
+                    data_sent <= '1';
+                end if;
+                
+                if S_AXIS_TVALID = '1' or packet_end = '1'  then
+                    packet_end   <= packet_end; -- Maintain value while in state3
+                    m_axis_tlast_int <= packet_end;
+                    m_axis_tvalid_int <= '1';
+                    if (M_AXIS_TREADY = '1' and M_AXIS_TVALID = '1') or data_sent = '1' then
+                        state     <= state0;
+                        data_sent <= '0';
+                    end if;
+                end if;
 							
 			when others => state <= state0;
 		end case;
@@ -193,7 +217,7 @@ s_axis_tready_int <= '1' when (M_AXIS_TREADY = '1' and M_AXIS_TVALID = '1' and s
 
 S_AXIS_TREADY <= s_axis_tready_int when BYPASS = '0' else M_AXIS_TREADY;
 M_AXIS_TDATA  <= m_axis_tdata_int  when BYPASS = '0' else S_AXIS_TDATA ;
-M_AXIS_TVALID <= m_axis_tvalid_int when BYPASS = '0' else S_AXIS_TVALID;
+M_AXIS_TVALID <= m_axis_tvalid_int and m_axis_tvalid_int_gate when BYPASS = '0' else S_AXIS_TVALID;
 M_AXIS_TLAST  <= m_axis_tlast_int  when BYPASS = '0' else S_AXIS_TLAST ;
 
 
