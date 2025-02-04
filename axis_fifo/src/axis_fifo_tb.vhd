@@ -49,6 +49,55 @@ architecture tb_behave of axis_fifo_tb is
    signal m_axis_tready    : std_logic;
    
    signal tdata            : std_logic_vector(c_DATA_WIDTH-1 downto 0);
+
+   signal max_packet_words : integer := 8;
+   signal tlast_gen        : boolean := true;
+
+
+   procedure generate_axis_tdata(
+      signal n_words     : in     integer;
+      signal gen_tlast   : in     BOOLEAN;
+      signal axis_aclk   : in     std_logic;
+      signal axis_tvalid : out    std_logic;
+      signal axis_tdata  : inout  std_logic_vector(c_DATA_WIDTH-1 downto 0);
+      signal axis_tkeep  : out    std_logic_vector(c_DATA_WIDTH/8 - 1 downto 0);
+      signal axis_tready : in     std_logic;
+      signal axis_tlast  : out    std_logic
+   ) is 
+   begin
+      axis_tvalid <= '0';
+      axis_tkeep  <= (others=>'1');
+      axis_tlast  <= '0';
+      wait until rising_edge(axis_aclk);
+      axis_tvalid <= '1';
+      for i in 0 to n_words-1 loop
+         wait until rising_edge(axis_aclk) and axis_tready='1';
+         axis_tdata<=std_logic_vector(unsigned(axis_tdata) + 1);
+         
+         if i = n_words - 2 then 
+            if gen_tlast then 
+               axis_tlast  <= '1';
+            end if;
+         end if;
+      end loop;
+      axis_tvalid <= '0';
+      axis_tlast  <= '0';
+
+   end procedure;
+
+
+   signal m_axis_tid    : std_logic_vector(7 downto 0);
+   signal m_axis_tdest : std_logic_vector(7 downto 0);
+   signal m_axis_tuser : std_logic_vector(0 downto 0);
+
+   signal s_status_depth         : std_logic_vector(4 downto 0); 
+   signal s_status_depth_commit  : std_logic_vector(4 downto 0);
+   signal m_status_depth         : std_logic_vector(4 downto 0);
+   signal m_status_depth_commit  : std_logic_vector(4 downto 0);
+
+
+
+
    
   
 begin 
@@ -74,51 +123,321 @@ begin
    s_axis_aresetn <= reset_n;
    m_axis_aresetn <= reset_n;
    
-   -- Design under test  
-   dut_axi_stream_fifo : entity work.axi_stream_fifo
-   generic map(
-      g_DATA_WIDTH  => c_DATA_WIDTH,
-      g_FIFO_DEPTH  => c_FIFO_DEPTH
-   )
-   port map(
-      -- AXI Stream Write Interface
-      s_axis_aclk    => clk0  ,
-      s_axis_aresetn => s_axis_aresetn,
-      s_axis_tdata   => s_axis_tdata ,
-      s_axis_tkeep   => s_axis_tkeep ,
-      s_axis_tlast   => s_axis_tlast ,
-      s_axis_tvalid  => s_axis_tvalid,
-      s_axis_tready  => s_axis_tready,
-      
-      -- AXI Stream Read Interface
-      m_axis_aclk    => clk1  ,
-      m_axis_aresetn => m_axis_aresetn,
-      m_axis_tdata   => m_axis_tdata ,
-      m_axis_tkeep   => m_axis_tkeep ,
-      m_axis_tlast   => m_axis_tlast ,
-      m_axis_tvalid  => m_axis_tvalid,
-      m_axis_tready  => m_axis_tready
-   );
+   ---- Design under test  
+      dut_axi_stream_fifo : entity work.axi_stream_fifo
+      generic map(
+         g_DATA_WIDTH  => c_DATA_WIDTH,
+         g_FIFO_DEPTH  => c_FIFO_DEPTH,
+         g_PACKET_MODE => "True"
+      )
+      port map(
+         -- AXI Stream Write Interface
+         s_axis_aclk    => clk0  ,
+         s_axis_aresetn => s_axis_aresetn,
+         s_axis_tdata   => s_axis_tdata ,
+         s_axis_tkeep   => s_axis_tkeep ,
+         s_axis_tlast   => s_axis_tlast ,
+         s_axis_tvalid  => s_axis_tvalid,
+         s_axis_tready  => s_axis_tready,
+         
+         -- AXI Stream Read Interface
+         m_axis_aclk    => clk1  ,
+         m_axis_aresetn => m_axis_aresetn,
+         m_axis_tdata   => m_axis_tdata ,
+         m_axis_tkeep   => m_axis_tkeep ,
+         m_axis_tlast   => m_axis_tlast ,
+         m_axis_tvalid  => m_axis_tvalid,
+         m_axis_tready  => m_axis_tready
+      );
+
+
+--fifo_axis_wrap : entity work.fifo_axis_wrap
+--   generic map(
+--      g_CLOCKING_MODE      => "independent_clock", -- "common_clock" or "independent_clock"
+--      g_PACKET_FIFO        => "true",            -- Packet FIFO mode
+--      g_FIFO_DEPTH         => 16,
+--      g_TDATA_WIDTH        => 32,
+--      g_RD_DATA_COUNT_WIDTH=> 4,
+--      g_WR_DATA_COUNT_WIDTH=> 4
+--   )
+--   port map(
+--      s_axis_aresetn       => s_axis_aresetn,
+--      s_axis_aclk          => clk0,
+--      s_axis_tvalid        => s_axis_tvalid,
+--      s_axis_tready        => s_axis_tready,
+--      s_axis_tdata         => s_axis_tdata,
+--      s_axis_tkeep         => s_axis_tkeep,
+--      s_axis_tlast         => s_axis_tlast,
+--   
+--      m_axis_aclk          => clk1,
+--      m_axis_tvalid        => m_axis_tvalid,
+--      m_axis_tready        => m_axis_tready,
+--      m_axis_tdata         => m_axis_tdata,
+--      m_axis_tkeep         => m_axis_tkeep,
+--      m_axis_tlast         => m_axis_tlast,
+--   
+--      almost_empty_axis    => open, 
+--      almost_full_axis     => open, 
+--      rd_data_count_axis   => open, 
+--      wr_data_count_axis   => open
+--   ); 
+
+--axis_async_fifo_inst : entity work.axis_async_fifo
+--generic map(
+--    -- FIFO depth in words
+--    -- KEEP_WIDTH words per cycle if KEEP_ENABLE set
+--    -- Rounded up to nearest power of 2 cycles
+--    DEPTH => 16,
+--    -- Width of AXI stream interfaces in bits
+--    DATA_WIDTH => 32,
+--    -- Propagate tkeep signal
+--    -- If disabled, tkeep assumed to be 1'b1
+--    KEEP_ENABLE => False,
+--    -- tkeep signal width (words per cycle)
+--    KEEP_WIDTH => 4,
+--    -- Propagate tlast signal
+--    LAST_ENABLE => 1,
+--    -- Propagate tid signal
+--    ID_ENABLE => 0,
+--    -- tid signal width
+--    ID_WIDTH => 8,
+--    -- Propagate tdest signal
+--    DEST_ENABLE => 0,
+--    -- tdest signal width
+--    DEST_WIDTH => 8,
+--    -- Propagate tuser signal
+--    USER_ENABLE => 1,
+--    -- tuser signal width
+--    USER_WIDTH => 1,
+--    -- number of RAM pipeline registers
+--    RAM_PIPELINE => 1,
+--    -- use output FIFO
+--    -- When set, the RAM read enable and pipeline clock enables are removed
+--    OUTPUT_FIFO_ENABLE => 0,
+--    -- Frame FIFO mode - operate on frames instead of cycles
+--    -- When set, m_axis_tvalid will not be deasserted within a frame
+--    -- Requires LAST_ENABLE set
+--    FRAME_FIFO => 1,
+--    -- tuser value for bad frame marker
+--    USER_BAD_FRAME_VALUE => 1,
+--    -- tuser mask for bad frame marker
+--    USER_BAD_FRAME_MASK => 1,
+--    -- Drop frames larger than FIFO
+--    -- Requires FRAME_FIFO set
+--    DROP_OVERSIZE_FRAME => True,
+--    -- Drop frames marked bad
+--    -- Requires FRAME_FIFO and DROP_OVERSIZE_FRAME set
+--    DROP_BAD_FRAME => 1,
+--    -- Drop incoming frames when full
+--    -- When set, s_axis_tready is always asserted
+--    -- Requires FRAME_FIFO and DROP_OVERSIZE_FRAME set
+--    DROP_WHEN_FULL => 1,
+--    -- Mark incoming frames as bad frames when full
+--    -- When set, s_axis_tready is always asserted
+--    -- Requires FRAME_FIFO to be clear
+--    MARK_WHEN_FULL => 0,
+--    -- Enable pause request input
+--    PAUSE_ENABLE => 0,
+--    -- Pause between frames
+--    FRAME_PAUSE => True
+--)
+--port map(
+--    --AXI input
+--    s_clk            => clk0,
+--    s_rst            => NOT s_axis_aresetn,
+--    s_axis_tdata     => s_axis_tdata,
+--    s_axis_tkeep     => s_axis_tkeep,
+--    s_axis_tvalid    => s_axis_tvalid,
+--    s_axis_tready    => s_axis_tready,
+--    s_axis_tlast     => s_axis_tlast,
+--
+--    s_axis_tid    => "00000000",
+--    s_axis_tdest  => "00000000",
+--    s_axis_tuser  => "0",
+--
+--
+--    --AXI output
+--    m_clk            => clk1,
+--    m_rst            => NOT s_axis_aresetn,
+--    m_axis_tdata     => m_axis_tdata,
+--    m_axis_tkeep     => m_axis_tkeep,
+--    m_axis_tvalid    => m_axis_tvalid,
+--    m_axis_tready    => m_axis_tready,
+--    m_axis_tlast     => m_axis_tlast,
+--
+--    m_axis_tid    => m_axis_tid,
+--    m_axis_tdest  => m_axis_tdest,
+--    m_axis_tuser  => m_axis_tuser,
+--
+--    --Pause
+--
+--    s_pause_req => '0',
+--    s_pause_ack => open,
+--    m_pause_req => '0',
+--    m_pause_ack => open,
+--
+--    --Status
+--    s_status_depth                  => s_status_depth,   
+--    s_status_depth_commit           => s_status_depth_commit,
+--    s_status_overflow               => open,
+--    s_status_bad_frame              => open,
+--    s_status_good_frame             => open,
+--    m_status_depth                  => m_status_depth,
+--    m_status_depth_commit           => m_status_depth_commit,
+--    m_status_overflow               => open,
+--    m_status_bad_frame              => open,
+--    m_status_good_frame             => open
+--);
+
+
    
-   
-   s_axis_tkeep <= (others=>'1');
-   s_axis_tlast <= '0';
-   
-   process(clk0, s_axis_aresetn)
+   process is 
    begin 
-      if s_axis_aresetn = '0' then 
-         s_axis_tdata  <= (others=>'1');
-         s_axis_tvalid <= '0';
-      elsif rising_edge(clk0) then 
-         s_axis_tvalid <= '1';
-         if s_axis_tvalid ='1' and s_axis_tready = '1' then 
-            s_axis_tdata <= std_logic_vector(unsigned(s_axis_tdata) + 1);
-         else
-            s_axis_tdata <= s_axis_tdata;
-         end if;
-      end if;
+      tlast_gen     <= true;
+      s_axis_tvalid <= '0';
+      s_axis_tdata  <= (others=>'0');
+      s_axis_tkeep  <= (others=>'1');
+      s_axis_tlast  <= '0';
+      wait until rising_edge(clk0) AND s_axis_aresetn='1';
+      -- Write full packet
+      generate_axis_tdata(
+         n_words      => max_packet_words, 
+         gen_tlast    => tlast_gen, 
+         axis_aclk    => clk0, 
+         axis_tvalid  => s_axis_tvalid, 
+         axis_tdata   => s_axis_tdata, 
+         axis_tkeep   => s_axis_tkeep, 
+         axis_tready  => s_axis_tready, 
+         axis_tlast   => s_axis_tlast
+      );
+
+      wait until rising_edge(clk0);
+      for i in 0 to 512 loop
+         wait until rising_edge(clk0);
+      end loop;
+
+      -- Write part of the packet, no tlast
+      max_packet_words  <= 3;
+      tlast_gen <= false;
+      generate_axis_tdata(
+         n_words      => max_packet_words, 
+         gen_tlast    => tlast_gen, 
+         axis_aclk    => clk0, 
+         axis_tvalid  => s_axis_tvalid, 
+         axis_tdata   => s_axis_tdata, 
+         axis_tkeep   => s_axis_tkeep, 
+         axis_tready  => s_axis_tready, 
+         axis_tlast   => s_axis_tlast
+      );
+
+      wait until rising_edge(clk0);
+      wait until rising_edge(clk0);
+
+      for i in 0 to 512 loop
+         wait until rising_edge(clk0);
+      end loop;
+
+      -- Write rest of the packet packet, with tlast
+      max_packet_words  <= 4;
+      tlast_gen         <= false;
+      wait until rising_edge(clk0);
+      generate_axis_tdata(
+         n_words      => max_packet_words, 
+         gen_tlast    => tlast_gen, 
+         axis_aclk    => clk0, 
+         axis_tvalid  => s_axis_tvalid, 
+         axis_tdata   => s_axis_tdata, 
+         axis_tkeep   => s_axis_tkeep, 
+         axis_tready  => s_axis_tready, 
+         axis_tlast   => s_axis_tlast
+      );
+
+      -- Fill whole fifo without tlast
+      max_packet_words  <= 256;
+      tlast_gen         <= FALSE;
+      wait until rising_edge(clk0);
+      generate_axis_tdata(
+         n_words      => max_packet_words, 
+         gen_tlast    => tlast_gen, 
+         axis_aclk    => clk0, 
+         axis_tvalid  => s_axis_tvalid, 
+         axis_tdata   => s_axis_tdata, 
+         axis_tkeep   => s_axis_tkeep, 
+         axis_tready  => s_axis_tready, 
+         axis_tlast   => s_axis_tlast
+      );
+
+      for i in 0 to 16384 loop
+         wait until rising_edge(clk0);
+      end loop;
+
+      -- Fill whole fifo without tlast
+      max_packet_words  <= 3;
+      tlast_gen         <= FALSE;
+      wait until rising_edge(clk0);
+      generate_axis_tdata(
+         n_words      => max_packet_words, 
+         gen_tlast    => tlast_gen, 
+         axis_aclk    => clk0, 
+         axis_tvalid  => s_axis_tvalid, 
+         axis_tdata   => s_axis_tdata, 
+         axis_tkeep   => s_axis_tkeep, 
+         axis_tready  => s_axis_tready, 
+         axis_tlast   => s_axis_tlast
+      );
+
+      -- Fill whole fifo without tlast
+      max_packet_words  <= 3;
+      tlast_gen         <= TRUE;
+      wait until rising_edge(clk0);
+      generate_axis_tdata(
+         n_words      => max_packet_words, 
+         gen_tlast    => tlast_gen, 
+         axis_aclk    => clk0, 
+         axis_tvalid  => s_axis_tvalid, 
+         axis_tdata   => s_axis_tdata, 
+         axis_tkeep   => s_axis_tkeep, 
+         axis_tready  => s_axis_tready, 
+         axis_tlast   => s_axis_tlast
+      );
+
+      -- Fill whole fifo without tlast
+      max_packet_words  <= 3;
+      tlast_gen         <= FALSE;
+      wait until rising_edge(clk0);
+      generate_axis_tdata(
+         n_words      => max_packet_words, 
+         gen_tlast    => tlast_gen, 
+         axis_aclk    => clk0, 
+         axis_tvalid  => s_axis_tvalid, 
+         axis_tdata   => s_axis_tdata, 
+         axis_tkeep   => s_axis_tkeep, 
+         axis_tready  => s_axis_tready, 
+         axis_tlast   => s_axis_tlast
+      );
+
+      for i in 0 to 512 loop
+         wait until rising_edge(clk0);
+      end loop;
+
+         -- Fill whole fifo without tlast
+         max_packet_words  <= 3;
+         tlast_gen         <= TRUE;
+         wait until rising_edge(clk0);
+         generate_axis_tdata(
+            n_words      => max_packet_words, 
+            gen_tlast    => tlast_gen, 
+            axis_aclk    => clk0, 
+            axis_tvalid  => s_axis_tvalid, 
+            axis_tdata   => s_axis_tdata, 
+            axis_tkeep   => s_axis_tkeep, 
+            axis_tready  => s_axis_tready, 
+            axis_tlast   => s_axis_tlast
+         );
+
+
+      wait;
    end process;
-   
    
    process is
       variable seed1, seed2: positive;
@@ -151,7 +470,7 @@ begin
    process(clk1, m_axis_aresetn)
    begin 
       if s_axis_aresetn = '0' then 
-         tdata         <= (others=>'1');
+         tdata         <= (others=>'0');
       elsif rising_edge(clk1) then 
          if m_axis_tvalid ='1' and m_axis_tready = '1' then 
             tdata <= std_logic_vector(unsigned(tdata) + 1);

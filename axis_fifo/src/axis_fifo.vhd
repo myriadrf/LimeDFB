@@ -1,3 +1,16 @@
+-- ----------------------------------------------------------------------------
+-- FILE:          axis_fifo.vhd
+-- DESCRIPTION:   Vendor specific axis_fifo implementation 
+-- DATE:          09:45 2023-05-15
+-- AUTHOR(s):     Lime Microsystems
+-- REVISIONS:
+-- ----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------
+-- NOTES:
+-- ----------------------------------------------------------------------------
+
+
 library ieee;
 use ieee.std_logic_1164.all;
 
@@ -22,11 +35,15 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use work.axi_stream_fifo_pkg.all;
 
+-- ----------------------------------------------------------------------------
+-- Entity declaration
+-- ----------------------------------------------------------------------------
 entity axi_stream_fifo is
    generic (
       g_VENDOR      : string  := "GENERIC";
       g_DATA_WIDTH  : integer := 32;
-      g_FIFO_DEPTH  : integer := 16
+      g_FIFO_DEPTH  : integer := 16;
+      g_PACKET_MODE : string  := "True"
    );
    port (
       -- AXI Stream Write Interface
@@ -51,12 +68,10 @@ entity axi_stream_fifo is
    );
 end entity axi_stream_fifo;
 
-
+-- ----------------------------------------------------------------------------
+-- Architecture
+-- ----------------------------------------------------------------------------
 architecture rtl of axi_stream_fifo is
-
-   -- Total RAM width TDATA+TKEEP+TLAST
-   --type fifo_ram_type is array (0 to g_FIFO_DEPTH-1) of std_logic_vector(g_DATA_WIDTH + g_DATA_WIDTH/8 downto 0);
-   --signal fifo_ram                    : fifo_ram_type;
     
    constant c_PTR_WIDTH : integer := log2ceil(g_FIFO_DEPTH);
    
@@ -68,10 +83,38 @@ architecture rtl of axi_stream_fifo is
    
    signal wr_en, rd_en  : std_logic;
    signal full, empty   : std_logic;
+
+   signal wrusedw_sig   : std_logic_vector(log2ceil(g_FIFO_DEPTH) downto 0); 
+
+   -- Packet write pointers
+   signal pctwr_en       : std_logic;
+   signal g_pctrptr_sync : std_logic_vector(c_PTR_WIDTH downto 0):=(others=>'0');
+   signal b_pctwptr      : std_logic_vector(c_PTR_WIDTH downto 0);
+   signal g_pctwptr      : std_logic_vector(c_PTR_WIDTH downto 0);
+   
+   signal pctwrusedw     : std_logic_vector(log2ceil(g_FIFO_DEPTH) downto 0);
+   signal pctfull        : std_logic;
+
+   -- Pct read pointers
+   signal pctrd_en       : std_logic;
+   signal g_pctwptr_sync : std_logic_vector(c_PTR_WIDTH downto 0):=(others=>'0');
+   signal b_pctrptr      : std_logic_vector(c_PTR_WIDTH downto 0);
+   signal g_pctrptr      : std_logic_vector(c_PTR_WIDTH downto 0);
+   
+   signal pctrdusedw     : std_logic_vector(log2ceil(g_FIFO_DEPTH) downto 0);
+   signal pctempty       : std_logic;
+
+   signal pct_overflow           : std_logic;
+   signal pct_overflow_latch     : std_logic;
+   signal pct_overflow_latch_d1  : std_logic;
+   signal pct_overflow_rdsync: std_logic;
    
    signal fwft_valid    : std_logic;
    
    signal mem_dout       : std_logic_vector(g_DATA_WIDTH + g_DATA_WIDTH/8 downto 0);
+
+   signal m_axis_tvalid_reg : std_logic;
+   signal m_axis_tvalid_ack : std_logic;
    
    component synchronizer
       generic (
@@ -140,6 +183,9 @@ architecture rtl of axi_stream_fifo is
 
 begin
 
+-- ----------------------------------------------------------------------------
+-- WR/RD pointers 
+-- ---------------------------------------------------------------------------- 
    --write pointer to read clock domain sync
    sync_wptr : synchronizer 
    generic map( 
@@ -163,10 +209,13 @@ begin
    generic map( 
       PTR_WIDTH => c_PTR_WIDTH
    )
-   port map (s_axis_aclk, s_axis_aresetn, wr_en, g_rptr_sync, b_wptr, g_wptr, wrusedw, full);
+   port map (s_axis_aclk, s_axis_aresetn, wr_en, g_rptr_sync, b_wptr, g_wptr, wrusedw_sig, full);
    
    -- Read pointer
-   rd_en <= '1' when empty='0' AND (fwft_valid = '0' OR m_axis_tready = '1') else '0';
+   --NOTE: fix read enable in packet mode
+   --rd_en <= '1' when empty='0' AND (fwft_valid = '0' OR m_axis_tready = '1') else '0';
+
+   rd_en <= '1' when (empty='0' AND (pctempty='0' OR pct_overflow_rdsync='1')) AND (fwft_valid = '0' OR m_axis_tready = '1') else '0';
    
    rptr_h : rptr_handler 
    generic map( 
@@ -178,30 +227,76 @@ begin
   
    waddr <= b_wptr(b_wptr'left-1 downto 0);
    raddr <= b_rptr(b_rptr'left-1 downto 0);
+
+
+-- ----------------------------------------------------------------------------
+-- WR/RD packet pointers for packet mode
+-- ---------------------------------------------------------------------------- 
+
+   -- Catch pct_overflow when FIFO is full but tlast not received
+   process(s_axis_aclk)
+   begin
+      if rising_edge(s_axis_aclk) then
+         if s_axis_tvalid = '1' AND unsigned(wrusedw_sig) =  g_FIFO_DEPTH - 1 then
+            pct_overflow_latch <= '1';
+         elsif s_axis_tvalid = '1' AND s_axis_tlast = '1' AND full = '0' then
+            pct_overflow_latch <= '0';
+         else 
+            pct_overflow_latch <= pct_overflow_latch;
+         end if;
+
+      end if;
+
+   end process;
+
+   -- Synck to m_axis_aclk
+   cdc_sync_inst : entity work.cdc_sync_bit
+      port map(
+         clk   => m_axis_aclk, 
+         rst_n => m_axis_aresetn, 
+         d     => pct_overflow_latch, 
+         q     => pct_overflow_rdsync
+      );
    
-   -- Write Data to FIFO
-   --process(s_axis_aclk)
-   --begin
-   --   if rising_edge(s_axis_aclk) then
-   --      if wr_en = '1' AND full='0' then
-   --         fifo_ram(to_integer(unsigned(waddr))) <= s_axis_tdata & s_axis_tkeep & s_axis_tlast;
-   --      end if;
-   --   end if;
-   --end process;
+
+   -- Write Packet counter pointer hadler
+   pctwr_en <= (s_axis_tvalid AND s_axis_tlast AND NOT full);
    
-   -- Read Data from FIFO
-   --process(m_axis_aclk)
-   --begin
-   --   if rising_edge(m_axis_aclk) then
-   --      if empty = '0' AND rd_en = '1' then 
-   --         m_axis_tdata <= fifo_ram(to_integer(unsigned(raddr)))(g_DATA_WIDTH + g_DATA_WIDTH/8 downto g_DATA_WIDTH/8+1);
-   --         m_axis_tkeep <= fifo_ram(to_integer(unsigned(raddr)))(g_DATA_WIDTH/8 downto 1);
-   --         m_axis_tlast <= fifo_ram(to_integer(unsigned(raddr)))(0);
-   --      end if;
-   --   end if;
-   --end process;
+   pct_wptr_h : wptr_handler 
+   generic map( 
+      PTR_WIDTH => c_PTR_WIDTH
+   )
+   port map (s_axis_aclk, s_axis_aresetn, pctwr_en, g_pctrptr_sync, b_pctwptr, g_pctwptr, pctwrusedw, pctfull);
+
+
+   --Read Packet counter pointer handler
+   pctrd_en <= fwft_valid AND mem_dout(0) AND m_axis_tready;
+     
+   pct_rptr_h : rptr_handler 
+   generic map( 
+      PTR_WIDTH => c_PTR_WIDTH
+   )
+   port map (m_axis_aclk, m_axis_aresetn, pctrd_en, g_pctwptr_sync, b_pctrptr, g_pctrptr, pctrdusedw, pctempty);
+
+
+   --Packet write pointer to read clock domain sync
+   sync_pctwptr : synchronizer 
+   generic map( 
+      WIDTH => c_PTR_WIDTH
+   )
+   port map (m_axis_aclk, m_axis_aresetn, g_pctwptr, g_pctwptr_sync);
    
-   -- Control for First Word Fall trough logic
+   --Packet read pointer to write clock domain sync
+   sync_pctrptr : synchronizer 
+   generic map( 
+      WIDTH => c_PTR_WIDTH
+   )
+   port map (s_axis_aclk, s_axis_aresetn, g_pctrptr, g_pctrptr_sync);
+
+
+-- ----------------------------------------------------------------------------
+-- Control for First Word Fall trough logic (must have for AXIS FIFO logic)
+-- ---------------------------------------------------------------------------- 
    process(m_axis_aclk, m_axis_aresetn)
    begin
       if m_axis_aresetn = '0' then 
@@ -209,7 +304,7 @@ begin
       elsif rising_edge(m_axis_aclk) then 
          if empty = '0' AND rd_en = '1' then 
             fwft_valid <='1';
-         elsif m_axis_tready = '1' then 
+         elsif m_axis_tvalid_ack = '1' then 
             fwft_valid <='0';
          else 
             fwft_valid <= fwft_valid;
@@ -217,7 +312,10 @@ begin
       end if;
    end process;
    
-   
+
+-- ----------------------------------------------------------------------------
+-- RAM memory implementation
+-- ----------------------------------------------------------------------------   
    ram_inst : ram_mem_wrapper
    generic map(
       g_VENDOR          => g_VENDOR,
@@ -238,15 +336,29 @@ begin
       doutb  => mem_dout            -- RAM output data
    );
    
+
+   m_axis_tvalid_ack <= m_axis_tvalid_reg AND m_axis_tready;
+
 -- ----------------------------------------------------------------------------
 -- Output ports
 -- ----------------------------------------------------------------------------
    s_axis_tready  <= NOT full;
    
-   m_axis_tvalid  <= fwft_valid;
+   PACKET_MODE_M_AXISTVALID : if g_PACKET_MODE = "True" generate
+      m_axis_tvalid_reg  <= fwft_valid AND (NOT pctempty OR pct_overflow_rdsync);
+   end generate PACKET_MODE_M_AXISTVALID;
+
+   NORMAL_MODE_M_AXISTVALID : if g_PACKET_MODE = "False" generate
+      m_axis_tvalid_reg  <= fwft_valid;
+   end generate NORMAL_MODE_M_AXISTVALID;
+
+
+   m_axis_tvalid  <= m_axis_tvalid_reg;
    m_axis_tdata   <= mem_dout(g_DATA_WIDTH + g_DATA_WIDTH/8 downto g_DATA_WIDTH/8+1);
    m_axis_tkeep   <= mem_dout(g_DATA_WIDTH/8 downto 1);
    m_axis_tlast   <= mem_dout(0);
+
+   wrusedw <= wrusedw_sig;
    
    
    
