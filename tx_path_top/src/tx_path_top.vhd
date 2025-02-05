@@ -283,9 +283,9 @@ begin
 
    GEN_FIFO : for i in 0 to G_BUFF_COUNT - 1 generate
 
-      inst1_inst_fifo_axis_wrap : entity work.axi_stream_fifo
+      inst1_inst_fifo_axis_wrap : entity work.axis_fifo
          generic map (
-            G_PACKET_MODE         => "True",
+            G_PACKET_MODE         => true,
             G_VENDOR              => "GENERIC",
             G_FIFO_DEPTH          => 256,
             G_DATA_WIDTH          => 128
