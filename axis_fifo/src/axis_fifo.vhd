@@ -38,12 +38,12 @@ use work.axi_stream_fifo_pkg.all;
 -- ----------------------------------------------------------------------------
 -- Entity declaration
 -- ----------------------------------------------------------------------------
-entity axi_stream_fifo is
+entity axis_fifo is
    generic (
-      g_VENDOR      : string  := "GENERIC";
+      g_VENDOR      : string  := "GENERIC";  -- "GENERIC" or "XILINX"
       g_DATA_WIDTH  : integer := 32;
       g_FIFO_DEPTH  : integer := 16;
-      g_PACKET_MODE : string  := "True"
+      g_PACKET_MODE : boolean := true
    );
    port (
       -- AXI Stream Write Interface
@@ -66,12 +66,12 @@ entity axi_stream_fifo is
       m_axis_tready  : in  std_logic;
       rdusedw        : out std_logic_vector(log2ceil(g_FIFO_DEPTH) downto 0)
    );
-end entity axi_stream_fifo;
+end entity axis_fifo;
 
 -- ----------------------------------------------------------------------------
 -- Architecture
 -- ----------------------------------------------------------------------------
-architecture rtl of axi_stream_fifo is
+architecture rtl of axis_fifo is
     
    constant c_PTR_WIDTH : integer := log2ceil(g_FIFO_DEPTH);
    
@@ -116,18 +116,7 @@ architecture rtl of axi_stream_fifo is
    signal m_axis_tvalid_reg : std_logic;
    signal m_axis_tvalid_ack : std_logic;
    
-   component synchronizer
-      generic (
-         WIDTH : integer := 3
-      );
-      port ( 
-         clk   : in  std_logic;
-         rst_n : in  std_logic;
-         d_in  : in  std_logic_vector(WIDTH downto 0);
-         d_out : out std_logic_vector(WIDTH downto 0)
-      );
-   end component;
-   
+
    component wptr_handler
    generic (
       PTR_WIDTH : integer := 3
@@ -187,19 +176,17 @@ begin
 -- WR/RD pointers 
 -- ---------------------------------------------------------------------------- 
    --write pointer to read clock domain sync
-   sync_wptr : synchronizer 
-   generic map( 
-      WIDTH => c_PTR_WIDTH
-   )
-   port map (m_axis_aclk, m_axis_aresetn, g_wptr, g_wptr_sync);
+   sync_wptr : entity work.cdc_sync_bus
+      generic map ( g_WIDTH => c_PTR_WIDTH + 1 
+      )
+      port map(m_axis_aclk, m_axis_aresetn, g_wptr, g_wptr_sync);
    
+
    --read pointer to write clock domain sync
-   sync_rptr : synchronizer 
-   generic map( 
-      WIDTH => c_PTR_WIDTH
+   sync_rptr : entity work.cdc_sync_bus
+   generic map ( g_WIDTH => c_PTR_WIDTH + 1 
    )
    port map (s_axis_aclk, s_axis_aresetn, g_rptr, g_rptr_sync);
-   
    
    
    -- Write pointer 
@@ -212,11 +199,15 @@ begin
    port map (s_axis_aclk, s_axis_aresetn, wr_en, g_rptr_sync, b_wptr, g_wptr, wrusedw_sig, full);
    
    -- Read pointer
-   --NOTE: fix read enable in packet mode
-   --rd_en <= '1' when empty='0' AND (fwft_valid = '0' OR m_axis_tready = '1') else '0';
+   PACKET_MODE_RD_EN : if g_PACKET_MODE generate
+      rd_en <= '1' when (empty='0' AND (pctempty='0' OR pct_overflow_rdsync='1')) AND (fwft_valid = '0' OR m_axis_tready = '1') else '0';
+   end generate PACKET_MODE_RD_EN;
 
-   rd_en <= '1' when (empty='0' AND (pctempty='0' OR pct_overflow_rdsync='1')) AND (fwft_valid = '0' OR m_axis_tready = '1') else '0';
-   
+   NORMAL_MODE_RD_EN : if NOT g_PACKET_MODE generate
+      rd_en <= '1' when empty='0' AND (fwft_valid = '0' OR m_axis_tready = '1') else '0';
+   end generate NORMAL_MODE_RD_EN;
+
+
    rptr_h : rptr_handler 
    generic map( 
       PTR_WIDTH => c_PTR_WIDTH
@@ -224,7 +215,6 @@ begin
    port map (m_axis_aclk, m_axis_aresetn, rd_en, g_wptr_sync, b_rptr, g_rptr, rdusedw, empty);
    
    
-  
    waddr <= b_wptr(b_wptr'left-1 downto 0);
    raddr <= b_rptr(b_rptr'left-1 downto 0);
 
@@ -232,68 +222,70 @@ begin
 -- ----------------------------------------------------------------------------
 -- WR/RD packet pointers for packet mode
 -- ---------------------------------------------------------------------------- 
+PACKET_MODE_LOGIC : if g_PACKET_MODE generate
 
-   -- Catch pct_overflow when FIFO is full but tlast not received
-   process(s_axis_aclk, s_axis_aresetn)
-   begin
-      if s_axis_aresetn = '0' then 
-         pct_overflow_latch <= '0';
-      elsif rising_edge(s_axis_aclk) then
-         if s_axis_tvalid = '1' AND unsigned(wrusedw_sig) =  g_FIFO_DEPTH - 1 then
-            pct_overflow_latch <= '1';
-         elsif s_axis_tvalid = '1' AND s_axis_tlast = '1' AND full = '0' then
+      -- Catch pct_overflow when FIFO is full but tlast not received
+      process(s_axis_aclk, s_axis_aresetn)
+      begin
+         if s_axis_aresetn = '0' then 
             pct_overflow_latch <= '0';
-         else 
-            pct_overflow_latch <= pct_overflow_latch;
+         elsif rising_edge(s_axis_aclk) then
+            if s_axis_tvalid = '1' AND unsigned(wrusedw_sig) =  g_FIFO_DEPTH - 1 then
+               pct_overflow_latch <= '1';
+            elsif s_axis_tvalid = '1' AND s_axis_tlast = '1' AND full = '0' then
+               pct_overflow_latch <= '0';
+            else 
+               pct_overflow_latch <= pct_overflow_latch;
+            end if;
+
          end if;
 
-      end if;
+      end process;
 
-   end process;
+      -- Synck to m_axis_aclk
+      cdc_sync_inst : entity work.cdc_sync_bit
+         port map(
+            clk   => m_axis_aclk, 
+            rst_n => m_axis_aresetn, 
+            d     => pct_overflow_latch, 
+            q     => pct_overflow_rdsync
+         );
+      
 
-   -- Synck to m_axis_aclk
-   cdc_sync_inst : entity work.cdc_sync_bit
-      port map(
-         clk   => m_axis_aclk, 
-         rst_n => m_axis_aresetn, 
-         d     => pct_overflow_latch, 
-         q     => pct_overflow_rdsync
-      );
-   
-
-   -- Write Packet counter pointer hadler
-   pctwr_en <= (s_axis_tvalid AND s_axis_tlast AND NOT full);
-   
-   pct_wptr_h : wptr_handler 
-   generic map( 
-      PTR_WIDTH => c_PTR_WIDTH
-   )
-   port map (s_axis_aclk, s_axis_aresetn, pctwr_en, g_pctrptr_sync, b_pctwptr, g_pctwptr, pctwrusedw, pctfull);
+      -- Write Packet counter pointer hadler
+      pctwr_en <= (s_axis_tvalid AND s_axis_tlast AND NOT full);
+      
+      pct_wptr_h : wptr_handler 
+      generic map( 
+         PTR_WIDTH => c_PTR_WIDTH
+      )
+      port map (s_axis_aclk, s_axis_aresetn, pctwr_en, g_pctrptr_sync, b_pctwptr, g_pctwptr, pctwrusedw, pctfull);
 
 
-   --Read Packet counter pointer handler
-   pctrd_en <= fwft_valid AND mem_dout(0) AND m_axis_tready;
-     
-   pct_rptr_h : rptr_handler 
-   generic map( 
-      PTR_WIDTH => c_PTR_WIDTH
-   )
-   port map (m_axis_aclk, m_axis_aresetn, pctrd_en, g_pctwptr_sync, b_pctrptr, g_pctrptr, pctrdusedw, pctempty);
+      --Read Packet counter pointer handler
+      pctrd_en <= fwft_valid AND mem_dout(0) AND m_axis_tready;
+      
+      pct_rptr_h : rptr_handler 
+      generic map( 
+         PTR_WIDTH => c_PTR_WIDTH
+      )
+      port map (m_axis_aclk, m_axis_aresetn, pctrd_en, g_pctwptr_sync, b_pctrptr, g_pctrptr, pctrdusedw, pctempty);
 
 
-   --Packet write pointer to read clock domain sync
-   sync_pctwptr : synchronizer 
-   generic map( 
-      WIDTH => c_PTR_WIDTH
-   )
-   port map (m_axis_aclk, m_axis_aresetn, g_pctwptr, g_pctwptr_sync);
-   
-   --Packet read pointer to write clock domain sync
-   sync_pctrptr : synchronizer 
-   generic map( 
-      WIDTH => c_PTR_WIDTH
-   )
-   port map (s_axis_aclk, s_axis_aresetn, g_pctrptr, g_pctrptr_sync);
+      --Packet write pointer to read clock domain sync
+      sync_pctwptr : entity work.cdc_sync_bus
+      generic map ( g_WIDTH => c_PTR_WIDTH + 1 
+      )
+      port map (m_axis_aclk, m_axis_aresetn, g_pctwptr, g_pctwptr_sync);
+
+      
+      --Packet read pointer to write clock domain sync
+      sync_pctrptr : entity work.cdc_sync_bus
+      generic map ( g_WIDTH => c_PTR_WIDTH + 1 
+      )
+      port map (s_axis_aclk, s_axis_aresetn, g_pctrptr, g_pctrptr_sync);
+
+   end generate PACKET_MODE_LOGIC;
 
 
 -- ----------------------------------------------------------------------------
@@ -346,11 +338,11 @@ begin
 -- ----------------------------------------------------------------------------
    s_axis_tready  <= NOT full;
    
-   PACKET_MODE_M_AXISTVALID : if g_PACKET_MODE = "True" generate
+   PACKET_MODE_M_AXISTVALID : if g_PACKET_MODE generate
       m_axis_tvalid_reg  <= fwft_valid AND (NOT pctempty OR pct_overflow_rdsync);
    end generate PACKET_MODE_M_AXISTVALID;
 
-   NORMAL_MODE_M_AXISTVALID : if g_PACKET_MODE = "False" generate
+   NORMAL_MODE_M_AXISTVALID : if NOT g_PACKET_MODE generate
       m_axis_tvalid_reg  <= fwft_valid;
    end generate NORMAL_MODE_M_AXISTVALID;
 

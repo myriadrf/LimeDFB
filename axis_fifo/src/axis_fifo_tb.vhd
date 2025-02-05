@@ -31,8 +31,10 @@ architecture tb_behave of axis_fifo_tb is
    signal clk0,clk1        : std_logic;
    signal reset_n          : std_logic; 
    
+   constant c_VENDOR       : string := "XILINX";
    constant c_DATA_WIDTH   : integer := 32;
-   constant c_FIFO_DEPTH   : integer := 16;
+   constant c_FIFO_DEPTH   : integer := 256;
+   constant c_PACKET_MODE  : boolean := true;
    
    signal s_axis_aresetn   : std_logic;
    signal s_axis_tdata     : std_logic_vector(c_DATA_WIDTH-1 downto 0);
@@ -124,11 +126,12 @@ begin
    m_axis_aresetn <= reset_n;
    
    ---- Design under test  
-      dut_axi_stream_fifo : entity work.axi_stream_fifo
+      dut_axi_stream_fifo : entity work.axis_fifo
       generic map(
+         g_VENDOR      => c_VENDOR, 
          g_DATA_WIDTH  => c_DATA_WIDTH,
          g_FIFO_DEPTH  => c_FIFO_DEPTH,
-         g_PACKET_MODE => "True"
+         g_PACKET_MODE => c_PACKET_MODE
       )
       port map(
          -- AXI Stream Write Interface
@@ -182,115 +185,7 @@ begin
 --      wr_data_count_axis   => open
 --   ); 
 
---axis_async_fifo_inst : entity work.axis_async_fifo
---generic map(
---    -- FIFO depth in words
---    -- KEEP_WIDTH words per cycle if KEEP_ENABLE set
---    -- Rounded up to nearest power of 2 cycles
---    DEPTH => 16,
---    -- Width of AXI stream interfaces in bits
---    DATA_WIDTH => 32,
---    -- Propagate tkeep signal
---    -- If disabled, tkeep assumed to be 1'b1
---    KEEP_ENABLE => False,
---    -- tkeep signal width (words per cycle)
---    KEEP_WIDTH => 4,
---    -- Propagate tlast signal
---    LAST_ENABLE => 1,
---    -- Propagate tid signal
---    ID_ENABLE => 0,
---    -- tid signal width
---    ID_WIDTH => 8,
---    -- Propagate tdest signal
---    DEST_ENABLE => 0,
---    -- tdest signal width
---    DEST_WIDTH => 8,
---    -- Propagate tuser signal
---    USER_ENABLE => 1,
---    -- tuser signal width
---    USER_WIDTH => 1,
---    -- number of RAM pipeline registers
---    RAM_PIPELINE => 1,
---    -- use output FIFO
---    -- When set, the RAM read enable and pipeline clock enables are removed
---    OUTPUT_FIFO_ENABLE => 0,
---    -- Frame FIFO mode - operate on frames instead of cycles
---    -- When set, m_axis_tvalid will not be deasserted within a frame
---    -- Requires LAST_ENABLE set
---    FRAME_FIFO => 1,
---    -- tuser value for bad frame marker
---    USER_BAD_FRAME_VALUE => 1,
---    -- tuser mask for bad frame marker
---    USER_BAD_FRAME_MASK => 1,
---    -- Drop frames larger than FIFO
---    -- Requires FRAME_FIFO set
---    DROP_OVERSIZE_FRAME => True,
---    -- Drop frames marked bad
---    -- Requires FRAME_FIFO and DROP_OVERSIZE_FRAME set
---    DROP_BAD_FRAME => 1,
---    -- Drop incoming frames when full
---    -- When set, s_axis_tready is always asserted
---    -- Requires FRAME_FIFO and DROP_OVERSIZE_FRAME set
---    DROP_WHEN_FULL => 1,
---    -- Mark incoming frames as bad frames when full
---    -- When set, s_axis_tready is always asserted
---    -- Requires FRAME_FIFO to be clear
---    MARK_WHEN_FULL => 0,
---    -- Enable pause request input
---    PAUSE_ENABLE => 0,
---    -- Pause between frames
---    FRAME_PAUSE => True
---)
---port map(
---    --AXI input
---    s_clk            => clk0,
---    s_rst            => NOT s_axis_aresetn,
---    s_axis_tdata     => s_axis_tdata,
---    s_axis_tkeep     => s_axis_tkeep,
---    s_axis_tvalid    => s_axis_tvalid,
---    s_axis_tready    => s_axis_tready,
---    s_axis_tlast     => s_axis_tlast,
---
---    s_axis_tid    => "00000000",
---    s_axis_tdest  => "00000000",
---    s_axis_tuser  => "0",
---
---
---    --AXI output
---    m_clk            => clk1,
---    m_rst            => NOT s_axis_aresetn,
---    m_axis_tdata     => m_axis_tdata,
---    m_axis_tkeep     => m_axis_tkeep,
---    m_axis_tvalid    => m_axis_tvalid,
---    m_axis_tready    => m_axis_tready,
---    m_axis_tlast     => m_axis_tlast,
---
---    m_axis_tid    => m_axis_tid,
---    m_axis_tdest  => m_axis_tdest,
---    m_axis_tuser  => m_axis_tuser,
---
---    --Pause
---
---    s_pause_req => '0',
---    s_pause_ack => open,
---    m_pause_req => '0',
---    m_pause_ack => open,
---
---    --Status
---    s_status_depth                  => s_status_depth,   
---    s_status_depth_commit           => s_status_depth_commit,
---    s_status_overflow               => open,
---    s_status_bad_frame              => open,
---    s_status_good_frame             => open,
---    m_status_depth                  => m_status_depth,
---    m_status_depth_commit           => m_status_depth_commit,
---    m_status_overflow               => open,
---    m_status_bad_frame              => open,
---    m_status_good_frame             => open
---);
 
-
-   
    process is 
    begin 
       tlast_gen     <= true;
