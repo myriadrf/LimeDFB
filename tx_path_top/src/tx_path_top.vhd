@@ -283,32 +283,32 @@ begin
 
    GEN_FIFO : for i in 0 to G_BUFF_COUNT - 1 generate
 
-      inst1_inst_fifo_axis_wrap : entity work.fifo_axis_wrap
+      inst1_inst_fifo_axis_wrap : entity work.axi_stream_fifo
          generic map (
-            G_CLOCKING_MODE       => "independent_clock",
-            G_PACKET_FIFO         => "true",
+            G_PACKET_MODE         => "True",
+            G_VENDOR              => "GENERIC",
             G_FIFO_DEPTH          => 256,
-            G_TDATA_WIDTH         => 128,
-            G_RD_DATA_COUNT_WIDTH => C_P2D_FIFO_USEDWW,
-            G_WR_DATA_COUNT_WIDTH => C_P2D_FIFO_USEDWW
+            G_DATA_WIDTH          => 128
          )
          port map (
-            S_AXIS_ARESETN     => S_AXIS_IQPACKET_ARESET_N and p2d_rd_s_axis_buf_reset_n(i) and RESET_N,
-            S_AXIS_ACLK        => S_AXIS_IQPACKET_ACLK,
-            S_AXIS_TVALID      => p2d_wr_axis(i).tvalid,
-            S_AXIS_TREADY      => p2d_wr_axis(i).tready,
-            S_AXIS_TDATA       => p2d_wr_axis(i).tdata,
-            S_AXIS_TLAST       => p2d_wr_axis(i).tlast,
-            M_AXIS_ACLK        => M_AXIS_IQSAMPLE_ACLK,
-            M_AXIS_TVALID      => p2d_rd_axis(i).tvalid,
-            M_AXIS_TREADY      => p2d_rd_axis(i).tready,
-            M_AXIS_TDATA       => p2d_rd_axis(i).tdata,
-            M_AXIS_TLAST       => p2d_rd_axis(i).tlast,
-            ALMOST_EMPTY_AXIS  => open,
-            ALMOST_FULL_AXIS   => open,
-            RD_DATA_COUNT_AXIS => open,
-            WR_DATA_COUNT_AXIS => usedw_vector(i)
-         );
+            s_axis_aresetn     => S_AXIS_IQPACKET_ARESET_N and p2d_rd_s_axis_buf_reset_n(i) and RESET_N,
+            s_axis_aclk        => S_AXIS_IQPACKET_ACLK,
+            s_axis_tvalid      => p2d_wr_axis(i).tvalid,
+            s_axis_tready      => p2d_wr_axis(i).tready,
+            s_axis_tdata       => p2d_wr_axis(i).tdata,
+            s_axis_tkeep       => (others => '1'),
+            s_axis_tlast       => p2d_wr_axis(i).tlast,
+            
+            m_axis_aresetn     => S_AXIS_IQPACKET_ARESET_N and p2d_rd_s_axis_buf_reset_n(i) and RESET_N,
+            m_axis_aclk        => M_AXIS_IQSAMPLE_ACLK,
+            m_axis_tvalid      => p2d_rd_axis(i).tvalid,
+            m_axis_tready      => p2d_rd_axis(i).tready,
+            m_axis_tdata       => p2d_rd_axis(i).tdata,
+            m_axis_tkeep       => open,
+            m_axis_tlast       => p2d_rd_axis(i).tlast,
+            rdusedw => open,
+            wrusedw => usedw_vector(i)
+         ); 
 
    end generate GEN_FIFO;
 
