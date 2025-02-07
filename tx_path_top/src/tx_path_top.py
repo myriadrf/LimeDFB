@@ -32,6 +32,14 @@ class tx_path_top(LiteXModule):
         platform.add_ip("./gateware/LimeDFB/axis/src/axis_dwidth_converter_64_to_128/axis_dwidth_converter_64_to_128.xci")
         platform.add_source("./gateware/LimeDFB/axis/src/axis_pkg.vhd")
 
+        platform.add_source("./gateware/LimeDFB/cdc/src/cdc_sync_bit.vhd")
+        platform.add_source("./gateware/LimeDFB/cdc/src/cdc_sync_bus.vhd")
+        platform.add_source("./gateware/LimeDFB/axis_fifo/src/axis_fifo.vhd")
+        platform.add_source("./gateware/LimeDFB/axis_fifo/src/rptr_handler.sv")
+        platform.add_source("./gateware/LimeDFB/axis_fifo/src/wptr_handler.sv")
+        platform.add_source("./gateware/LimeDFB/axis_fifo/src/ram_mem_wrapper.vhd")
+        platform.add_source("./gateware/LimeDFB/axis_fifo/src/xilinx_simple_dual_port_2_clock_ram.vhd")
+
 
         # create misc signals
         self.RESET_N            = Signal()
