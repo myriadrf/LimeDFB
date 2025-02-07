@@ -18,7 +18,7 @@ end ram_pkg;
 
 package body ram_pkg is
 
-function clogb2( depth : natural) return integer is
+function clogb2( depth : in natural) return integer is
 variable temp    : integer := depth;
 variable ret_val : integer := 0;
 begin
