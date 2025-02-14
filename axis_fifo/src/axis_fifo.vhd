@@ -336,7 +336,7 @@ PACKET_MODE_LOGIC : if g_PACKET_MODE generate
 -- ----------------------------------------------------------------------------
 -- Output ports
 -- ----------------------------------------------------------------------------
-   s_axis_tready  <= NOT full;
+   s_axis_tready  <= NOT full AND s_axis_aresetn AND m_axis_aresetn;
    
    PACKET_MODE_M_AXISTVALID : if g_PACKET_MODE generate
       m_axis_tvalid_reg  <= fwft_valid AND (NOT pctempty OR pct_overflow_rdsync);
