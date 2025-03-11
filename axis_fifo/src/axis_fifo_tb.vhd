@@ -329,7 +329,64 @@ begin
             axis_tready  => s_axis_tready, 
             axis_tlast   => s_axis_tlast
          );
+         
+         
+      for i in 0 to 512 loop
+         wait until rising_edge(clk0);
+      end loop;
+      
+	-- Fill whole fifo with tlast
+         max_packet_words  <= 256;
+         tlast_gen         <= TRUE;
+         wait until rising_edge(clk0);
+         generate_axis_tdata(
+            n_words      => max_packet_words, 
+            gen_tlast    => tlast_gen, 
+            axis_aclk    => clk0, 
+            axis_tvalid  => s_axis_tvalid, 
+            axis_tdata   => s_axis_tdata, 
+            axis_tkeep   => s_axis_tkeep, 
+            axis_tready  => s_axis_tready, 
+            axis_tlast   => s_axis_tlast
+         );
+         
+      for i in 0 to 16384 loop
+         wait until rising_edge(clk0);
+      end loop;
 
+	-- Fill part of fifo without tlast
+         max_packet_words  <= 16;
+         tlast_gen         <= FALSE;
+         wait until rising_edge(clk0);
+         generate_axis_tdata(
+            n_words      => max_packet_words, 
+            gen_tlast    => tlast_gen, 
+            axis_aclk    => clk0, 
+            axis_tvalid  => s_axis_tvalid, 
+            axis_tdata   => s_axis_tdata, 
+            axis_tkeep   => s_axis_tkeep, 
+            axis_tready  => s_axis_tready, 
+            axis_tlast   => s_axis_tlast
+         );
+         
+      for i in 0 to 512 loop
+         wait until rising_edge(clk0);
+      end loop;
+      
+      	-- Fill part of fifo with tlast
+         max_packet_words  <= 16;
+         tlast_gen         <= TRUE;
+         wait until rising_edge(clk0);
+         generate_axis_tdata(
+            n_words      => max_packet_words, 
+            gen_tlast    => tlast_gen, 
+            axis_aclk    => clk0, 
+            axis_tvalid  => s_axis_tvalid, 
+            axis_tdata   => s_axis_tdata, 
+            axis_tkeep   => s_axis_tkeep, 
+            axis_tready  => s_axis_tready, 
+            axis_tlast   => s_axis_tlast
+         );
 
       wait;
    end process;

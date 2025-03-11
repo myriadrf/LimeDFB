@@ -41,8 +41,8 @@ use work.axi_stream_fifo_pkg.all;
 entity axis_fifo is
    generic (
       g_VENDOR      : string  := "GENERIC";  -- "GENERIC" or "XILINX"
-      g_DATA_WIDTH  : integer := 32;
-      g_FIFO_DEPTH  : integer := 16;
+      g_DATA_WIDTH  : integer := 128;
+      g_FIFO_DEPTH  : integer := 256;
       g_PACKET_MODE : boolean := true
    );
    port (
@@ -230,7 +230,7 @@ PACKET_MODE_LOGIC : if g_PACKET_MODE generate
          if s_axis_aresetn = '0' then 
             pct_overflow_latch <= '0';
          elsif rising_edge(s_axis_aclk) then
-            if s_axis_tvalid = '1' AND unsigned(wrusedw_sig) =  g_FIFO_DEPTH - 1 then
+            if s_axis_tvalid = '1' AND s_axis_tlast = '0' AND unsigned(wrusedw_sig) >=  g_FIFO_DEPTH - 1 then
                pct_overflow_latch <= '1';
             elsif s_axis_tvalid = '1' AND s_axis_tlast = '1' AND full = '0' then
                pct_overflow_latch <= '0';
