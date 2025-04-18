@@ -15,7 +15,7 @@ use ieee.numeric_std.all;
 entity bit_pack is
   generic (
         G_PORT_WIDTH    : integer := 64;
-        G_DISABLE_14BIT : boolean := false
+        G_DISABLE_14BIT : boolean := true
         );
   port (
         --input ports 
