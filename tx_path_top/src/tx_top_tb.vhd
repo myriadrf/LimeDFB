@@ -252,14 +252,16 @@ axis_dwidth_converter_128_to_64_inst : axis_dwidth_converter_128_to_64
    RESET_GEN : process is
    begin
 
-      s_axis_in.ARESET_N <= '0';
+--      s_axis_in.ARESET_N <= '0';
       m_axis_areset_n <= '0';
       wait for 1000 ns;
-      s_axis_in.ARESET_N <= '1';
+--      s_axis_in.ARESET_N <= s_axis_out.reset_override;
       m_axis_areset_n <= '1';
       wait;
 
    end process RESET_GEN;
+   
+   s_axis_in.ARESET_N <= s_axis_out.reset_override;
 
    ------------------------------------------
    S_AXIS_CLK_GEN : process is

@@ -359,42 +359,42 @@ begin
     S_AXIS_TREADY => data_pad_axis.tready,
     S_AXIS_TLAST	=> data_pad_axis.tlast,
     --
-    M_AXIS_TDATA  => smpl_buf_axis.tdata,
-    M_AXIS_TVALID	=> smpl_buf_axis.tvalid,
-    M_AXIS_TREADY => smpl_buf_axis.tready,
-    M_AXIS_TLAST	=> smpl_buf_axis.tlast,
+    M_AXIS_TDATA    => smpl_unpack_axis.tdata,
+    M_AXIS_TVALID	=> smpl_unpack_axis.tvalid,
+    M_AXIS_TREADY   => smpl_unpack_axis.tready,
+    M_AXIS_TLAST	=> smpl_unpack_axis.tlast,
     --
     BYPASS			=> unpack_bypass
   );
 
 
 
-   inst3_1_mini_sample_buffer : entity work.fifo_axis_wrap
-   generic map (
-      G_CLOCKING_MODE       => "common_clock",
-      G_PACKET_FIFO         => "false",
-      G_FIFO_DEPTH          => 16,
-      G_TDATA_WIDTH         => 128,
-      G_RD_DATA_COUNT_WIDTH => 5,
-      G_WR_DATA_COUNT_WIDTH => 5
-   )
-   port map (
-      S_AXIS_ARESETN     => RESET_N,
-      S_AXIS_ACLK        => M_AXIS_IQSAMPLE_ACLK,
-      S_AXIS_TVALID      => smpl_buf_axis.tvalid,
-      S_AXIS_TREADY      => smpl_buf_axis.tready,
-      S_AXIS_TDATA       => smpl_buf_axis.tdata,
-      S_AXIS_TLAST       => smpl_buf_axis.tlast,
-      M_AXIS_ACLK        => M_AXIS_IQSAMPLE_ACLK,
-      M_AXIS_TVALID      => smpl_unpack_axis.tvalid,
-      M_AXIS_TREADY      => smpl_unpack_axis.tready,
-      M_AXIS_TDATA       => smpl_unpack_axis.tdata,
-      M_AXIS_TLAST       => smpl_unpack_axis.tlast,
-      ALMOST_EMPTY_AXIS  => open,
-      ALMOST_FULL_AXIS   => open,
-      RD_DATA_COUNT_AXIS => open,
-      WR_DATA_COUNT_AXIS => open
-   );
+--   inst3_1_mini_sample_buffer : entity work.fifo_axis_wrap
+--   generic map (
+--      G_CLOCKING_MODE       => "common_clock",
+--      G_PACKET_FIFO         => "false",
+--      G_FIFO_DEPTH          => 16,
+--      G_TDATA_WIDTH         => 128,
+--      G_RD_DATA_COUNT_WIDTH => 5,
+--      G_WR_DATA_COUNT_WIDTH => 5
+--   )
+--   port map (
+--      S_AXIS_ARESETN     => RESET_N,
+--      S_AXIS_ACLK        => M_AXIS_IQSAMPLE_ACLK,
+--      S_AXIS_TVALID      => smpl_buf_axis.tvalid,
+--      S_AXIS_TREADY      => smpl_buf_axis.tready,
+--      S_AXIS_TDATA       => smpl_buf_axis.tdata,
+--      S_AXIS_TLAST       => smpl_buf_axis.tlast,
+--      M_AXIS_ACLK        => M_AXIS_IQSAMPLE_ACLK,
+--      M_AXIS_TVALID      => smpl_unpack_axis.tvalid,
+--      M_AXIS_TREADY      => smpl_unpack_axis.tready,
+--      M_AXIS_TDATA       => smpl_unpack_axis.tdata,
+--      M_AXIS_TLAST       => smpl_unpack_axis.tlast,
+--      ALMOST_EMPTY_AXIS  => open,
+--      ALMOST_FULL_AXIS   => open,
+--      RD_DATA_COUNT_AXIS => open,
+--      WR_DATA_COUNT_AXIS => open
+--   );
 
    
 

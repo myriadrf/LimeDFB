@@ -22,6 +22,7 @@ package tx_top_pkg is
       TVALID :    std_logic;
       TDATA  :    std_logic_vector(127 downto 0);
       TLAST  :    std_logic;
+      reset_override : std_logic;
    end record T_S_AXIS_OUT;
 
    type T_S_AXIS is record
@@ -512,34 +513,56 @@ package body tx_top_pkg is
       -- SISO A
       ch_en        <= "01";
       sample_width <= "00";
+      
+      interface_out.reset_override <= '0';
+      wait for 1 us;
+      interface_out.reset_override <= '1';
+      wait for 1 us;
+      
       send_sisoa : for i in 0 to num_packets - 1 loop
          p_send_data_packet_arr(interface_in, interface_out, data_array_siso, 64x"0", '0');
       end loop;
       -- wait for sisoA data to arrive before changing ch_en/sample_width
       if (data_counter < target_data_counter_sisoa) then
          wait until data_counter >= target_data_counter_sisoa;
+         wait for 5 us;
       end if;
+
 
       -- SISO B
       ch_en        <= "10";
       sample_width <= "00";
+      
+      interface_out.reset_override <= '0';
+      wait for 1 us;
+      interface_out.reset_override <= '1';
+      wait for 1 us;
+      
       send_sisob : for i in 0 to num_packets - 1 loop
          p_send_data_packet_arr(interface_in, interface_out, data_array_siso, 64x"0", '0');
       end loop;
       -- wait for sisoA data to arrive before changing ch_en/sample_width
       if (data_counter < target_data_counter_sisob) then
          wait until data_counter >= target_data_counter_sisob;
+         wait for 5 us;
       end if;
 
       -- MIMO
       ch_en        <= "11";
       sample_width <= "00";
+      
+      interface_out.reset_override <= '0';
+      wait for 1 us;
+      interface_out.reset_override <= '1';
+      wait for 1 us;
+      
       send_mimo : for i in 0 to num_packets - 1 loop
          p_send_data_packet_arr(interface_in, interface_out, data_array_mimo, 64x"0", '0');
       end loop;
       -- wait for sisoA data to arrive before changing ch_en/sample_width
       if (data_counter < target_data_counter_mimo) then
          wait until data_counter >= target_data_counter_mimo;
+         wait for 5 us;
       end if;
 
       -- loop through and check results
@@ -686,6 +709,12 @@ package body tx_top_pkg is
       -- SISO A
       ch_en        <= "01";
       sample_width <= "10";
+      
+      interface_out.reset_override <= '0';
+      wait for 1 us;
+      interface_out.reset_override <= '1';
+      wait for 1 us;
+      
       send_sisoa : for i in 0 to num_packets - 1 loop
          p_send_data_packet_arr(interface_in, interface_out, data_array_siso, 64x"0", '0');
       end loop;
@@ -693,6 +722,11 @@ package body tx_top_pkg is
       if (data_counter < target_data_counter_sisoa) then
          wait until data_counter >= target_data_counter_sisoa;
       end if;
+
+      interface_out.reset_override <= '0';
+      wait for 1 us;
+      interface_out.reset_override <= '1';
+      wait for 1 us;      
 
       -- SISO B
       ch_en        <= "10";
@@ -708,6 +742,12 @@ package body tx_top_pkg is
       -- MIMO
       ch_en        <= "11";
       sample_width <= "10";
+      
+      interface_out.reset_override <= '0';
+      wait for 1 us;
+      interface_out.reset_override <= '1';
+      wait for 1 us;
+      
       send_mimo : for i in 0 to num_packets - 1 loop
          p_send_data_packet_arr(interface_in, interface_out, data_array_mimo, 64x"0", '0');
       end loop;
@@ -857,6 +897,12 @@ package body tx_top_pkg is
       PCT_SYNC_DIS <= '0';
       ch_en        <= "11";
       sample_width <= "00";
+      
+      interface_out.reset_override <= '0';
+      wait for 1 us;
+      interface_out.reset_override <= '1';
+      wait for 1 us;
+      
       send_good_ts0 : for i in 0 to num_packets - 1 loop
          -- TODO: think of something more elegant than "+ i * packetlen * 2"
          --       now it is used to compensate packet writing being faster than reading
