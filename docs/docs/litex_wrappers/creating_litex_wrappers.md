@@ -1,4 +1,4 @@
-# Creating LiteX wrppers
+# Creating LiteX wrappers
 
 
 ##  Introduction
