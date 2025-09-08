@@ -371,19 +371,19 @@ begin
    end process;
 
 
-  your_instance_name : axis_combiner_0
-  PORT MAP (
-    aclk          => clk0,
-    aresetn       => reset_n,
-    s_axis_tvalid => "00000011",
-    s_axis_tready => open,
-    s_axis_tdata  => s_axis_tdata,
-    s_axis_tkeep  => (others=>'1'),
-    m_axis_tvalid => open,
-    m_axis_tready => '1',
-    m_axis_tdata  => open,
-    m_axis_tkeep  => open
-  );
+  --your_instance_name : axis_combiner_0
+  --PORT MAP (
+  --  aclk          => clk0,
+  --  aresetn       => reset_n,
+  --  s_axis_tvalid => "00000011",
+  --  s_axis_tready => open,
+  --  s_axis_tdata  => s_axis_tdata,
+  --  s_axis_tkeep  => (others=>'1'),
+  --  m_axis_tvalid => open,
+  --  m_axis_tready => '1',
+  --  m_axis_tdata  => open,
+  --  m_axis_tkeep  => open
+  --);
 
 
 
