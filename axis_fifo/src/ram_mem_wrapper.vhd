@@ -70,7 +70,9 @@ architecture arch of ram_mem_wrapper is
    type fifo_ram_type is array (0 to g_RAM_DEPTH-1) of std_logic_vector(g_RAM_WIDTH-1 downto 0);
    signal fifo_ram   : fifo_ram_type;
    signal ram_data   : std_logic_vector(g_RAM_WIDTH-1 downto 0);
-   
+   signal addrb_old  : std_logic_vector((clogb2(g_RAM_DEPTH)-1) downto 0);
+   signal addrb_mux  : std_logic_vector((clogb2(g_RAM_DEPTH)-1) downto 0);
+
    component xilinx_simple_dual_port_2_clock_ram is
    generic (
       RAM_WIDTH : integer := 64;                   -- Specify RAM data width
@@ -110,14 +112,21 @@ begin
             end if;
          end if;
       end process;
-      
+
       -- Read Data from RAM
+          -- Quartus seems to get confused with read enable (enb) and infers lots of
+          -- unnecessary logic. Doing this acts the same as read enable, but Quartus
+          -- does not get confused.
+      addrb_mux <= addrb when enb = '1' else addrb_old;
       process(clkb)
       begin
          if rising_edge(clkb) then
-            if enb = '1' then 
-               ram_data <= fifo_ram(to_integer(unsigned(addrb)));
-            end if;
+              if enb = '1' then
+                addrb_old <= addrb;
+              end if;
+--            if enb = '1' then
+               ram_data <= fifo_ram(to_integer(unsigned(addrb_mux)));
+--            end if;
          end if;
       end process;
       
