@@ -33,7 +33,7 @@ entity GPIO_TOP is
       -- to io ports
       GPIO_I            : in    std_logic_vector(G_GPIO_WIDTH - 1 downto 0); --! GPIO input (from IO)
       GPIO_O            : out   std_logic_vector(G_GPIO_WIDTH - 1 downto 0); --! GPIO output (to IO)
-      GPIO_T            : out   std_logic_vector(G_GPIO_WIDTH - 1 downto 0)  --! GPIO direction
+      GPIO_OE           : out   std_logic_vector(G_GPIO_WIDTH - 1 downto 0)  --! GPIO direction
    );
 end entity GPIO_TOP;
 
@@ -55,10 +55,10 @@ begin
 
          if (GPIO_OVERRIDE(i) = '0') then
             internal_gpio_out(i) <= GPIO_OUT_VAL(i);
-            GPIO_T               <= GPIO_DIR;
+            GPIO_OE(i)           <= NOT GPIO_DIR(i);
          else
             internal_gpio_out(i) <= GPIO_OVERRIDE_VAL(i);
-            GPIO_T               <= GPIO_OVERRIDE_DIR;
+            GPIO_OE(i)           <= NOT GPIO_OVERRIDE_DIR(i);
          end if;
 
       end loop gpio_internal_assign;
