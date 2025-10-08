@@ -186,7 +186,7 @@ begin
 -- Stage2: Accumulate valid bytes
 -- ----------------------------------------------------------------------------
    process (aclk, aresetn)
-      variable pointer  : integer range 0 to 15 :=0;
+      variable pointer  : integer range 0 to 31 :=0;
    begin
       if aresetn = '0' then
          pipeline_en_stage2   <= '0';
