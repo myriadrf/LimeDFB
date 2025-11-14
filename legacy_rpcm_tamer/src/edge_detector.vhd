@@ -35,22 +35,20 @@ architecture arch of edge_detector is
    signal pulses : std_logic_vector( NUM_PULSES - 1 downto 0 ) ;
 begin
 
-   process( clock )
+   process( clock, reset )
    begin
-      if( rising_edge( clock ) ) then
-         if( reset = '1' ) then
-            pulses <= ( others => sync_in ) ;
-            pulse_out <= '0' ;
-         else
-            pulses <= sync_in & pulses( NUM_PULSES - 1 downto 1 ) ;
+      if( reset = '1' ) then
+         pulses <= ( others => sync_in ) ;
+         pulse_out <= '0' ;
+      elsif( rising_edge( clock ) ) then
+         pulses <= sync_in & pulses( NUM_PULSES - 1 downto 1 ) ;
 
-            if( EDGE_RISE = '1' and pulses(1 downto 0) = "10" ) then
-               pulse_out <= '1' ;
-            elsif ( EDGE_FALL = '1' and pulses(1 downto 0) = "01" ) then
-               pulse_out <= '1' ;
-            else
-               pulse_out <= '0' ;
-            end if ;
+         if( EDGE_RISE = '1' and pulses(1 downto 0) = "10" ) then
+            pulse_out <= '1' ;
+         elsif ( EDGE_FALL = '1' and pulses(1 downto 0) = "01" ) then
+            pulse_out <= '1' ;
+         else
+            pulse_out <= '0' ;
          end if ;
       end if ;
    end process ;

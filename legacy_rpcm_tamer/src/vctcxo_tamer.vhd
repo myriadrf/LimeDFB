@@ -44,40 +44,40 @@ entity vctcxo_tamer is
         tune_ref           :   in  std_logic;
         vctcxo_clock       :   in  std_logic;
 
-        -- Wishbone Interface
-        wb_clk_i           :   in  std_logic;
-        wb_rst_i           :   in  std_logic;
-        wb_adr_i           :   in  std_logic_vector(7 downto 0);
-        wb_dat_i           :   in  std_logic_vector(7 downto 0);
-        wb_dat_o           :   out std_logic_vector(7 downto 0);
-        wb_we_i            :   in  std_logic;
-        wb_stb_i           :   in  std_logic;
-        wb_ack_o           :   out std_logic;
-        wb_cyc_i           :   in  std_logic;
+        -- Avalon-MM Interface
+        mm_clock           :   in  std_logic;
+        mm_reset           :   in  std_logic;
+        mm_rd_req          :   in  std_logic;
+        mm_wr_req          :   in  std_logic;
+        mm_addr            :   in  std_logic_vector(7 downto 0);
+        mm_wr_data         :   in  std_logic_vector(7 downto 0);
+        mm_rd_data         :   out std_logic_vector(7 downto 0);
+        mm_rd_datav        :   out std_logic;
+        mm_wait_req        :   out std_logic := '0';
 
-        -- Wishbone Interrupt
-        wb_int_o           :   out std_logic := '0';
-
+        -- Avalon Interrupts
+        mm_irq             :   out std_logic := '0';
+        
         PPS_1S_TARGET       :   in std_logic_vector(31 downto 0);
         PPS_1S_ERROR_TOL    :   in std_logic_vector(31 downto 0);
         PPS_10S_TARGET      :   in std_logic_vector(31 downto 0);
         PPS_10S_ERROR_TOL   :   in std_logic_vector(31 downto 0);
         PPS_100S_TARGET     :   in std_logic_vector(31 downto 0);
         PPS_100S_ERROR_TOL  :   in std_logic_vector(31 downto 0);
-
+        
         -- Status registers
-        --pps_1s_error_v     :   out std_logic;
+        pps_1s_error_v     :   out std_logic;
         pps_1s_error       :   out std_logic_vector(31 downto 0);
-        --pps_10s_error_v    :   out std_logic;
+        pps_10s_error_v    :   out std_logic;
         pps_10s_error      :   out std_logic_vector(31 downto 0);
-        --pps_100s_error_v   :   out std_logic;
+        pps_100s_error_v   :   out std_logic;
         pps_100s_error     :   out std_logic_vector(31 downto 0);
         accuracy           :   out std_logic_vector(3 downto 0);
         state              :   out std_logic_vector(3 downto 0);
-        dac_tuned_val      :   out std_logic_vector(15 downto 0)
-        --pps_1s_count_v     :   out std_logic;
-        --pps_10s_count_v    :   out std_logic;
-        --pps_100s_count_v   :   out std_logic
+        dac_tuned_val      :   out std_logic_vector(15 downto 0);
+        pps_1s_count_v     :   out std_logic;
+        pps_10s_count_v    :   out std_logic;
+        pps_100s_count_v   :   out std_logic
     );
 end entity;
 
@@ -86,27 +86,27 @@ architecture arch of vctcxo_tamer is
     -- Register Addresses
     constant CONTROL_ADDR        : natural := 16#00#;
     constant PPS_ERR_STATUS      : natural := 16#01#;
-    -- Reserved: 0x02 - 0x03
+    -- Reserved: 0x02 - 0x03  
     constant PPS_ERR_1S_ADDR0    : natural := 16#04#;
     constant PPS_ERR_1S_ADDR1    : natural := 16#05#;
     constant PPS_ERR_1S_ADDR2    : natural := 16#06#;
     constant PPS_ERR_1S_ADDR3    : natural := 16#07#;
-    -- Reserved: 0x08 - 0x0B
+    -- Reserved: 0x08 - 0x0B  
     constant PPS_ERR_10S_ADDR0   : natural := 16#0C#;
     constant PPS_ERR_10S_ADDR1   : natural := 16#0D#;
     constant PPS_ERR_10S_ADDR2   : natural := 16#0E#;
     constant PPS_ERR_10S_ADDR3   : natural := 16#0F#;
-    -- Reserved: 0x10 - 0x13
+    -- Reserved: 0x10 - 0x13  
     constant PPS_ERR_100S_ADDR0  : natural := 16#14#;
     constant PPS_ERR_100S_ADDR1  : natural := 16#15#;
     constant PPS_ERR_100S_ADDR2  : natural := 16#16#;
     constant PPS_ERR_100S_ADDR3  : natural := 16#17#;
-    -- Reserved: 0x18 - 0x1B
+    -- Reserved: 0x18 - 0x1B  
     constant TUNE_STATE_ADDR0    : natural := 16#1C#;
-    -- Reserved: 0x1D - 0x1F
+    -- Reserved: 0x1D - 0x1F 
     constant DAC_TUNED_VAL_ADDR0 : natural := 16#20#;
     constant DAC_TUNED_VAL_ADDR1 : natural := 16#21#;
-
+    
     -- Error tolerance on each clock count, calculated for a goal of < 10 PPB
     --   err_counts = (seconds * nominal_vctcxo_freq) * (10 * 1e-9)
 --    constant PPS_1S_ERROR_TOL   : signed(31 downto 0) := to_signed(1  , 32);
@@ -132,26 +132,26 @@ architecture arch of vctcxo_tamer is
 
     -- Counter data
     type count_t is record
-        target  : signed(31 downto 0);
-        count   : signed(31 downto 0);
+        target  : signed(63 downto 0);
+        count   : signed(63 downto 0);
         error   : signed(31 downto 0);
         error_v : std_logic;
         count_v : std_logic;
     end record;
 
-   signal pps_1s   : count_t := ( target  => x"01D4_C000", -- 3072e4
+   signal pps_1s   : count_t := ( target  => x"0000_0000_01D4_C000", -- 3072e4
+                                   count   => (others => '0'),
+                                   error   => (others => '0'),
+                                   error_v => '0',
+                                   count_v => '0' );                                
+
+   signal pps_10s  : count_t := ( target  => x"0000_0000_124F_8000", -- 3072e5
                                    count   => (others => '0'),
                                    error   => (others => '0'),
                                    error_v => '0',
                                    count_v => '0' );
-
-   signal pps_10s  : count_t := ( target  => x"124F_8000", -- 3072e5
-                                   count   => (others => '0'),
-                                   error   => (others => '0'),
-                                   error_v => '0',
-                                   count_v => '0' );
-
-   signal pps_100s : count_t := ( target  => x"B71B_0000", -- 3072e6
+                                   
+   signal pps_100s : count_t := ( target  => x"0000_0000_B71B_0000", -- 3072e6
                                    count   => (others => '0'),
                                    error   => (others => '0'),
                                    error_v => '0',
@@ -180,19 +180,19 @@ architecture arch of vctcxo_tamer is
     alias  mm_pps_irq_clear     : std_logic                    is mm_control_reg(5);
     alias  mm_pps_irq_enable    : std_logic                    is mm_control_reg(4);
     alias  mm_vctcxo_reset      : std_logic                    is mm_control_reg(0);
-
-    signal mm_tune_state_reg    : std_logic_vector(3 downto 0) := x"0";
+    
+    signal mm_tune_state_reg    : std_logic_vector(7 downto 0) := x"00";
     signal mm_dac_tuned_val     : std_logic_vector(15 downto 0) := x"0000";
-
+    
     signal mm_accuracy_reg_reset: std_logic;
-    signal mm_accuracy_reg      : std_logic_vector(3 downto 0) := x"0";
+    signal mm_accuracy_reg      : std_logic_vector(3 downto 0) := x"0"; 
 
-    --attribute KEEP : string;
-    --attribute KEEP of pps_1s: signal is "TRUE";
-    --attribute KEEP of pps_10s: signal is "TRUE";
-    --attribute KEEP of pps_100s: signal is "TRUE";
-
-    --attribute MARK_DEBUG : string;
+    attribute KEEP : string;
+    attribute KEEP of pps_1s: signal is "TRUE";
+    attribute KEEP of pps_10s: signal is "TRUE";
+    attribute KEEP of pps_100s: signal is "TRUE";
+    
+    attribute MARK_DEBUG : string;
 --    attribute MARK_DEBUG of mm_rd_datav: signal is "TRUE";
 --    attribute MARK_DEBUG of PPS_1S_ERROR_TOL: signal is "TRUE";
 --    attribute MARK_DEBUG of PPS_10S_ERROR_TOL: signal is "TRUE";
@@ -200,18 +200,18 @@ architecture arch of vctcxo_tamer is
 --    attribute MARK_DEBUG of pps_1s_error: signal is "TRUE";
 --    attribute MARK_DEBUG of pps_10s_error: signal is "TRUE";
 --    attribute MARK_DEBUG of pps_100s_error: signal is "TRUE";
-    --attribute MARK_DEBUG of pps_1s: signal is "TRUE";
-    --attribute MARK_DEBUG of pps_10s: signal is "TRUE";
-    --attribute MARK_DEBUG of pps_100s: signal is "TRUE";
+    attribute MARK_DEBUG of pps_1s: signal is "TRUE";
+    attribute MARK_DEBUG of pps_10s: signal is "TRUE";
+    attribute MARK_DEBUG of pps_100s: signal is "TRUE";
 
---attribute MARK_DEBUG of mm_control_reg: signal is "TRUE";
+attribute MARK_DEBUG of mm_control_reg: signal is "TRUE";
 
 begin
     -- Assigning pps targets from input ports
-    pps_1s.target   <= signed(PPS_1S_TARGET);
-    pps_10s.target  <= signed(PPS_10S_TARGET);
-    pps_100s.target <= signed(PPS_100S_TARGET);
-
+    pps_1s.target   <= signed(x"00000000" & PPS_1S_TARGET);
+    pps_10s.target  <= signed(x"00000000" & PPS_10S_TARGET);
+    pps_100s.target <= signed(x"00000000" & PPS_100S_TARGET);
+    
 
 
     -- If the input reference is 10 MHz, use it as a clock to increment a
@@ -279,8 +279,8 @@ begin
             PPS_PULSES      => 1
         )
         port map (
-            sys_clock       => wb_clk_i,
-            sys_reset       => wb_rst_i or mm_vctcxo_reset,
+            sys_clock       => mm_clock,
+            sys_reset       => mm_reset or mm_vctcxo_reset,
             sys_count       => pps_1s.count,
             sys_count_v     => pps_1s.count_v,
             vctcxo_clock    => vctcxo_clock,
@@ -295,8 +295,8 @@ begin
             PPS_PULSES      => 10
         )
         port map (
-            sys_clock       => wb_clk_i,
-            sys_reset       => wb_rst_i or mm_vctcxo_reset,
+            sys_clock       => mm_clock,
+            sys_reset       => mm_reset or mm_vctcxo_reset,
             sys_count       => pps_10s.count,
             sys_count_v     => pps_10s.count_v,
             vctcxo_clock    => vctcxo_clock,
@@ -311,8 +311,8 @@ begin
             PPS_PULSES      => 100
         )
         port map (
-            sys_clock       => wb_clk_i,
-            sys_reset       => wb_rst_i or mm_vctcxo_reset,
+            sys_clock       => mm_clock,
+            sys_reset       => mm_reset or mm_vctcxo_reset,
             sys_count       => pps_100s.count,
             sys_count_v     => pps_100s.count_v,
             vctcxo_clock    => vctcxo_clock,
@@ -321,21 +321,21 @@ begin
         );
 
     -- Interrupt Request
-    int_req_proc : process( wb_clk_i )
+    int_req_proc : process( mm_clock )
         variable tmp_1s_err   : signed(PPS_1S_ERROR_TOL'range)   := (others => '0');
         variable tmp_10s_err  : signed(PPS_10S_ERROR_TOL'range)  := (others => '0');
         variable tmp_100s_err : signed(PPS_100S_ERROR_TOL'range) := (others => '0');
     begin
-        if( rising_edge(wb_clk_i) ) then
+        if( rising_edge(mm_clock) ) then
 
             if( (pps_1s.count_v = '1') and (mm_pps_irq_enable = '1') ) then
                 tmp_1s_err   := resize( (pps_1s.count - pps_1s.target), 32 );
                 pps_1s.error <= tmp_1s_err;
                 if( abs(tmp_1s_err) > signed(PPS_1S_ERROR_TOL) ) then
                     pps_1s.error_v <= '1';
-                    wb_int_o <= '1';
+                    mm_irq <= '1';
                 end if;
-
+                
             end if;
 
             if( (pps_10s.count_v = '1') and (mm_pps_irq_enable = '1') ) then
@@ -343,7 +343,7 @@ begin
                 pps_10s.error <= tmp_10s_err;
                 if( abs(tmp_10s_err) > signed(PPS_10S_ERROR_TOL) ) then
                     pps_10s.error_v <= '1';
-                    wb_int_o <= '1';
+                    mm_irq <= '1';
                 end if;
             end if;
 
@@ -352,9 +352,9 @@ begin
                 pps_100s.error <= tmp_100s_err;
                 if( abs(tmp_100s_err) > signed(PPS_100S_ERROR_TOL) ) then
                     pps_100s.error_v <= '1';
-                    wb_int_o <= '1';
+                    mm_irq <= '1';
                 end if;
-
+               
             end if;
 
             if( mm_pps_irq_clear = '1' ) then
@@ -363,162 +363,162 @@ begin
                 pps_1s.error_v   <= '0';
                 pps_10s.error_v  <= '0';
                 pps_100s.error_v <= '0';
-                wb_int_o <= '0';
+                mm_irq <= '0';
             end if;
 
         end if;
     end process;
-
-
+    
+    
    mm_accuracy_reg_reset <= '1' when ( unpack(mm_tune_mode) = DISABLED     ) else '0';
-
+    
     -- Accuracy registers
     -- If error is detected accuracy status is reduced one step backwards.
-    -- If count valid is detected and there is no error accuracy status is increased
-    accuracy_proc : process( mm_accuracy_reg_reset, wb_clk_i )
-      variable tmp_1s_err   : signed(31 downto 0)   := (others => '0');
-      variable tmp_10s_err  : signed(31 downto 0)  := (others => '0');
-      variable tmp_100s_err : signed(31 downto 0) := (others => '0');
+    -- If count valid is detected and there is no error accuracy status is increased 
+    accuracy_proc : process( mm_accuracy_reg_reset, mm_clock )
+      variable tmp_1s_err   : signed(PPS_1S_ERROR_TOL'range)   := (others => '0');
+      variable tmp_10s_err  : signed(PPS_10S_ERROR_TOL'range)  := (others => '0');
+      variable tmp_100s_err : signed(PPS_100S_ERROR_TOL'range) := (others => '0');
     begin
-      if mm_accuracy_reg_reset = '1' then
+      if mm_accuracy_reg_reset = '1' then 
          mm_accuracy_reg <= x"0";
-      elsif ( rising_edge(wb_clk_i) ) then
-
+      elsif ( rising_edge(mm_clock) ) then
+      
          if( (pps_1s.count_v = '1') and (mm_pps_irq_enable = '1') ) then
             tmp_1s_err   := resize( (pps_1s.count - pps_1s.target), 32 );
             if( abs(tmp_1s_err) > signed(PPS_1S_ERROR_TOL) ) then
                mm_accuracy_reg <= x"0";
-            elsif unsigned(mm_accuracy_reg) = 0 then
+            elsif unsigned(mm_accuracy_reg) = 0 then 
                mm_accuracy_reg <= x"1";
-            else
+            else 
                mm_accuracy_reg <= mm_accuracy_reg;
             end if;
-
+            
          end if;
-
+      
          if( (pps_10s.count_v = '1') and (mm_pps_irq_enable = '1') ) then
             tmp_10s_err   := resize( (pps_10s.count - pps_10s.target), 32 );
             if( abs(tmp_10s_err) > signed(PPS_10S_ERROR_TOL) ) then
-               mm_accuracy_reg <= x"1";
-            elsif unsigned(mm_accuracy_reg) = 1 then
+               mm_accuracy_reg <= x"1"; 
+            elsif unsigned(mm_accuracy_reg) = 1 then 
                mm_accuracy_reg <= x"2";
-            else
+            else 
                mm_accuracy_reg <= mm_accuracy_reg;
-            end if;
+            end if;             
          end if;
-
+      
          if( (pps_100s.count_v = '1') and (mm_pps_irq_enable = '1') ) then
-            tmp_100s_err   := resize( (pps_100s.count - pps_100s.target), 32 );
+            tmp_100s_err   := resize( (pps_100s.count - pps_100s.target), 32 );         
             if( abs(tmp_100s_err) > signed(PPS_100S_ERROR_TOL) ) then
                mm_accuracy_reg <= x"2";
-            elsif unsigned(mm_accuracy_reg) = 2 then
+            elsif unsigned(mm_accuracy_reg) = 2 then 
                mm_accuracy_reg <= x"3";
-            else
+            else 
                mm_accuracy_reg <= mm_accuracy_reg;
-            end if;
+            end if;             
          end if;
-
+      
       end if;
+    end process;    
+    
+    pps_1s_error_v   <= pps_1s.error_v;
+    pps_1s_error     <= std_logic_vector(pps_1s.error(31 downto 0));
+    pps_10s_error_v  <= pps_10s.error_v;
+    pps_10s_error    <= std_logic_vector(pps_10s.error(31 downto 0));
+    pps_100s_error_v <= pps_100s.error_v;
+    pps_100s_error   <= std_logic_vector(pps_100s.error(31 downto 0));
+    
+
+    -- Avalon-MM Read Process
+    mm_read_proc : process( mm_clock )
+    begin
+        if( rising_edge(mm_clock) ) then
+
+            -- Data valid is just a one-cycle delay of read request
+            mm_rd_datav <= mm_rd_req;
+            mm_wait_req <= '0';
+
+            case to_integer(unsigned(mm_addr)) is
+
+                -- Control Register
+                when CONTROL_ADDR =>
+                    mm_rd_data <= mm_control_reg;
+
+                -- PPS Error Status
+                when PPS_ERR_STATUS =>
+                    mm_rd_data(7 downto 3) <= (others => '0');
+                    mm_rd_data(2)          <= pps_100s.error_v;
+                    mm_rd_data(1)          <= pps_10s.error_v;
+                    mm_rd_data(0)          <= pps_1s.error_v;
+
+                -- 1 Second Count Error
+                when PPS_ERR_1S_ADDR0 =>
+                    mm_rd_data <= std_logic_vector(pps_1s.error(7 downto 0));
+
+                when PPS_ERR_1S_ADDR1 =>
+                    mm_rd_data <= std_logic_vector(pps_1s.error(15 downto 8));
+
+                when PPS_ERR_1S_ADDR2 =>
+                    mm_rd_data <= std_logic_vector(pps_1s.error(23 downto 16));
+
+                when PPS_ERR_1S_ADDR3 =>
+                    mm_rd_data <= std_logic_vector(pps_1s.error(31 downto 24));
+
+                -- 10 Second Count Error
+                when PPS_ERR_10S_ADDR0 =>
+                    mm_rd_data <= std_logic_vector(pps_10s.error(7 downto 0));
+
+                when PPS_ERR_10S_ADDR1 =>
+                    mm_rd_data <= std_logic_vector(pps_10s.error(15 downto 8));
+
+                when PPS_ERR_10S_ADDR2 =>
+                    mm_rd_data <= std_logic_vector(pps_10s.error(23 downto 16));
+
+                when PPS_ERR_10S_ADDR3 =>
+                    mm_rd_data <= std_logic_vector(pps_10s.error(31 downto 24));
+
+                -- 100 Second Count Error
+                when PPS_ERR_100S_ADDR0 =>
+                    mm_rd_data <= std_logic_vector(pps_100s.error(7 downto 0));
+
+                when PPS_ERR_100S_ADDR1 =>
+                    mm_rd_data <= std_logic_vector(pps_100s.error(15 downto 8));
+
+                when PPS_ERR_100S_ADDR2 =>
+                    mm_rd_data <= std_logic_vector(pps_100s.error(23 downto 16));
+
+                when PPS_ERR_100S_ADDR3 =>
+                    mm_rd_data <= std_logic_vector(pps_100s.error(31 downto 24));
+
+                when others =>
+                    null;
+
+            end case;
+        end if;
     end process;
 
-    --pps_1s_error_v   <= pps_1s.error_v;
-    pps_1s_error     <= std_logic_vector(pps_1s.error(31 downto 0));
-    --pps_10s_error_v  <= pps_10s.error_v;
-    pps_10s_error    <= std_logic_vector(pps_10s.error(31 downto 0));
-    --pps_100s_error_v <= pps_100s.error_v;
-    pps_100s_error   <= std_logic_vector(pps_100s.error(31 downto 0));
-
-
-    -- Wishbone Process
-    wb_proc : process( wb_clk_i )
+    -- Avalon-MM Write Process
+    mm_write_proc : process( mm_clock )
     begin
-        if( rising_edge(wb_clk_i) ) then
+        if( rising_edge(mm_clock) ) then
             mm_pps_irq_clear <= '0';
-            wb_ack_o <= '0';
-            if( wb_cyc_i = '1' and wb_stb_i = '1' ) then
-                wb_ack_o <= '1';
-                if( wb_we_i = '1' ) then
-                    case to_integer(unsigned(wb_adr_i)) is
-                        -- Control Register
-                        when CONTROL_ADDR =>
-                            mm_control_reg <= wb_dat_i;
+            if( mm_wr_req = '1' ) then
+                case to_integer(unsigned(mm_addr)) is
+                    when CONTROL_ADDR =>
+                        mm_control_reg <= mm_wr_data;
+                        
+                    when TUNE_STATE_ADDR0 =>
+                        mm_tune_state_reg(7 downto 0) <= mm_wr_data;
 
-                        when TUNE_STATE_ADDR0 =>
-                            mm_tune_state_reg(3 downto 0) <= wb_dat_i(3 downto 0);
-
-                        when DAC_TUNED_VAL_ADDR0 =>
-                            mm_dac_tuned_val(7 downto 0) <= wb_dat_i;
-
-                        when DAC_TUNED_VAL_ADDR1 =>
-                            mm_dac_tuned_val(15 downto 8) <= wb_dat_i;
-
-                        when others =>
-                            null;
-                    end case;
-                else
-                    case to_integer(unsigned(wb_adr_i)) is
-
-                        -- Control Register
-                        when CONTROL_ADDR =>
-                            wb_dat_o <= mm_control_reg;
-
-                        -- PPS Error Status
-                        when PPS_ERR_STATUS =>
-                            wb_dat_o(7 downto 3) <= (others => '0');
-                            wb_dat_o(2)          <= pps_100s.error_v;
-                            wb_dat_o(1)          <= pps_10s.error_v;
-                            wb_dat_o(0)          <= pps_1s.error_v;
-
-                        -- 1 Second Count Error
-                        when PPS_ERR_1S_ADDR0 =>
-                            wb_dat_o <= std_logic_vector(pps_1s.error(7 downto 0));
-
-                        when PPS_ERR_1S_ADDR1 =>
-                            wb_dat_o <= std_logic_vector(pps_1s.error(15 downto 8));
-
-                        when PPS_ERR_1S_ADDR2 =>
-                            wb_dat_o <= std_logic_vector(pps_1s.error(23 downto 16));
-
-                        when PPS_ERR_1S_ADDR3 =>
-                            wb_dat_o <= std_logic_vector(pps_1s.error(31 downto 24));
-
-                        -- 10 Second Count Error
-                        when PPS_ERR_10S_ADDR0 =>
-                            wb_dat_o <= std_logic_vector(pps_10s.error(7 downto 0));
-
-                        when PPS_ERR_10S_ADDR1 =>
-                            wb_dat_o <= std_logic_vector(pps_10s.error(15 downto 8));
-
-                        when PPS_ERR_10S_ADDR2 =>
-                            wb_dat_o <= std_logic_vector(pps_10s.error(23 downto 16));
-
-                        when PPS_ERR_10S_ADDR3 =>
-                            wb_dat_o <= std_logic_vector(pps_10s.error(31 downto 24));
-
-                        -- 100 Second Count Error
-                        when PPS_ERR_100S_ADDR0 =>
-                            wb_dat_o <= std_logic_vector(pps_100s.error(7 downto 0));
-
-                        when PPS_ERR_100S_ADDR1 =>
-                            wb_dat_o <= std_logic_vector(pps_100s.error(15 downto 8));
-
-                        when PPS_ERR_100S_ADDR2 =>
-                            wb_dat_o <= std_logic_vector(pps_100s.error(23 downto 16));
-
-                        when PPS_ERR_100S_ADDR3 =>
-                            wb_dat_o <= std_logic_vector(pps_100s.error(31 downto 24));
-
-                        when DAC_TUNED_VAL_ADDR0 =>
-                            wb_dat_o <= mm_dac_tuned_val(7 downto 0);
-
-                        when DAC_TUNED_VAL_ADDR1 =>
-                            wb_dat_o <= mm_dac_tuned_val(15 downto 8);
-
-                        when others =>
-                            null;
-
-                    end case;
-                end if;
+                    when DAC_TUNED_VAL_ADDR0 => 
+                        mm_dac_tuned_val(7 downto 0) <= mm_wr_data;
+                        
+                    when DAC_TUNED_VAL_ADDR1 => 
+                        mm_dac_tuned_val(15 downto 8) <= mm_wr_data;
+                        
+                    when others =>
+                        null;
+                end case;
             end if;
         end if;
     end process;
@@ -531,7 +531,7 @@ begin
         )
         port map (
             clock           => vctcxo_clock,
-            async           => mm_vctcxo_reset or wb_rst_i,
+            async           => mm_vctcxo_reset or mm_reset,
             sync            => vctcxo_reset
         );
 
@@ -543,7 +543,7 @@ begin
         )
         port map (
             clock           => tune_ref,
-            async           => mm_vctcxo_reset or wb_rst_i,
+            async           => mm_vctcxo_reset or mm_reset,
             sync            => tune_ref_reset
         );
 
@@ -569,8 +569,8 @@ begin
             DATA_WIDTH        => 2
         )
         port map (
-            source_reset      => wb_rst_i or mm_vctcxo_reset,
-            source_clock      => wb_clk_i,
+            source_reset      => mm_reset or mm_vctcxo_reset,
+            source_clock      => mm_clock,
             source_data       => mm_tune_mode,
             dest_reset        => tune_ref_reset,
             dest_clock        => tune_ref,
@@ -579,18 +579,23 @@ begin
             dest_req          => tune_ref_mode_update_req,
             dest_ack          => tune_ref_mode_update_ack
         );
-
+        
    -- Modification due to Vivado VHDL 2008 limitation in formal function conversion
    tune_ref_mode_hs <= unpack(tune_ref_mode_packed);
-
+        
    -- mm registers to output ports
    accuracy       <= mm_accuracy_reg;
    state          <= mm_tune_state_reg(3 downto 0);
    dac_tuned_val  <= mm_dac_tuned_val;
-
+   
    --output ports
-   --pps_1s_count_v     <= pps_1s.count_v;
-   --pps_10s_count_v    <= pps_10s.count_v;
-   --pps_100s_count_v   <= pps_100s.count_v;
+    process( mm_clock )
+    begin
+        if( rising_edge(mm_clock) ) then
+            pps_1s_count_v     <= pps_1s.count_v;
+            pps_10s_count_v    <= pps_10s.count_v;
+            pps_100s_count_v   <= pps_100s.count_v;
+        end if;
+    end process;
 
 end architecture;
