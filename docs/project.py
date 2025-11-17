@@ -31,4 +31,4 @@ intersphinx_external = {
 archived = False
 
 # When True internal intersphinx targets point at stage.myriadrf.org.
-staging = False
+staging = True
