@@ -21,7 +21,8 @@ highlight_language = 'python'
 # For external projects specify the reference and the full URL.
 # To minimise build time only include projects that are referenced!
 intersphinx_internal = [
-    'limesdrgw',
+    'limeppsdo',
+    'limesdr-gw',
 ]
 intersphinx_external = {
     # 'numpy': 'https://numpy.org/doc/stable/',
