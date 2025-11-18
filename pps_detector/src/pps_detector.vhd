@@ -29,7 +29,7 @@ architecture Behavioral of pps_detector is
 
     signal pps_detected : std_logic := '0';
     signal pps_reg      : std_logic;
-    signal timeout_cnt  : unsigned(23 downto 0);
+    signal timeout_cnt  : unsigned(31 downto 0);
 
 begin
 
