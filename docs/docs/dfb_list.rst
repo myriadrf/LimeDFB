@@ -18,5 +18,6 @@ Here you can find summary of available modules and their status.
 
    ./lms7002_top/README.md
    ./rx_path_top/README.md
+   ./rx_path_top_litex/README
    ./tx_path_top/README.md
 
