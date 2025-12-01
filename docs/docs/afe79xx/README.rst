@@ -1,4 +1,4 @@
-Afe79xx
+afe79xx
 =======
 
 Top-level module for the AFE7901 IC digital interface.
@@ -34,7 +34,7 @@ The top-level file integrates the following main blocks:
 
 .. drawio-image:: afe79xx.drawio
    :align: center
-   :format: png
+   :format: svg
    :page-index: 0
    :alt: Main block diagram for afe79xx module
 
@@ -42,7 +42,7 @@ The top-level file integrates the following main blocks:
 .. _afe79xx_jesd_ip_top_module:
 
 AFE79xx JESD IP Core
---------------------
+^^^^^^^^^^^^^^^^^^^^
 The Texas Instruments JESD IP core.
 
 .. note::
@@ -51,19 +51,19 @@ The Texas Instruments JESD IP core.
 .. _txrx_cdc_module:
 
 TX/RX CDC
----------
+^^^^^^^^^
 Manages Clock Domain Crossing (CDC) between the clock domain used by the JESD core and the main system clock.
 
 .. _txrx_conv_module:
 
 TX/RX Converters
-----------------
+^^^^^^^^^^^^^^^^
 Adapts the data bus width, converting between the 128-bit bus used by system modules and the 256-bit bus required by the JESD core.
 
 .. _interleaver_module:
 
 Interleaver/Deinterleaver
--------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^
 The JESD core operates on interleaved samples. This module performs the necessary interleaving (TX) and deinterleaving (RX) to ensure correct sample ordering.
 
 .. _txrx_channel_mux_module:
@@ -88,6 +88,6 @@ The Resampler module implements configurable upsampling (TX) and downsampling (R
 
 .. drawio-image:: resampler.drawio
    :align: center
-   :format: png
+   :format: svg
    :page-index: 0
    :alt: Resampler details for TX/RX paths
