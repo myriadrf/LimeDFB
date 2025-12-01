@@ -2,3 +2,4 @@ Module,Version,Status,Description
 :ref:`lms7002_top <docs/lms7002_top/readme:lms7002_top>`,v0.0,dev,Top module for LMS7002M IC digital interface
 :ref:`rx_path_top <docs/rx_path_top/readme:rx_path_top>`,v0.0,dev,Receive and pack IQ samples into Stream packets
 :ref:`tx_path_top <docs/tx_path_top/readme:tx_path_top>`,v0.0,dev,"Unpack packets into IQ samples, perform synchronization"
+:ref:`afe79xx <docs/afe79xx/readme:afe79xx>`,v0.0,dev,"Top module for AFE7901 IC digital interface"
