@@ -32,10 +32,8 @@ The top-level file integrates the following main blocks:
 - :ref:`TX/RX Channel Multiplexer <txrx_channel_mux_module>` – Channel reordering and mapping.
 - :ref:`Resamplers <resamplers_module>` – Interpolation (TX) and decimation (RX).
 
-.. drawio-image:: afe79xx.drawio
+.. image:: afe79xx.drawio.svg
    :align: center
-   :format: svg
-   :page-index: 0
    :alt: Main block diagram for afe79xx module
 
 
@@ -86,8 +84,6 @@ The Resampler module implements configurable upsampling (TX) and downsampling (R
 .. note::
    The diagram below simplifies the view by showing a single sample path; however, the hardware processes both I and Q channels in parallel.
 
-.. drawio-image:: resampler.drawio
+.. image:: afe79xx.drawio.svg
    :align: center
-   :format: svg
-   :page-index: 0
    :alt: Resampler details for TX/RX paths

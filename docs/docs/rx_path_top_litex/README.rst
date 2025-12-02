@@ -28,10 +28,8 @@ The top-level file integrates the following main blocks:
 
 This diagram represents the top-level Receive (RX) path. Its primary function is to ingest streaming data (IQ samples), adjust its bit-width, format it into packets, and transfer it safely from the input clock domain to the system's main clock domain.
 
-.. drawio-image:: ./block_diagram.drawio
+.. image:: block_diagram.drawio.svg
    :align: center
-   :format: svg
-   :page-index: 0
    :alt: rx_path_top block diagram
 
 
