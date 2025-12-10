@@ -20,5 +20,6 @@ Here you can find summary of available modules and their status.
    ./rx_path_top/README.md
    ./rx_path_top_litex/README
    ./tx_path_top/README.md
+   ./tx_path_top_litex/README
    ./afe79xx/README.md
 
