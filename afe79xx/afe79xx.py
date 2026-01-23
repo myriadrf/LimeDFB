@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from litex.soc.interconnect.stream import Endpoint, BufferizeEndpoints, DIR_SOURCE, DIR_SINK
+from types import SimpleNamespace
 from migen import *
 from litex.soc.interconnect.axi import *
 from litex.soc.interconnect.csr import *
@@ -545,4 +546,64 @@ class afe79xx(LiteXModule):
                 self.tx_cdc.source.connect(afe_sink,omit={"ready"}),
                 # If in reset, assert ready to 'clear out' everything
                 self.tx_cdc.source.ready.eq(afe_sink.ready | ~self.tx_en)
+            ]
+
+        # Signal lists for debugging
+        self.flow_control_signals = SimpleNamespace()
+        self.flow_control_signals.m_clk = [
+            afe_source.valid,
+            afe_source.ready,
+        ]
+
+        self.flow_control_signals.s_clk = [
+            afe_sink.ready,
+            afe_sink.valid,
+        ]
+
+        if demux:
+            self.flow_control_signals.m_clk += [
+                rx_cdc.sink.valid,
+                rx_cdc.sink.ready,
+            ]
+            self.flow_control_signals.s_clk += [
+                self.tx_cdc.source.valid,
+                self.flow_control_signals.s_clk[0], # afe_sink.ready
+            ]
+            self.flow_control_signals.demux_clk = [
+                rx_cdc.source.valid,
+                rx_cdc.source.ready,
+                rx_conv.sink.valid,
+                rx_conv.sink.ready,
+                rx_conv.source.valid,
+                rx_conv.source.ready,
+                self.source.valid,
+                self.source.ready,
+                self.sink.valid,
+                self.sink.ready,
+                self.tx_conv.sink.valid,
+                self.tx_conv.sink.ready,
+                self.tx_conv.source.valid,
+                self.tx_conv.source.ready,
+                self.tx_cdc.sink.valid,
+                self.tx_cdc.sink.ready,
+            ]
+            if resampling_stages > 0:
+                self.flow_control_signals.demux_clk += [
+                    self.RX_A_RESAMPLER.sink.valid,
+                    self.RX_A_RESAMPLER.sink.ready,
+                    self.RX_A_RESAMPLER.source.valid,
+                    self.RX_A_RESAMPLER.source.ready,
+                    self.TX_A_RESAMPLER.sink.valid,
+                    self.TX_A_RESAMPLER.sink.ready,
+                    self.TX_A_RESAMPLER.source.valid,
+                    self.TX_A_RESAMPLER.source.ready,
+                ]
+        else:
+            self.flow_control_signals.m_clk += [
+                self.source.valid,
+                self.source.ready,
+            ]
+            self.flow_control_signals.s_clk += [
+                self.sink.valid,
+                self.sink.ready,
             ]
