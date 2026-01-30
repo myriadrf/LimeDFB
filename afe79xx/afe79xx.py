@@ -24,6 +24,7 @@ class afe79xx(LiteXModule):
 
         self.core_ctrl    = CSRStorage(fields=[
             CSRField("afe_core_rst_n",              size=1, offset=0, reset=0),
+            CSRField("afe_init_trigger",            size=1, offset=1, reset=0),
         ])
 
         self.rx_ctrl    = CSRStorage(fields=[
