@@ -45,6 +45,10 @@ class afe79xx(LiteXModule):
             CSRField("tiafe_cfg_rx_buffer_release_delay",       size=10, offset=0, reset=0),
         ])
 
+        #self.rx_cfg3 = CSRStorage(fields=[
+        #    CSRField("swap_iq",       size=1, offset=0, reset=0),
+        #])
+
         self.rx_status0 = CSRStatus(fields=[
             CSRField("jesd_rx_sysref_realign_count",       size=4, offset=0, reset=0),
         ])
@@ -184,6 +188,8 @@ class afe79xx(LiteXModule):
         self.debug_nfo                                      = Signal(16)
         self.jesd_freerun_clk                               = Signal()
 
+        #self.rx_swap_iq                                     = Signal()
+
         self.DAC_SYNC = Signal(2)
         self.ADC_SYNC = Signal(2)
 
@@ -227,6 +233,7 @@ class afe79xx(LiteXModule):
         self.specials += MultiReg(self.rx_cfg0.fields.tiafe_cfg_rx_lane_polarity, self.tiafe_cfg_rx_lane_polarity, "fpga_1pps", 2,0)
         self.specials += MultiReg(self.rx_cfg1.fields.tiafe_cfg_rx_lane_map, self.tiafe_cfg_rx_lane_map, "fpga_1pps", 2,0)
         self.specials += MultiReg(self.rx_cfg2.fields.tiafe_cfg_rx_buffer_release_delay, self.tiafe_cfg_rx_buffer_release_delay, "fpga_1pps", 2,0)
+        #self.specials += MultiReg(self.rx_cfg3.fields.swap_iq,self.rx_swap_iq, "fpga_1pps", 2, 0)
 
         self.specials += MultiReg(self.tx_ctrl.fields.tiafe_tx_sync_reset, self.tiafe_tx_sync_reset, "fpga_1pps", 2, 1)
         self.specials += MultiReg(self.tx_cfg0.fields.tiafe_cfg_tx_lane_enabled, self.tiafe_cfg_tx_lane_enabled, "fpga_1pps", 2, 0)
@@ -416,10 +423,14 @@ class afe79xx(LiteXModule):
             # AFE bindings do not correspond to ABCD channels, channels need to be muxed to fit
             rx_conv_ch_mux_data = Signal(128)
             self.comb += [
-                rx_conv_ch_mux_data[64: 96].eq(rx_conv.source.data[0 : 32]), #CH 1 of AFE is CH C
-                rx_conv_ch_mux_data[96:128].eq(rx_conv.source.data[32: 64]), #CH 2 of AFE is CH D
-                rx_conv_ch_mux_data[32: 64].eq(rx_conv.source.data[64: 96]), #CH 3 of AFE is CH B
-                rx_conv_ch_mux_data[0 : 32].eq(rx_conv.source.data[96:128]), #CH 4 of AFE is CH A
+                # CH 1 of AFE is CH C (also swap I and Q)
+                rx_conv_ch_mux_data[64:96].eq(Cat(rx_conv.source.data[16:32], rx_conv.source.data[0:16])),
+                # CH 2 of AFE is CH D (also swap I and Q)
+                rx_conv_ch_mux_data[96:128].eq(Cat(rx_conv.source.data[48:64], rx_conv.source.data[32:48])),
+                # CH 3 of AFE is CH B (also swap I and Q)
+                rx_conv_ch_mux_data[32:64].eq(Cat(rx_conv.source.data[80:96], rx_conv.source.data[64:80])),
+                # CH 4 of AFE is CH A (also swap I and Q)
+                rx_conv_ch_mux_data[0:32].eq(Cat(rx_conv.source.data[112:128], rx_conv.source.data[96:112])),
             ]
 
             endpoint_dict = {
@@ -509,10 +520,15 @@ class afe79xx(LiteXModule):
             # Omit parts of Axi interface we don't use + data, because we handle that seperately
             # AFE bindings do not correspond to ABCD channels, channels need to be muxed to fit
             self.comb += [
-                tx_conv.sink.data[96:128].eq(self.TX_A_RESAMPLER.source.data), #CH A is AFE CH 4
-                tx_conv.sink.data[64: 96].eq(self.TX_B_RESAMPLER.source.data), #CH B is AFE CH 3
-                tx_conv.sink.data[0 : 32].eq(self.TX_C_RESAMPLER.source.data), #CH C is AFE CH 1
-                tx_conv.sink.data[32: 64].eq(self.TX_D_RESAMPLER.source.data), #CH D is AFE CH 2
+                # CH A is AFE CH 4 (swap I/Q)
+                tx_conv.sink.data[96:128].eq(Cat(self.TX_A_RESAMPLER.source.data[16:32],self.TX_A_RESAMPLER.source.data[0:16])),
+                # CH B is AFE CH 3 (swap I/Q)
+                tx_conv.sink.data[64:96].eq(Cat(self.TX_B_RESAMPLER.source.data[16:32],self.TX_B_RESAMPLER.source.data[0:16])),
+                # CH C is AFE CH 1 (swap I/Q)
+                tx_conv.sink.data[0:32].eq(Cat(self.TX_C_RESAMPLER.source.data[16:32],self.TX_C_RESAMPLER.source.data[0:16])),
+                # CH D is AFE CH 2 (swap I/Q)
+                tx_conv.sink.data[32:64].eq(Cat(self.TX_D_RESAMPLER.source.data[16:32],self.TX_D_RESAMPLER.source.data[0:16])),
+
                 self.tx_conv.sink.valid.eq(self.TX_A_RESAMPLER.source.valid),
                 self.TX_A_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
                 self.TX_B_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
