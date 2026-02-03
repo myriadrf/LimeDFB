@@ -12,6 +12,19 @@ from migen.genlib.cdc import MultiReg
 from gateware.LimeDFB.Resampler.Resampler import Resampler
 
 
+# -----------------------------
+# Utility functions
+# -----------------------------
+def pairwise16_swap(sig):
+    width = len(sig)
+    assert width % 16 == 0, "Signal width must be multiple of 16"
+    chunks = [sig[16*i:16*(i+1)] for i in range(width // 16)]
+    swapped_chunks = []
+    for i in range(0, len(chunks), 2):
+        swapped_chunks.append(chunks[i+1])
+        swapped_chunks.append(chunks[i])
+    return Cat(*swapped_chunks)
+
 class afe79xx(LiteXModule):
     def __init__(self, soc, platform, pads, s_clk_domain="sys", m_clk_domain="sys", demux_clk_domain="sys500", with_debug=False, demux=True, resampling_stages=2):
         # Add CSRs
@@ -45,9 +58,9 @@ class afe79xx(LiteXModule):
             CSRField("tiafe_cfg_rx_buffer_release_delay",       size=10, offset=0, reset=0),
         ])
 
-        #self.rx_cfg3 = CSRStorage(fields=[
-        #    CSRField("swap_iq",       size=1, offset=0, reset=0),
-        #])
+        self.rx_cfg3 = CSRStorage(fields=[
+            CSRField("swap_iq",       size=1, offset=0, reset=0),
+        ])
 
         self.rx_status0 = CSRStatus(fields=[
             CSRField("jesd_rx_sysref_realign_count",       size=4, offset=0, reset=0),
@@ -188,7 +201,7 @@ class afe79xx(LiteXModule):
         self.debug_nfo                                      = Signal(16)
         self.jesd_freerun_clk                               = Signal()
 
-        #self.rx_swap_iq                                     = Signal()
+        self.rx_swap_iq                                     = Signal()
 
         self.DAC_SYNC = Signal(2)
         self.ADC_SYNC = Signal(2)
@@ -233,7 +246,7 @@ class afe79xx(LiteXModule):
         self.specials += MultiReg(self.rx_cfg0.fields.tiafe_cfg_rx_lane_polarity, self.tiafe_cfg_rx_lane_polarity, "fpga_1pps", 2,0)
         self.specials += MultiReg(self.rx_cfg1.fields.tiafe_cfg_rx_lane_map, self.tiafe_cfg_rx_lane_map, "fpga_1pps", 2,0)
         self.specials += MultiReg(self.rx_cfg2.fields.tiafe_cfg_rx_buffer_release_delay, self.tiafe_cfg_rx_buffer_release_delay, "fpga_1pps", 2,0)
-        #self.specials += MultiReg(self.rx_cfg3.fields.swap_iq,self.rx_swap_iq, "fpga_1pps", 2, 0)
+        self.specials += MultiReg(self.rx_cfg3.fields.swap_iq,self.rx_swap_iq, "fpga_1pps", 2, 0)
 
         self.specials += MultiReg(self.tx_ctrl.fields.tiafe_tx_sync_reset, self.tiafe_tx_sync_reset, "fpga_1pps", 2, 1)
         self.specials += MultiReg(self.tx_cfg0.fields.tiafe_cfg_tx_lane_enabled, self.tiafe_cfg_tx_lane_enabled, "fpga_1pps", 2, 0)
@@ -398,21 +411,41 @@ class afe79xx(LiteXModule):
             self.rx_conv = rx_conv
 
             # Rearange AFE RX data
+            data_s0_raw = Signal(128)
+            data_s1_raw = Signal(128)
+
             data_s0 = Signal(128)
             data_s1 = Signal(128)
+
             for j in range(4 * 2):
                 # lower 16 bits
-                self.comb += data_s0[16*j:16*j+16].eq(afe_source.data[32*j:32*j+16])
+                self.comb += data_s0_raw[16*j:16*j+16].eq(afe_source.data[32*j:32*j+16])
                 # upper 16 bits
-                self.comb += data_s1[16*j:16*j+16].eq(afe_source.data[32*j+16:32*j+32])
-
-            # Connect RX streams
+                self.comb += data_s1_raw[16*j:16*j+16].eq(afe_source.data[32*j+16:32*j+32])
+#
+            # IQ Swap Mux
             self.comb += [
+                data_s0.eq(Mux(self.rx_swap_iq, pairwise16_swap(data_s0_raw), data_s0_raw)),
+                data_s1.eq(Mux(self.rx_swap_iq, pairwise16_swap(data_s1_raw), data_s1_raw))
+            ]
+
+            # Register after IQ mux and connect to rx_cdc
+            self.sync.fpga_1pps += [
                 # AFE -> CDC FIFO -> 256 to 128 conv -> source_demux0
-                #CDC
+                # CDC
                 rx_cdc.sink.valid.eq(afe_source.valid),
                 rx_cdc.sink.data[:128].eq(data_s1),
                 rx_cdc.sink.data[128:256].eq(data_s0),
+            ]
+
+
+            # Connect RX streams
+            self.comb += [
+                ## AFE -> CDC FIFO -> 256 to 128 conv -> source_demux0
+                ##CDC
+                #rx_cdc.sink.valid.eq(afe_source.valid),
+                #rx_cdc.sink.data[:128].eq(data_s1),
+                #rx_cdc.sink.data[128:256].eq(data_s0),
 
                 # Stream converter 256b to 128
                 rx_conv.reset.eq(~self.rx_en),
