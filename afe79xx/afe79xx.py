@@ -25,6 +25,9 @@ def pairwise16_swap(sig):
         swapped_chunks.append(chunks[i])
     return Cat(*swapped_chunks)
 
+def swap_iq(x):
+    return Cat(x[16:32], x[0:16] )
+
 class afe79xx(LiteXModule):
     def __init__(self, soc, platform, pads, s_clk_domain="sys", m_clk_domain="sys", demux_clk_domain="sys500", with_debug=False, demux=True, resampling_stages=2):
         # Add CSRs
@@ -79,6 +82,10 @@ class afe79xx(LiteXModule):
 
         self.tx_cfg1    = CSRStorage(fields=[
             CSRField("tiafe_cfg_tx_lane_map",       size=16, offset=0, reset=0),
+        ])
+
+        self.tx_cfg3 = CSRStorage(fields=[
+            CSRField("swap_iq",       size=1, offset=0, reset=0),
         ])
 
         self.tx_status0 = CSRStatus(fields=[
@@ -202,6 +209,7 @@ class afe79xx(LiteXModule):
         self.jesd_freerun_clk                               = Signal()
 
         self.rx_swap_iq                                     = Signal()
+        self.tx_swap_iq                                     = Signal()
 
         self.DAC_SYNC = Signal(2)
         self.ADC_SYNC = Signal(2)
@@ -253,6 +261,7 @@ class afe79xx(LiteXModule):
         self.specials += MultiReg(self.tx_cfg0.fields.tiafe_cfg_tx_lane_polarity, self.tiafe_cfg_tx_lane_polarity, "fpga_1pps", 2, 0)
         self.specials += MultiReg(self.tx_cfg1.fields.tiafe_cfg_tx_lane_map, self.tiafe_cfg_tx_lane_map, "fpga_1pps", 2, 0)
         self.specials += MultiReg(self.tx_ctrl.fields.tx_clr_sysref_realign_count, self.tiafe_tx_clr_sysref_realign_count, "fpga_1pps", 2, 0)
+        self.specials += MultiReg(self.tx_cfg3.fields.swap_iq, self.tx_swap_iq, "fpga_1pps", 2, 0)
 
 
 
@@ -550,25 +559,33 @@ class afe79xx(LiteXModule):
             tx_conv = stream.Converter(nbits_from=128, nbits_to=256)
             tx_conv = ClockDomainsRenamer(demux_clk_domain)(tx_conv)
             self.tx_conv = tx_conv
+
             # Omit parts of Axi interface we don't use + data, because we handle that seperately
             # AFE bindings do not correspond to ABCD channels, channels need to be muxed to fit
             self.comb += [
-                # CH A is AFE CH 4 (swap I/Q)
-                tx_conv.sink.data[96:128].eq(Cat(self.TX_A_RESAMPLER.source.data[16:32],self.TX_A_RESAMPLER.source.data[0:16])),
-                # CH B is AFE CH 3 (swap I/Q)
-                tx_conv.sink.data[64:96].eq(Cat(self.TX_B_RESAMPLER.source.data[16:32],self.TX_B_RESAMPLER.source.data[0:16])),
-                # CH C is AFE CH 1 (swap I/Q)
-                tx_conv.sink.data[0:32].eq(Cat(self.TX_C_RESAMPLER.source.data[16:32],self.TX_C_RESAMPLER.source.data[0:16])),
-                # CH D is AFE CH 2 (swap I/Q)
-                tx_conv.sink.data[32:64].eq(Cat(self.TX_D_RESAMPLER.source.data[16:32],self.TX_D_RESAMPLER.source.data[0:16])),
+                If(self.tx_swap_iq, [
+                    tx_conv.sink.data[96:128].eq(swap_iq(self.TX_A_RESAMPLER.source.data)), # CH A is AFE CH 4 (swap I/Q)
+                    tx_conv.sink.data[64:96].eq(swap_iq(self.TX_B_RESAMPLER.source.data)),  # CH B is AFE CH 3 (swap I/Q)
+                    tx_conv.sink.data[0:32].eq(swap_iq(self.TX_C_RESAMPLER.source.data)),   # CH C is AFE CH 1 (swap I/Q)
+                    tx_conv.sink.data[32:64].eq(swap_iq(self.TX_D_RESAMPLER.source.data)),  # CH D is AFE CH 2 (swap I/Q)
+                   ]).Else([
+                        tx_conv.sink.data[96:128].eq(self.TX_A_RESAMPLER.source.data),     # CH A is AFE CH 4
+                        tx_conv.sink.data[64: 96].eq(self.TX_B_RESAMPLER.source.data),     # CH B is AFE CH 3
+                        tx_conv.sink.data[0: 32].eq(self.TX_C_RESAMPLER.source.data),      # CH C is AFE CH 1
+                        tx_conv.sink.data[32: 64].eq(self.TX_D_RESAMPLER.source.data),     # CH D is AFE CH 2
+                   ])
+            ]
 
+
+            self.comb += [
                 self.tx_conv.sink.valid.eq(self.TX_A_RESAMPLER.source.valid),
                 self.TX_A_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
                 self.TX_B_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
                 self.TX_C_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
                 self.TX_D_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
-
             ]
+
+
             self.tx_interleaved = Endpoint([("data", 256)])
             # self.tx_conv.source.connect(self.tx_interleaved,omit={"data"})
             self.comb += [
