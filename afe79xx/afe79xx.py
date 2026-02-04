@@ -62,7 +62,7 @@ class afe79xx(LiteXModule):
         ])
 
         self.rx_cfg3 = CSRStorage(fields=[
-            CSRField("swap_iq",       size=1, offset=0, reset=0),
+            CSRField("swap_iq",       size=4, offset=0, reset=0),
         ])
 
         self.rx_status0 = CSRStatus(fields=[
@@ -85,7 +85,7 @@ class afe79xx(LiteXModule):
         ])
 
         self.tx_cfg3 = CSRStorage(fields=[
-            CSRField("swap_iq",       size=1, offset=0, reset=0),
+            CSRField("swap_iq",       size=4, offset=0, reset=0),
         ])
 
         self.tx_status0 = CSRStatus(fields=[
@@ -208,8 +208,8 @@ class afe79xx(LiteXModule):
         self.debug_nfo                                      = Signal(16)
         self.jesd_freerun_clk                               = Signal()
 
-        self.rx_swap_iq                                     = Signal()
-        self.tx_swap_iq                                     = Signal()
+        self.rx_swap_iq                                     = Signal(4)
+        self.tx_swap_iq                                     = Signal(4)
 
         self.DAC_SYNC = Signal(2)
         self.ADC_SYNC = Signal(2)
@@ -432,11 +432,43 @@ class afe79xx(LiteXModule):
                 # upper 16 bits
                 self.comb += data_s1_raw[16*j:16*j+16].eq(afe_source.data[32*j+16:32*j+32])
 #
-            # IQ Swap Mux
-            self.comb += [
-                data_s0.eq(Mux(self.rx_swap_iq, pairwise16_swap(data_s0_raw), data_s0_raw)),
-                data_s1.eq(Mux(self.rx_swap_iq, pairwise16_swap(data_s1_raw), data_s1_raw))
-            ]
+            ## IQ Swap Mux
+            #self.comb += [
+            #    data_s0.eq(Mux(self.rx_swap_iq, pairwise16_swap(data_s0_raw), data_s0_raw)),
+            #    data_s1.eq(Mux(self.rx_swap_iq, pairwise16_swap(data_s1_raw), data_s1_raw))
+            #]
+
+            # ------------------------------------------------------------
+            # IQ Swap Mux (Per-channel control)
+            # ------------------------------------------------------------
+            # Define your custom mapping: index 'i' maps to this bit of rx_swap_iq
+            # i=0 -> bit 3, i=1 -> bit 2, i=2 -> bit 0, i=3 -> bit 1
+            # AFE channels are mapped CH4 -> A, CH3 -> B, CH1-> C, CH2->D
+            swap_map = [2, 3, 1, 0]
+            # Iterate over 4 channels (128 bits total / 32 bits per channel)
+            for i in range(4):
+                # Calculate slice indices
+                lo = 32 * i
+                hi = 32 * (i + 1)
+
+                # Select the correct control bit using the lookup list
+                swap_enable = self.rx_swap_iq[swap_map[i]]
+
+                # --- Stream 0 ---
+                # Extract the 32-bit I/Q pair
+                ch_s0 = data_s0_raw[lo:hi]
+                # Create the swapped version (upper 16 becomes lower 16, and vice versa)
+                ch_s0_swap = Cat(ch_s0[16:32], ch_s0[0:16])
+                # Mux based on the specific bit 'i' of the control signal
+                self.comb += data_s0[lo:hi].eq(Mux(swap_enable, ch_s0_swap, ch_s0))
+
+                # --- Stream 1 ---
+                # Extract the 32-bit I/Q pair
+                ch_s1 = data_s1_raw[lo:hi]
+                # Create the swapped version
+                ch_s1_swap = Cat(ch_s1[16:32], ch_s1[0:16])
+                # Mux based on the specific bit 'i' of the control signal
+                self.comb += data_s1[lo:hi].eq(Mux(swap_enable, ch_s1_swap, ch_s1))
 
             # Register after IQ mux and connect to rx_cdc
             self.sync.fpga_1pps += [
@@ -562,18 +594,24 @@ class afe79xx(LiteXModule):
 
             # Omit parts of Axi interface we don't use + data, because we handle that seperately
             # AFE bindings do not correspond to ABCD channels, channels need to be muxed to fit
+            # IQ mux Logic: Mux(condition, swapped_data, normal_data)
             self.comb += [
-                If(self.tx_swap_iq, [
-                    tx_conv.sink.data[96:128].eq(swap_iq(self.TX_A_RESAMPLER.source.data)), # CH A is AFE CH 4 (swap I/Q)
-                    tx_conv.sink.data[64:96].eq(swap_iq(self.TX_B_RESAMPLER.source.data)),  # CH B is AFE CH 3 (swap I/Q)
-                    tx_conv.sink.data[0:32].eq(swap_iq(self.TX_C_RESAMPLER.source.data)),   # CH C is AFE CH 1 (swap I/Q)
-                    tx_conv.sink.data[32:64].eq(swap_iq(self.TX_D_RESAMPLER.source.data)),  # CH D is AFE CH 2 (swap I/Q)
-                   ]).Else([
-                        tx_conv.sink.data[96:128].eq(self.TX_A_RESAMPLER.source.data),     # CH A is AFE CH 4
-                        tx_conv.sink.data[64: 96].eq(self.TX_B_RESAMPLER.source.data),     # CH B is AFE CH 3
-                        tx_conv.sink.data[0: 32].eq(self.TX_C_RESAMPLER.source.data),      # CH C is AFE CH 1
-                        tx_conv.sink.data[32: 64].eq(self.TX_D_RESAMPLER.source.data),     # CH D is AFE CH 2
-                   ])
+                # -----------------------------------------------------------------
+                # Channel A -> AFE CH 4 (Bits 96-128) | Controlled by tx_swap_iq[0]
+                # -----------------------------------------------------------------
+                tx_conv.sink.data[96:128].eq(Mux(self.tx_swap_iq[0],swap_iq(self.TX_A_RESAMPLER.source.data),self.TX_A_RESAMPLER.source.data)),
+                # -----------------------------------------------------------------
+                # Channel B -> AFE CH 3 (Bits 64-96) | Controlled by tx_swap_iq[1]
+                # -----------------------------------------------------------------
+                tx_conv.sink.data[64:96].eq(Mux(self.tx_swap_iq[1],swap_iq(self.TX_B_RESAMPLER.source.data),self.TX_B_RESAMPLER.source.data)),
+                # -----------------------------------------------------------------
+                # Channel C -> AFE CH 1 (Bits 0-32) | Controlled by tx_swap_iq[2]
+                # -----------------------------------------------------------------
+                tx_conv.sink.data[0:32].eq(Mux(self.tx_swap_iq[2],swap_iq(self.TX_C_RESAMPLER.source.data),self.TX_C_RESAMPLER.source.data)),
+                # -----------------------------------------------------------------
+                # Channel D -> AFE CH 2 (Bits 32-64) | Controlled by tx_swap_iq[3]
+                # -----------------------------------------------------------------
+                tx_conv.sink.data[32:64].eq(Mux(self.tx_swap_iq[3],swap_iq(self.TX_D_RESAMPLER.source.data),self.TX_D_RESAMPLER.source.data)),
             ]
 
 
