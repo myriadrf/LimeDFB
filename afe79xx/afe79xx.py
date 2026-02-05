@@ -409,7 +409,7 @@ class afe79xx(LiteXModule):
             # -----------------------------------------
             # RX data path
             # Create async FIFOs for clock domain crossing (must be buffered=True to improve timing)
-            rx_cdc = stream.AsyncFIFO([("data", 256)], 16, buffered=True)
+            rx_cdc = stream.AsyncFIFO([("data", 256)], 32, buffered=True)
             rx_cdc = ClockDomainsRenamer({"write": m_clk_domain, "read":demux_clk_domain})(rx_cdc)
             self.rx_cdc = rx_cdc
 
@@ -647,7 +647,7 @@ class afe79xx(LiteXModule):
                 cd_from        =demux_clk_domain,
                 cd_to          =s_clk_domain,
                 buffered       =True,
-                depth          =16
+                depth          =32
             )
             self.comb += [
                 self.tx_interleaved.connect(self.tx_cdc.sink),
