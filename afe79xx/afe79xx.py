@@ -588,6 +588,9 @@ class afe79xx(LiteXModule):
                 self.TX_D_RESAMPLER.reset.eq(~self.tx_en),
             ]
 
+            self.Resampler_max_value = CSRStatus(size=4, description="Maximum divider value for resampling")
+            self.comb += self.Resampler_max_value.status.eq(resampling_stages)
+
             tx_conv = stream.Converter(nbits_from=128, nbits_to=256)
             tx_conv = ClockDomainsRenamer(demux_clk_domain)(tx_conv)
             self.tx_conv = tx_conv
