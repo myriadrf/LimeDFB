@@ -15,18 +15,12 @@ from gateware.LimeDFB.Resampler.Resampler import Resampler
 # -----------------------------
 # Utility functions
 # -----------------------------
-def pairwise16_swap(sig):
-    width = len(sig)
-    assert width % 16 == 0, "Signal width must be multiple of 16"
-    chunks = [sig[16*i:16*(i+1)] for i in range(width // 16)]
-    swapped_chunks = []
-    for i in range(0, len(chunks), 2):
-        swapped_chunks.append(chunks[i+1])
-        swapped_chunks.append(chunks[i])
-    return Cat(*swapped_chunks)
-
 def swap_iq(x):
-    return Cat(x[16:32], x[0:16] )
+    i1 = x[0:16]
+    q1 = x[16:32]
+    q1_neg = (-q1 + 1)
+
+    return Cat(i1, q1_neg)
 
 class afe79xx(LiteXModule):
     def __init__(self, soc, platform, pads, s_clk_domain="sys", m_clk_domain="sys", demux_clk_domain="sys500", with_debug=False, demux=True, resampling_stages=2):
@@ -62,7 +56,7 @@ class afe79xx(LiteXModule):
         ])
 
         self.rx_cfg3 = CSRStorage(fields=[
-            CSRField("swap_iq",       size=4, offset=0, reset=0),
+            CSRField("swap_iq",       size=4, offset=0, reset=0xF),
         ])
 
         self.rx_status0 = CSRStatus(fields=[
@@ -85,7 +79,7 @@ class afe79xx(LiteXModule):
         ])
 
         self.tx_cfg3 = CSRStorage(fields=[
-            CSRField("swap_iq",       size=4, offset=0, reset=0),
+            CSRField("swap_iq",       size=4, offset=0, reset=0xF),
         ])
 
         self.tx_status0 = CSRStatus(fields=[
@@ -432,11 +426,6 @@ class afe79xx(LiteXModule):
                 # upper 16 bits
                 self.comb += data_s1_raw[16*j:16*j+16].eq(afe_source.data[32*j+16:32*j+32])
 #
-            ## IQ Swap Mux
-            #self.comb += [
-            #    data_s0.eq(Mux(self.rx_swap_iq, pairwise16_swap(data_s0_raw), data_s0_raw)),
-            #    data_s1.eq(Mux(self.rx_swap_iq, pairwise16_swap(data_s1_raw), data_s1_raw))
-            #]
 
             # ------------------------------------------------------------
             # IQ Swap Mux (Per-channel control)
@@ -457,18 +446,16 @@ class afe79xx(LiteXModule):
                 # --- Stream 0 ---
                 # Extract the 32-bit I/Q pair
                 ch_s0 = data_s0_raw[lo:hi]
-                # Create the swapped version (upper 16 becomes lower 16, and vice versa)
-                ch_s0_swap = Cat(ch_s0[16:32], ch_s0[0:16])
+
                 # Mux based on the specific bit 'i' of the control signal
-                self.comb += data_s0[lo:hi].eq(Mux(swap_enable, ch_s0_swap, ch_s0))
+                self.comb += data_s0[lo:hi].eq(Mux(swap_enable, swap_iq(ch_s0), ch_s0))
 
                 # --- Stream 1 ---
                 # Extract the 32-bit I/Q pair
                 ch_s1 = data_s1_raw[lo:hi]
-                # Create the swapped version
-                ch_s1_swap = Cat(ch_s1[16:32], ch_s1[0:16])
+
                 # Mux based on the specific bit 'i' of the control signal
-                self.comb += data_s1[lo:hi].eq(Mux(swap_enable, ch_s1_swap, ch_s1))
+                self.comb += data_s1[lo:hi].eq(Mux(swap_enable, swap_iq(ch_s1), ch_s1))
 
             # Register after IQ mux and connect to rx_cdc
             self.sync.fpga_1pps += [
@@ -497,14 +484,10 @@ class afe79xx(LiteXModule):
             # AFE bindings do not correspond to ABCD channels, channels need to be muxed to fit
             rx_conv_ch_mux_data = Signal(128)
             self.comb += [
-                # CH 1 of AFE is CH C (also swap I and Q)
-                rx_conv_ch_mux_data[64:96].eq(Cat(rx_conv.source.data[16:32], rx_conv.source.data[0:16])),
-                # CH 2 of AFE is CH D (also swap I and Q)
-                rx_conv_ch_mux_data[96:128].eq(Cat(rx_conv.source.data[48:64], rx_conv.source.data[32:48])),
-                # CH 3 of AFE is CH B (also swap I and Q)
-                rx_conv_ch_mux_data[32:64].eq(Cat(rx_conv.source.data[80:96], rx_conv.source.data[64:80])),
-                # CH 4 of AFE is CH A (also swap I and Q)
-                rx_conv_ch_mux_data[0:32].eq(Cat(rx_conv.source.data[112:128], rx_conv.source.data[96:112])),
+                rx_conv_ch_mux_data[64: 96].eq(rx_conv.source.data[0 : 32]), #CH 1 of AFE is CH C
+                rx_conv_ch_mux_data[96:128].eq(rx_conv.source.data[32: 64]), #CH 2 of AFE is CH D
+                rx_conv_ch_mux_data[32: 64].eq(rx_conv.source.data[64: 96]), #CH 3 of AFE is CH B
+                rx_conv_ch_mux_data[0 : 32].eq(rx_conv.source.data[96:128]), #CH 4 of AFE is CH A
             ]
 
             endpoint_dict = {
