@@ -114,17 +114,17 @@ class afe79xx(LiteXModule):
         self.rx_en      = Signal()
 
         # Add sources
-        platform.add_source("./gateware/afe79xx/afe79xx_jesd_ip_top.v")
-        platform.add_source("./gateware/afe79xx/afe79xx_ti_ip_top.v")
-        platform.add_source("./gateware/afe79xx/afe79xx_xcvr_top.v")
-        platform.add_source("./gateware/afe79xx/afe79xx_xcvr_wrapper.sv")
-        platform.add_source("./gateware/afe79xx/TI_IP_core_66b64/TI_204c_IP_6664.svp")
+        platform.add_source("./gateware/AFE79xx/afe79xx_jesd_ip_top.v")
+        platform.add_source("./gateware/AFE79xx/afe79xx_ti_ip_top.v")
+        platform.add_source("./gateware/AFE79xx/afe79xx_xcvr_top.v")
+        platform.add_source("./gateware/AFE79xx/afe79xx_xcvr_wrapper.sv")
+        platform.add_source("./gateware/AFE79xx/TI_IP_core_66b64/TI_204c_IP_6664.svp")
 
         #platform.add_ip("./gateware/afe79xx/ip/gth_uscale_64b66b_xcvr_xcau15p/gth_uscale_64b66b_xcvr_xcau15p.xci")
         #platform.toolchain.project_commands.append("source " + os.path.abspath("./gateware/afe79xx/ip/gth_uscale_64b66b_xcvr_xcau15p/gth_uscale_64b66b_xcvr_xcau15p.tcl"))
         #platform.toolchain.project_commands.append("synth_ip [get_ips gth_uscale_64b66b_xcvr_xcau15p] -force")
 
-        platform.toolchain.project_commands.append("import_ip " + os.path.abspath("./gateware/afe79xx/ip/gth_uscale_64b66b_xcvr_xcau15p/gth_uscale_64b66b_xcvr_xcau15p.xci"))
+        platform.toolchain.project_commands.append("import_ip " + os.path.abspath("./gateware/AFE79xx/ip/gth_uscale_64b66b_xcvr_xcau15p/gth_uscale_64b66b_xcvr_xcau15p.xci"))
         platform.toolchain.project_commands.append("upgrade_ip [get_ips gth_uscale_64b66b_xcvr_xcau15p]")
         platform.toolchain.project_commands.append("synth_ip [get_ips gth_uscale_64b66b_xcvr_xcau15p] -force")
         platform.toolchain.project_commands.append("set hipersdr_44xx_defines {{GT_XCVR_NAME=gth_uscale_64b66b_xcvr_xcau15p}}")
