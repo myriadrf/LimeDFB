@@ -326,5 +326,5 @@ class Resampler(LiteXModule):
                 sink_ep.data.eq(Cat(source_ep.data, padding)),
             ]
         else:
-            # Truncate by right shifting (eliminating LSB's)
-            self.comb += sink_ep.data.eq(source_ep.data >> (source_width - sink_width))
+            # Truncate by removing MSB's (reverse of sign extension)
+            self.comb += sink_ep.data.eq(source_ep.data[:sink_width])
