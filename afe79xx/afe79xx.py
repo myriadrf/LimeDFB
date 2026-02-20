@@ -18,7 +18,7 @@ from gateware.LimeDFB.Resampler.Resampler import Resampler
 def swap_iq(x):
     i1 = x[0:16]
     q1 = x[16:32]
-    q1_neg = (-q1 + 1)
+    q1_neg = -q1
 
     return Cat(i1, q1_neg)
 
@@ -483,6 +483,7 @@ class afe79xx(LiteXModule):
             ]
             # AFE bindings do not correspond to ABCD channels, channels need to be muxed to fit
             rx_conv_ch_mux_data = Signal(128)
+            self.rx_conv_ch_mux_data = rx_conv_ch_mux_data
             self.comb += [
                 rx_conv_ch_mux_data[64: 96].eq(rx_conv.source.data[0 : 32]), #CH 1 of AFE is CH C
                 rx_conv_ch_mux_data[96:128].eq(rx_conv.source.data[32: 64]), #CH 2 of AFE is CH D
