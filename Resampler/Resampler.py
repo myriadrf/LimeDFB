@@ -318,13 +318,12 @@ class Resampler(LiteXModule):
             # Same width, direct connection
             self.comb += sink_ep.data.eq(source_ep.data)
         elif source_width < sink_width:
-            sign_bit = source_ep.data[source_width - 1]
-            padding = Replicate(sign_bit, sink_width - source_width)
-            # Do Sign extension
+            padding = Replicate(Constant(0), sink_width - source_width)
+            # Pad LSB's with zeroes
             # Migen's Cat places first argument in LSB side of concatenation
             self.comb += [
-                sink_ep.data.eq(Cat(source_ep.data, padding)),
+                sink_ep.data.eq(Cat(padding, source_ep.data)),
             ]
         else:
-            # Truncate by removing MSB's (reverse of sign extension)
-            self.comb += sink_ep.data.eq(source_ep.data[:sink_width])
+            # Truncate by right shifting (eliminating LSB's)
+            self.comb += sink_ep.data.eq(source_ep.data >> (source_width - sink_width))
