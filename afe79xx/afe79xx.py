@@ -100,6 +100,11 @@ class afe79xx(LiteXModule):
             description="Packet Size in bytes, "
         )
 
+        self.core_status0 = CSRStatus(fields=[
+            CSRField("xcvr_plls_locked", size=1, offset=0, reset=0),
+            CSRField("rx_all_lanes_locked", size=1, offset=1, reset=0),
+        ])
+
         # Conditional sources/sinks based on demux parameter
         if not demux:
             # Direct sources/sinks (only when demux=False)
@@ -232,6 +237,10 @@ class afe79xx(LiteXModule):
 
             self.rx_status0.fields.jesd_rx_sysref_realign_count.eq(self.tiafe_jesd_rx_sysref_realign_count),
             self.tx_status0.fields.jesd_tx_sysref_realign_count.eq(self.tiafe_jesd_tx_sysref_realign_count),
+
+            self.core_status0.fields.xcvr_plls_locked.eq(self.tiafe_jesd_plls_locked[1]),
+            self.core_status0.fields.rx_all_lanes_locked.eq(self.tiafe_jesd_plls_locked[0]),
+
 
             self.ADC_SYNC.eq(0x0)
 
