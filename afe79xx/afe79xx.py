@@ -500,55 +500,72 @@ class afe79xx(LiteXModule):
                 rx_conv_ch_mux_data[0 : 32].eq(rx_conv.source.data[96:128]), #CH 4 of AFE is CH A
             ]
 
+            from gateware.decimate_4ch.decimate4ch import Decimate4ch
+            self.decimate = Decimate4ch(platform, clk_domain=demux_clk_domain)
+
+
+            self.comb += [
+                self.decimate.aresetn.eq(self.rx_en),
+                self.decimate.sink.data.eq(rx_conv_ch_mux_data),
+                self.decimate.sink.valid.eq(rx_conv.source.valid),
+                rx_conv.source.ready.eq(self.decimate.sink.ready),
+
+                self.decimate.source.connect(self.source),
+            ]
+
+
+
             endpoint_dict = {
                 "source": DIR_SOURCE,  # Add output buffer to the 'source' endpoint
                 "sink": DIR_SINK,      # Add input buffer to the 'sink' endpoint
             }
-            RX_A_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
-            RX_B_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
-            RX_C_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
-            RX_D_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
-            self.RX_A_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_A_RESAMPLER)
-            self.RX_B_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_B_RESAMPLER)
-            self.RX_C_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_C_RESAMPLER)
-            self.RX_D_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_D_RESAMPLER)
-            self.comb += [
-                self.RX_A_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[0 : 32]),
-                self.RX_A_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
-                self.RX_A_RESAMPLER.reset.eq(~self.rx_en),
-                rx_conv.source.ready.eq(self.RX_A_RESAMPLER.sink.ready),
-
-                self.RX_B_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[32: 64]),
-                self.RX_B_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
-                self.RX_B_RESAMPLER.reset.eq(~self.rx_en),
-                # No Ready, handled by RX_A
-
-                self.RX_C_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[64: 96]),
-                self.RX_C_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
-                self.RX_C_RESAMPLER.reset.eq(~self.rx_en), #VHDL instances in resampler use active low reset
-                # No Ready, handled by RX_A
-
-                self.RX_D_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[96:128]),
-                self.RX_D_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
-                self.RX_D_RESAMPLER.reset.eq(~self.rx_en), #VHDL instances in resampler use active low reset
-                # No Ready, handled by RX_A
-            ]
-
-
-            self.comb += [
-                self.source.data.eq(Cat(
-                    self.RX_A_RESAMPLER.source.data,
-                    self.RX_B_RESAMPLER.source.data,
-                    self.RX_C_RESAMPLER.source.data,
-                    self.RX_D_RESAMPLER.source.data,
-                )),
-                self.source.keep.eq(0xFFFF),
-                self.source.valid.eq(self.RX_A_RESAMPLER.source.valid),
-                self.RX_A_RESAMPLER.source.ready.eq(self.source.ready),
-                self.RX_B_RESAMPLER.source.ready.eq(self.source.ready),
-                self.RX_C_RESAMPLER.source.ready.eq(self.source.ready),
-                self.RX_D_RESAMPLER.source.ready.eq(self.source.ready),
-            ]
+            #RX_A_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
+            #RX_B_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
+            #RX_C_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
+            #RX_D_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
+#
+#
+            #self.RX_A_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_A_RESAMPLER)
+            #self.RX_B_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_B_RESAMPLER)
+            #self.RX_C_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_C_RESAMPLER)
+            #self.RX_D_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_D_RESAMPLER)
+            #self.comb += [
+            #    self.RX_A_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[0 : 32]),
+            #    self.RX_A_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
+            #    self.RX_A_RESAMPLER.reset.eq(~self.rx_en),
+            #    rx_conv.source.ready.eq(self.RX_A_RESAMPLER.sink.ready),
+#
+            #    self.RX_B_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[32: 64]),
+            #    self.RX_B_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
+            #    self.RX_B_RESAMPLER.reset.eq(~self.rx_en),
+            #    # No Ready, handled by RX_A
+#
+            #    self.RX_C_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[64: 96]),
+            #    self.RX_C_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
+            #    self.RX_C_RESAMPLER.reset.eq(~self.rx_en), #VHDL instances in resampler use active low reset
+            #    # No Ready, handled by RX_A
+#
+            #    self.RX_D_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[96:128]),
+            #    self.RX_D_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
+            #    self.RX_D_RESAMPLER.reset.eq(~self.rx_en), #VHDL instances in resampler use active low reset
+            #    # No Ready, handled by RX_A
+            #]
+#
+#
+            #self.comb += [
+            #    self.source.data.eq(Cat(
+            #        self.RX_A_RESAMPLER.source.data,
+            #        self.RX_B_RESAMPLER.source.data,
+            #        self.RX_C_RESAMPLER.source.data,
+            #        self.RX_D_RESAMPLER.source.data,
+            #    )),
+            #    self.source.keep.eq(0xFFFF),
+            #    self.source.valid.eq(self.RX_A_RESAMPLER.source.valid),
+            #    self.RX_A_RESAMPLER.source.ready.eq(self.source.ready),
+            #    self.RX_B_RESAMPLER.source.ready.eq(self.source.ready),
+            #    self.RX_C_RESAMPLER.source.ready.eq(self.source.ready),
+            #    self.RX_D_RESAMPLER.source.ready.eq(self.source.ready),
+            #]
 
 
             # -----------------------------------------
