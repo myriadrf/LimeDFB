@@ -202,7 +202,7 @@ class Resampler(LiteXModule):
                         self.filter_sources_Q[i].valid.eq(filter_yen),
                         self.filter_sinks_Q[i].ready.eq(filter_oen),
                         # sleep all stages if either endpoint can't do exchange
-                        filter_sleep.eq((~(self.source.ready & self.sink.valid)) | out_mux_changed),
+                        filter_sleep.eq(out_mux_changed),
                     ]
                     # self.add_module(f"filter{i}",filter)
                     # Equivalent to add_module, done this way to create dynamically named instances
@@ -273,7 +273,7 @@ class Resampler(LiteXModule):
                     self.comb += [
                         ## I endpoint used as main for control signal
                         # sleep all stages if either endpoint can't do exchange
-                        filter_sleep.eq((~(self.source.ready & self.sink.valid)) | out_mux_changed | filter_unused),
+                        filter_sleep.eq(out_mux_changed | filter_unused),
                         # Use xen to control input ready
                         self.filter_sinks_I[i].ready.eq(filter_xen),
                         self.filter_sources_I[i].valid.eq(filter_oen),

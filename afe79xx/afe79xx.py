@@ -23,7 +23,7 @@ def swap_iq(x):
     return Cat(i1, q1_neg)
 
 class afe79xx(LiteXModule):
-    def __init__(self, soc, platform, pads, s_clk_domain="sys", m_clk_domain="sys", demux_clk_domain="sys500", with_debug=False, demux=True, resampling_stages=2):
+    def __init__(self, soc, platform, pads, double_clk_domain, s_clk_domain="sys", m_clk_domain="sys", demux_clk_domain="sys500", with_debug=False, demux=True, resampling_stages=2):
         # Add CSRs
 
         self.reg00  = CSRStorage(fields=[
@@ -145,7 +145,7 @@ class afe79xx(LiteXModule):
             f.write("create_clock -period 4.069 -name fpga_gt_aferef_clk [get_ports afe79xx_serdes_x4_fpga_gt_aferef_p]\n\n")
 
             f.write("# FPGA_1PPS 245.76Mhz\n")
-            f.write("create_clock -period 4.069 -name fpga_1pps_clk [get_ports FPGA_1PPS_p]\n\n")
+            f.write("create_clock -period 4.069*2 -name fpga_1pps_clk [get_ports FPGA_1PPS_p]\n\n")
 
             f.write("# FPGA_SYSREF 3.84Mhz\n")
             f.write("create_clock -period 260.416 -name fpga_sysref_clk [get_ports FPGA_SYSREF_p]\n\n")
@@ -413,12 +413,12 @@ class afe79xx(LiteXModule):
             # RX data path
             # Create async FIFOs for clock domain crossing (must be buffered=True to improve timing)
             rx_cdc = stream.AsyncFIFO([("data", 256)], 32, buffered=True)
-            rx_cdc = ClockDomainsRenamer({"write": m_clk_domain, "read":demux_clk_domain})(rx_cdc)
+            rx_cdc = ClockDomainsRenamer({"write": m_clk_domain, "read": double_clk_domain.name})(rx_cdc)
             self.rx_cdc = rx_cdc
 
             # Stream converter 256b to 128b
             rx_conv = ResetInserter()(
-                ClockDomainsRenamer(demux_clk_domain)(stream.Converter(256, 128)))
+                ClockDomainsRenamer(double_clk_domain.name)(stream.Converter(256, 128)))
             rx_conv = stream.BufferizeEndpoints({"source": stream.DIR_SOURCE})(rx_conv)
             self.rx_conv = rx_conv
 
@@ -504,80 +504,97 @@ class afe79xx(LiteXModule):
                 "source": DIR_SOURCE,  # Add output buffer to the 'source' endpoint
                 "sink": DIR_SINK,      # Add input buffer to the 'sink' endpoint
             }
-            RX_A_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
-            RX_B_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
-            RX_C_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
-            RX_D_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
-            self.RX_A_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_A_RESAMPLER)
-            self.RX_B_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_B_RESAMPLER)
-            self.RX_C_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_C_RESAMPLER)
-            self.RX_D_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_D_RESAMPLER)
+            RX_A_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=double_clk_domain.name))
+            RX_B_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=double_clk_domain.name))
+            RX_C_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=double_clk_domain.name))
+            RX_D_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=double_clk_domain.name))
+            self.RX_A_RESAMPLER = ClockDomainsRenamer(double_clk_domain.name)(RX_A_RESAMPLER)
+            self.RX_B_RESAMPLER = ClockDomainsRenamer(double_clk_domain.name)(RX_B_RESAMPLER)
+            self.RX_C_RESAMPLER = ClockDomainsRenamer(double_clk_domain.name)(RX_C_RESAMPLER)
+            self.RX_D_RESAMPLER = ClockDomainsRenamer(double_clk_domain.name)(RX_D_RESAMPLER)
             self.comb += [
                 self.RX_A_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[0 : 32]),
-                self.RX_A_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
+                self.RX_A_RESAMPLER.sink.valid.eq( rx_conv.source.valid),
                 self.RX_A_RESAMPLER.reset.eq(~self.rx_en),
-                rx_conv.source.ready.eq(self.RX_A_RESAMPLER.sink.ready),
+                rx_conv.source.ready.eq( self.RX_A_RESAMPLER.sink.ready),
 
                 self.RX_B_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[32: 64]),
-                self.RX_B_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
+                self.RX_B_RESAMPLER.sink.valid.eq( rx_conv.source.valid),
                 self.RX_B_RESAMPLER.reset.eq(~self.rx_en),
                 # No Ready, handled by RX_A
 
                 self.RX_C_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[64: 96]),
-                self.RX_C_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
+                self.RX_C_RESAMPLER.sink.valid.eq( rx_conv.source.valid),
                 self.RX_C_RESAMPLER.reset.eq(~self.rx_en), #VHDL instances in resampler use active low reset
                 # No Ready, handled by RX_A
 
                 self.RX_D_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[96:128]),
-                self.RX_D_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
+                self.RX_D_RESAMPLER.sink.valid.eq( rx_conv.source.valid),
                 self.RX_D_RESAMPLER.reset.eq(~self.rx_en), #VHDL instances in resampler use active low reset
                 # No Ready, handled by RX_A
             ]
 
+            # Transition from double_clk (491.52MHz) to demux_clk (500MHz) for LimeTop
+            rx_out_fifo = stream.AsyncFIFO([("data", 128)], 64, buffered=True)
+            rx_out_fifo = ClockDomainsRenamer({"write": double_clk_domain.name, "read": demux_clk_domain})(rx_out_fifo)
+            self.rx_out_fifo = rx_out_fifo
+
+
 
             self.comb += [
-                self.source.data.eq(Cat(
+                rx_out_fifo.sink.valid.eq( self.RX_A_RESAMPLER.source.valid),
+                rx_out_fifo.sink.data.eq(Cat(
                     self.RX_A_RESAMPLER.source.data,
                     self.RX_B_RESAMPLER.source.data,
                     self.RX_C_RESAMPLER.source.data,
                     self.RX_D_RESAMPLER.source.data,
                 )),
+                self.RX_A_RESAMPLER.source.ready.eq( rx_out_fifo.sink.ready),
+                self.RX_B_RESAMPLER.source.ready.eq( rx_out_fifo.sink.ready),
+                self.RX_C_RESAMPLER.source.ready.eq( rx_out_fifo.sink.ready),
+                self.RX_D_RESAMPLER.source.ready.eq( rx_out_fifo.sink.ready),
+
+                rx_out_fifo.source.connect(self.source, keep={"valid", "ready", "data"}),
                 self.source.keep.eq(0xFFFF),
-                self.source.valid.eq(self.RX_A_RESAMPLER.source.valid),
-                self.RX_A_RESAMPLER.source.ready.eq(self.source.ready),
-                self.RX_B_RESAMPLER.source.ready.eq(self.source.ready),
-                self.RX_C_RESAMPLER.source.ready.eq(self.source.ready),
-                self.RX_D_RESAMPLER.source.ready.eq(self.source.ready),
             ]
 
 
             # -----------------------------------------
             # TX data path
             self.tx_en     = Signal()
-            TX_A_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
-            TX_B_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
-            TX_C_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
-            TX_D_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
-            self.TX_A_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_A_RESAMPLER)
-            self.TX_B_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_B_RESAMPLER)
-            self.TX_C_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_C_RESAMPLER)
-            self.TX_D_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_D_RESAMPLER)
+
+            # Transition from demux_clk (500MHz) to double_clk (491.52MHz) for resamplers
+            tx_in_fifo = stream.AsyncFIFO([("data", 128)], 64, buffered=True)
+            tx_in_fifo = ClockDomainsRenamer({"write": demux_clk_domain, "read": double_clk_domain.name})(tx_in_fifo)
+            self.tx_in_fifo = tx_in_fifo
+
+            TX_A_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=double_clk_domain.name))
+            TX_B_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=double_clk_domain.name))
+            TX_C_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=double_clk_domain.name))
+            TX_D_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=double_clk_domain.name))
+            self.TX_A_RESAMPLER = ClockDomainsRenamer(double_clk_domain.name)(TX_A_RESAMPLER)
+            self.TX_B_RESAMPLER = ClockDomainsRenamer(double_clk_domain.name)(TX_B_RESAMPLER)
+            self.TX_C_RESAMPLER = ClockDomainsRenamer(double_clk_domain.name)(TX_C_RESAMPLER)
+            self.TX_D_RESAMPLER = ClockDomainsRenamer(double_clk_domain.name)(TX_D_RESAMPLER)
+
             self.comb += [
-                self.TX_A_RESAMPLER.sink.data.eq(self.sink.data[0 : 32]),
-                self.TX_A_RESAMPLER.sink.valid.eq(self.sink.valid),
+                self.sink.connect(tx_in_fifo.sink, keep={"valid", "ready", "data"}),
+
+                self.TX_A_RESAMPLER.sink.valid.eq( tx_in_fifo.source.valid),
+                self.TX_B_RESAMPLER.sink.valid.eq( tx_in_fifo.source.valid),
+                self.TX_C_RESAMPLER.sink.valid.eq( tx_in_fifo.source.valid),
+                self.TX_D_RESAMPLER.sink.valid.eq( tx_in_fifo.source.valid),
+
+                self.TX_A_RESAMPLER.sink.data.eq(tx_in_fifo.source.data[0 : 32]),
+                self.TX_B_RESAMPLER.sink.data.eq(tx_in_fifo.source.data[32: 64]),
+                self.TX_C_RESAMPLER.sink.data.eq(tx_in_fifo.source.data[64: 96]),
+                self.TX_D_RESAMPLER.sink.data.eq(tx_in_fifo.source.data[96:128]),
+
+                tx_in_fifo.source.ready.eq( self.TX_A_RESAMPLER.sink.ready),
+
                 self.TX_A_RESAMPLER.reset.eq(~self.tx_en),
-                self.sink.ready.eq(self.TX_A_RESAMPLER.sink.ready),
-
-                self.TX_B_RESAMPLER.sink.data.eq(self.sink.data[32: 64]),
-                self.TX_B_RESAMPLER.sink.valid.eq(self.sink.valid),
                 self.TX_B_RESAMPLER.reset.eq(~self.tx_en),
-
-                self.TX_C_RESAMPLER.sink.data.eq(self.sink.data[64: 96]),
-                self.TX_C_RESAMPLER.sink.valid.eq(self.sink.valid),
                 self.TX_C_RESAMPLER.reset.eq(~self.tx_en),
-
-                self.TX_D_RESAMPLER.sink.data.eq(self.sink.data[96:128]),
-                self.TX_D_RESAMPLER.sink.valid.eq(self.sink.valid),
                 self.TX_D_RESAMPLER.reset.eq(~self.tx_en),
             ]
 
@@ -585,7 +602,7 @@ class afe79xx(LiteXModule):
             self.comb += self.Resampler_max_value.status.eq(resampling_stages)
 
             tx_conv = stream.Converter(nbits_from=128, nbits_to=256)
-            tx_conv = ClockDomainsRenamer(demux_clk_domain)(tx_conv)
+            tx_conv = ClockDomainsRenamer(double_clk_domain.name)(tx_conv)
             self.tx_conv = tx_conv
 
             # Omit parts of Axi interface we don't use + data, because we handle that seperately
@@ -612,11 +629,11 @@ class afe79xx(LiteXModule):
 
 
             self.comb += [
-                self.tx_conv.sink.valid.eq(self.TX_A_RESAMPLER.source.valid),
-                self.TX_A_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
-                self.TX_B_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
-                self.TX_C_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
-                self.TX_D_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
+                self.tx_conv.sink.valid.eq( self.TX_A_RESAMPLER.source.valid),
+                self.TX_A_RESAMPLER.source.ready.eq( tx_conv.sink.ready),
+                self.TX_B_RESAMPLER.source.ready.eq( tx_conv.sink.ready),
+                self.TX_C_RESAMPLER.source.ready.eq( tx_conv.sink.ready),
+                self.TX_D_RESAMPLER.source.ready.eq( tx_conv.sink.ready),
             ]
 
 
@@ -637,7 +654,7 @@ class afe79xx(LiteXModule):
 
             self.tx_cdc = stream.ClockDomainCrossing(
                 layout         =[("data", 256)],
-                cd_from        =demux_clk_domain,
+                cd_from        =double_clk_domain.name,
                 cd_to          =s_clk_domain,
                 buffered       =True,
                 depth          =32
@@ -670,17 +687,26 @@ class afe79xx(LiteXModule):
                 self.tx_cdc.source.valid,
                 self.flow_control_signals.s_clk[0], # afe_sink.ready
             ]
-            self.flow_control_signals.demux_clk = [
+            self.flow_control_signals.double_clk = [
                 rx_cdc.source.valid,
                 rx_cdc.source.ready,
                 rx_conv.sink.valid,
                 rx_conv.sink.ready,
                 rx_conv.source.valid,
                 rx_conv.source.ready,
-                self.source.valid,
-                self.source.ready,
-                self.sink.valid,
-                self.sink.ready,
+                self.RX_A_RESAMPLER.sink.valid,
+                self.RX_A_RESAMPLER.sink.ready,
+                self.RX_A_RESAMPLER.source.valid,
+                self.RX_A_RESAMPLER.source.ready,
+                self.rx_out_fifo.sink.valid,
+                self.rx_out_fifo.sink.ready,
+
+                self.tx_in_fifo.source.valid,
+                self.tx_in_fifo.source.ready,
+                self.TX_A_RESAMPLER.sink.valid,
+                self.TX_A_RESAMPLER.sink.ready,
+                self.TX_A_RESAMPLER.source.valid,
+                self.TX_A_RESAMPLER.source.ready,
                 self.tx_conv.sink.valid,
                 self.tx_conv.sink.ready,
                 self.tx_conv.source.valid,
@@ -688,17 +714,16 @@ class afe79xx(LiteXModule):
                 self.tx_cdc.sink.valid,
                 self.tx_cdc.sink.ready,
             ]
-            if resampling_stages > 0:
-                self.flow_control_signals.demux_clk += [
-                    self.RX_A_RESAMPLER.sink.valid,
-                    self.RX_A_RESAMPLER.sink.ready,
-                    self.RX_A_RESAMPLER.source.valid,
-                    self.RX_A_RESAMPLER.source.ready,
-                    self.TX_A_RESAMPLER.sink.valid,
-                    self.TX_A_RESAMPLER.sink.ready,
-                    self.TX_A_RESAMPLER.source.valid,
-                    self.TX_A_RESAMPLER.source.ready,
-                ]
+            self.flow_control_signals.demux_clk = [
+                self.rx_out_fifo.source.valid,
+                self.rx_out_fifo.source.ready,
+                self.source.valid,
+                self.source.ready,
+                self.sink.valid,
+                self.sink.ready,
+                self.tx_in_fifo.sink.valid,
+                self.tx_in_fifo.sink.ready,
+            ]
         else:
             self.flow_control_signals.m_clk += [
                 self.source.valid,
