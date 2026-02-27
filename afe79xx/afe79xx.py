@@ -611,8 +611,14 @@ class afe79xx(LiteXModule):
             #    self.TX_D_RESAMPLER.reset.eq(~self.tx_en),
             #]
 
-            #self.Resampler_max_value = CSRStatus(size=4, description="Maximum divider value for resampling")
+            self.Resampler_max_value = CSRStatus(size=4, description="Maximum divider value for resampling")
+            # Temp workaround begin
             #self.comb += self.Resampler_max_value.status.eq(resampling_stages)
+            if resampling_stages != 0:
+                raise ValueError(
+                    f"resampling_stages must be 0 for this xilinx int/dec configuration (got {resampling_stages})"
+                )
+            self.comb += self.Resampler_max_value.status.eq(4)  # Temp workaround end
 
             tx_conv = stream.Converter(nbits_from=128, nbits_to=256)
             tx_conv = ClockDomainsRenamer(demux_clk_domain)(tx_conv)
