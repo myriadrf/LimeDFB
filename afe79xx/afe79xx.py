@@ -571,39 +571,84 @@ class afe79xx(LiteXModule):
             # -----------------------------------------
             # TX data path
             self.tx_en     = Signal()
-            TX_A_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
-            TX_B_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
-            TX_C_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
-            TX_D_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
-            self.TX_A_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_A_RESAMPLER)
-            self.TX_B_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_B_RESAMPLER)
-            self.TX_C_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_C_RESAMPLER)
-            self.TX_D_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_D_RESAMPLER)
+
+            from gateware.interpolate_4ch.interpolate_4ch import Interpolate4ch
+            self.interpolate = Interpolate4ch(platform, clk_domain=demux_clk_domain)
+
             self.comb += [
-                self.TX_A_RESAMPLER.sink.data.eq(self.sink.data[0 : 32]),
-                self.TX_A_RESAMPLER.sink.valid.eq(self.sink.valid),
-                self.TX_A_RESAMPLER.reset.eq(~self.tx_en),
-                self.sink.ready.eq(self.TX_A_RESAMPLER.sink.ready),
+                self.interpolate.aresetn.eq(self.tx_en),
+                self.interpolate.sink.data.eq(self.sink.data),
+                self.interpolate.sink.valid.eq(self.sink.valid),
+                self.sink.ready.eq(self.interpolate.sink.ready),
 
-                self.TX_B_RESAMPLER.sink.data.eq(self.sink.data[32: 64]),
-                self.TX_B_RESAMPLER.sink.valid.eq(self.sink.valid),
-                self.TX_B_RESAMPLER.reset.eq(~self.tx_en),
-
-                self.TX_C_RESAMPLER.sink.data.eq(self.sink.data[64: 96]),
-                self.TX_C_RESAMPLER.sink.valid.eq(self.sink.valid),
-                self.TX_C_RESAMPLER.reset.eq(~self.tx_en),
-
-                self.TX_D_RESAMPLER.sink.data.eq(self.sink.data[96:128]),
-                self.TX_D_RESAMPLER.sink.valid.eq(self.sink.valid),
-                self.TX_D_RESAMPLER.reset.eq(~self.tx_en),
             ]
 
-            self.Resampler_max_value = CSRStatus(size=4, description="Maximum divider value for resampling")
-            self.comb += self.Resampler_max_value.status.eq(resampling_stages)
+
+            #TX_A_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
+            #TX_B_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
+            #TX_C_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
+            #TX_D_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
+            #self.TX_A_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_A_RESAMPLER)
+            #self.TX_B_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_B_RESAMPLER)
+            #self.TX_C_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_C_RESAMPLER)
+            #self.TX_D_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_D_RESAMPLER)
+            #self.comb += [
+            #    self.TX_A_RESAMPLER.sink.data.eq(self.sink.data[0 : 32]),
+            #    self.TX_A_RESAMPLER.sink.valid.eq(self.sink.valid),
+            #    self.TX_A_RESAMPLER.reset.eq(~self.tx_en),
+            #    self.sink.ready.eq(self.TX_A_RESAMPLER.sink.ready),
+#
+            #    self.TX_B_RESAMPLER.sink.data.eq(self.sink.data[32: 64]),
+            #    self.TX_B_RESAMPLER.sink.valid.eq(self.sink.valid),
+            #    self.TX_B_RESAMPLER.reset.eq(~self.tx_en),
+#
+            #    self.TX_C_RESAMPLER.sink.data.eq(self.sink.data[64: 96]),
+            #    self.TX_C_RESAMPLER.sink.valid.eq(self.sink.valid),
+            #    self.TX_C_RESAMPLER.reset.eq(~self.tx_en),
+#
+            #    self.TX_D_RESAMPLER.sink.data.eq(self.sink.data[96:128]),
+            #    self.TX_D_RESAMPLER.sink.valid.eq(self.sink.valid),
+            #    self.TX_D_RESAMPLER.reset.eq(~self.tx_en),
+            #]
+
+            #self.Resampler_max_value = CSRStatus(size=4, description="Maximum divider value for resampling")
+            #self.comb += self.Resampler_max_value.status.eq(resampling_stages)
 
             tx_conv = stream.Converter(nbits_from=128, nbits_to=256)
             tx_conv = ClockDomainsRenamer(demux_clk_domain)(tx_conv)
             self.tx_conv = tx_conv
+
+            ## Omit parts of Axi interface we don't use + data, because we handle that seperately
+            ## AFE bindings do not correspond to ABCD channels, channels need to be muxed to fit
+            ## IQ mux Logic: Mux(condition, swapped_data, normal_data)
+            #self.comb += [
+            #    # -----------------------------------------------------------------
+            #    # Channel A -> AFE CH 4 (Bits 96-128) | Controlled by tx_swap_iq[0]
+            #    # -----------------------------------------------------------------
+            #    tx_conv.sink.data[96:128].eq(Mux(self.tx_swap_iq[0],swap_iq(self.TX_A_RESAMPLER.source.data),self.TX_A_RESAMPLER.source.data)),
+            #    # -----------------------------------------------------------------
+            #    # Channel B -> AFE CH 3 (Bits 64-96) | Controlled by tx_swap_iq[1]
+            #    # -----------------------------------------------------------------
+            #    tx_conv.sink.data[64:96].eq(Mux(self.tx_swap_iq[1],swap_iq(self.TX_B_RESAMPLER.source.data),self.TX_B_RESAMPLER.source.data)),
+            #    # -----------------------------------------------------------------
+            #    # Channel C -> AFE CH 1 (Bits 0-32) | Controlled by tx_swap_iq[2]
+            #    # -----------------------------------------------------------------
+            #    tx_conv.sink.data[0:32].eq(Mux(self.tx_swap_iq[2],swap_iq(self.TX_C_RESAMPLER.source.data),self.TX_C_RESAMPLER.source.data)),
+            #    # -----------------------------------------------------------------
+            #    # Channel D -> AFE CH 2 (Bits 32-64) | Controlled by tx_swap_iq[3]
+            #    # -----------------------------------------------------------------
+            #    tx_conv.sink.data[32:64].eq(Mux(self.tx_swap_iq[3],swap_iq(self.TX_D_RESAMPLER.source.data),self.TX_D_RESAMPLER.source.data)),
+            #]
+#
+#
+            #self.comb += [
+            #    self.tx_conv.sink.valid.eq(self.TX_A_RESAMPLER.source.valid),
+            #    self.TX_A_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
+            #    self.TX_B_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
+            #    self.TX_C_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
+            #    self.TX_D_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
+            #]
+
 
             # Omit parts of Axi interface we don't use + data, because we handle that seperately
             # AFE bindings do not correspond to ABCD channels, channels need to be muxed to fit
@@ -612,28 +657,25 @@ class afe79xx(LiteXModule):
                 # -----------------------------------------------------------------
                 # Channel A -> AFE CH 4 (Bits 96-128) | Controlled by tx_swap_iq[0]
                 # -----------------------------------------------------------------
-                tx_conv.sink.data[96:128].eq(Mux(self.tx_swap_iq[0],swap_iq(self.TX_A_RESAMPLER.source.data),self.TX_A_RESAMPLER.source.data)),
+                tx_conv.sink.data[96:128].eq(Mux(self.tx_swap_iq[0],swap_iq(self.interpolate.source.data[0:32]),self.interpolate.source.data[0:32])),
                 # -----------------------------------------------------------------
                 # Channel B -> AFE CH 3 (Bits 64-96) | Controlled by tx_swap_iq[1]
                 # -----------------------------------------------------------------
-                tx_conv.sink.data[64:96].eq(Mux(self.tx_swap_iq[1],swap_iq(self.TX_B_RESAMPLER.source.data),self.TX_B_RESAMPLER.source.data)),
+                tx_conv.sink.data[64:96].eq(Mux(self.tx_swap_iq[1],swap_iq(self.interpolate.source.data[32:64]),self.interpolate.source.data[32:64])),
                 # -----------------------------------------------------------------
                 # Channel C -> AFE CH 1 (Bits 0-32) | Controlled by tx_swap_iq[2]
                 # -----------------------------------------------------------------
-                tx_conv.sink.data[0:32].eq(Mux(self.tx_swap_iq[2],swap_iq(self.TX_C_RESAMPLER.source.data),self.TX_C_RESAMPLER.source.data)),
+                tx_conv.sink.data[0:32].eq(Mux(self.tx_swap_iq[2],swap_iq(self.interpolate.source.data[64:96]),self.interpolate.source.data[64:96])),
                 # -----------------------------------------------------------------
                 # Channel D -> AFE CH 2 (Bits 32-64) | Controlled by tx_swap_iq[3]
                 # -----------------------------------------------------------------
-                tx_conv.sink.data[32:64].eq(Mux(self.tx_swap_iq[3],swap_iq(self.TX_D_RESAMPLER.source.data),self.TX_D_RESAMPLER.source.data)),
+                tx_conv.sink.data[32:64].eq(Mux(self.tx_swap_iq[3],swap_iq(self.interpolate.source.data[96:128]),self.interpolate.source.data[96:128])),
             ]
 
 
             self.comb += [
-                self.tx_conv.sink.valid.eq(self.TX_A_RESAMPLER.source.valid),
-                self.TX_A_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
-                self.TX_B_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
-                self.TX_C_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
-                self.TX_D_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
+                self.tx_conv.sink.valid.eq(self.interpolate.source.valid),
+                self.interpolate.source.ready.eq(tx_conv.sink.ready),
             ]
 
 
