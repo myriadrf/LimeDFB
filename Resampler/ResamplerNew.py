@@ -38,6 +38,15 @@ class ResamplerNew(LiteXModule):
 
         # 3. Filter Instantiation
         config = HalfBandConfig(mode=filter_mode, data_width=sample_width, tap_width=16)
+        if direction == "down":
+            config = HalfBandConfig(mode=filter_mode, data_width=sample_width, tap_width=16)
+        else:
+            if filter_mode == "short":
+                config = HalfBandConfig(mode="short_doubled", data_width=sample_width, tap_width=16)
+            elif filter_mode == "long":
+                config = HalfBandConfig(mode="long_doubled", data_width=sample_width, tap_width=16)
+            else:
+                raise ValueError("Invalid filter mode for upsampling")
         self.filters = []
 
         for i in range(stages):
