@@ -213,7 +213,7 @@ class ComplexStandardInterpolator(Module):
         )
 
         core_ready_pulse = Signal()
-        self.comb += core_ready_pulse.eq(valid_delay[-1] & core_enable)
+        self.comb += core_ready_pulse.eq(valid_delay[-1] & pipeline_enable)
 
         self.sync += [
             If(core_ready_pulse & self.source.ready,

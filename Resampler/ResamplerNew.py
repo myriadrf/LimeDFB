@@ -9,7 +9,7 @@ from gateware.LimeDFB.Resampler.half_band_complex import (
 from gateware.LimeDFB.Resampler.half_band_config import HalfBandConfig
 
 class ResamplerNew(LiteXModule):
-    def __init__(self, sample_width=16, stages=1, direction="up", filter_mode="short", ssr_mode=False):
+    def __init__(self, sample_width=16, tap_width=16, stages=1, direction="up", filter_mode="short", ssr_mode=False, auto_scale=False):
         # 1. Signature check
         assert direction in ["up", "down"], "Direction must be 'up' or 'down'"
         assert stages > 0, "ResamplerNew requires at least 1 stage. Use external routing for bypass."
@@ -37,14 +37,13 @@ class ResamplerNew(LiteXModule):
         self.source = stream.Endpoint(source_layout)
 
         # 3. Filter Instantiation
-        config = HalfBandConfig(mode=filter_mode, data_width=sample_width, tap_width=16)
         if direction == "down":
-            config = HalfBandConfig(mode=filter_mode, data_width=sample_width, tap_width=16)
+            config = HalfBandConfig(mode=filter_mode, data_width=sample_width, tap_width=tap_width, auto_scale=auto_scale)
         else:
             if filter_mode == "short":
-                config = HalfBandConfig(mode="short_doubled", data_width=sample_width, tap_width=16)
+                config = HalfBandConfig(mode="short_doubled", data_width=sample_width, tap_width=tap_width, auto_scale=auto_scale)
             elif filter_mode == "long":
-                config = HalfBandConfig(mode="long_doubled", data_width=sample_width, tap_width=16)
+                config = HalfBandConfig(mode="long_doubled", data_width=sample_width, tap_width=tap_width, auto_scale=auto_scale)
             else:
                 raise ValueError("Invalid filter mode for upsampling")
         self.filters = []

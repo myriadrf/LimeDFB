@@ -24,7 +24,7 @@ def swap_iq(x):
     return Cat(i1, q1_neg)
 
 class afe79xx(LiteXModule):
-    def __init__(self, soc, platform, pads, double_clk_domain, s_clk_domain="sys", m_clk_domain="sys", demux_clk_domain="sys500", with_debug=False, demux=True, resampling_stages=2):
+    def __init__(self, soc, platform, pads, double_clk_domain, s_clk_domain="sys", m_clk_domain="sys", demux_clk_domain="sys500", with_debug=False, demux=True, resampling_stages=4):
         # Add CSRs
 
         self.reg00  = CSRStorage(fields=[
@@ -523,9 +523,9 @@ class afe79xx(LiteXModule):
             # Instantiate 4x ResamplerNew(stages=4, direction="down", ssr_mode=True) in fpga_1pps.
             rx_resamplers = []
             self.rx_resampler_reset = rx_resampler_reset = Signal()
-            self.comb += rx_resampler_reset.eq(self.rx_out_mux_change | ~self.rx_en | (self.rx_out_mux_fpga_1pps == 0))
+            self.comb += rx_resampler_reset.eq(~self.rx_en | (self.rx_out_mux_fpga_1pps == 0))
             for i in range(4):
-                resampler = ResamplerNew(stages=4, direction="down", ssr_mode=True)
+                resampler = ResamplerNew(stages=4, direction="down", ssr_mode=True, auto_scale=True, filter_mode="short", tap_width=18)
                 resampler = ClockDomainsRenamer("fpga_1pps")(resampler)
                 resampler = ResetInserter()(resampler)
                 self.comb += resampler.reset.eq(rx_resampler_reset)
@@ -631,9 +631,9 @@ class afe79xx(LiteXModule):
             # 2. 4x ResamplerNew(stages=4, direction="up", ssr_mode=True) in fpga_1pps
             tx_resamplers = []
             self.tx_resampler_reset = tx_resampler_reset = Signal()
-            self.comb += self.tx_resampler_reset.eq(self.tx_out_mux_change | ~self.tx_en | (self.tx_out_mux_fpga_1pps == 0))
+            self.comb += self.tx_resampler_reset.eq(~self.tx_en | (self.tx_out_mux_fpga_1pps == 0))
             for i in range(4):
-                resampler = ResamplerNew(stages=4, direction="up", ssr_mode=True)
+                resampler = ResamplerNew(stages=4, direction="up", ssr_mode=True, auto_scale=True, filter_mode="short", tap_width=18)
                 resampler = ClockDomainsRenamer("fpga_1pps")(resampler)
                 resampler = ResetInserter()(resampler)
                 self.comb += resampler.reset.eq(tx_resampler_reset)
@@ -690,15 +690,15 @@ class afe79xx(LiteXModule):
                 tx_in_mapped[32:64].eq(Mux(self.tx_swap_iq[3], swap_iq(tx_in_fifo.source.data[96:128]), tx_in_fifo.source.data[96:128])),
 
                 # Bypass Path — only feed when mux selects bypass
-                tx_conv.sink.valid.eq(tx_in_fifo.source.valid & (self.tx_out_mux.storage == 0)),
+                tx_conv.sink.valid.eq(tx_in_fifo.source.valid & (self.tx_out_mux_fpga_1pps == 0)),
                 tx_conv.sink.data.eq(tx_in_mapped),
 
                 # Filter Path — only feed when mux selects filter
-                tx_filtered_cdc.sink.valid.eq(tx_in_fifo.source.valid & (self.tx_out_mux.storage != 0)),
+                tx_filtered_cdc.sink.valid.eq(tx_in_fifo.source.valid & (self.tx_out_mux_fpga_1pps != 0)),
                 tx_filtered_cdc.sink.data.eq(tx_in_mapped),
 
                 # Backpressure
-                tx_in_fifo.source.ready.eq(Mux(self.tx_out_mux.storage != 0, tx_filtered_cdc.sink.ready, tx_conv.sink.ready)),
+                tx_in_fifo.source.ready.eq(Mux(self.tx_out_mux_fpga_1pps != 0, tx_filtered_cdc.sink.ready, tx_conv.sink.ready)),
             ]
 
             self.tx_interleaved = Endpoint([("data", 256)])
