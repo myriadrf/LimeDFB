@@ -161,7 +161,7 @@ class afe79xx(LiteXModule):
             f.write("create_clock -period 4.069 -name fpga_gt_aferef_clk [get_ports afe79xx_serdes_x4_fpga_gt_aferef_p]\n\n")
 
             f.write("# FPGA_1PPS 245.76Mhz\n")
-            f.write("create_clock -period 4.069*2 -name fpga_1pps_clk [get_ports FPGA_1PPS_p]\n\n")
+            f.write("create_clock -period 4.069 -name fpga_1pps_clk [get_ports FPGA_1PPS_p]\n\n")
 
             f.write("# FPGA_SYSREF 3.84Mhz\n")
             f.write("create_clock -period 260.416 -name fpga_sysref_clk [get_ports FPGA_SYSREF_p]\n\n")
