@@ -500,7 +500,7 @@ class afe79xx(LiteXModule):
                 rx_conv_ch_mux_data[0 : 32].eq(rx_conv.source.data[96:128]), #CH 4 of AFE is CH A
             ]
 
-            from gateware.decimate_4ch.decimate4ch import Decimate4ch
+            from gateware.LimeDFB.dsp.decimate_4ch.decimate4ch import Decimate4ch
             self.decimate = Decimate4ch(platform, clk_domain=demux_clk_domain)
 
 
@@ -572,7 +572,7 @@ class afe79xx(LiteXModule):
             # TX data path
             self.tx_en     = Signal()
 
-            from gateware.interpolate_4ch.interpolate_4ch import Interpolate4ch
+            from gateware.LimeDFB.dsp.interpolate_4ch.interpolate_4ch import Interpolate4ch
             self.interpolate = Interpolate4ch(platform, clk_domain=demux_clk_domain)
 
             self.comb += [
