@@ -9,7 +9,8 @@ from litex.soc.interconnect.csr import *
 from litescope import LiteScopeAnalyzer
 from migen.genlib.cdc import MultiReg
 
-from gateware.LimeDFB.Resampler.Resampler import Resampler
+from gateware.LimeDFB.Resampler.ResamplerNew import ResamplerNew
+from litex.soc.interconnect import stream
 
 
 # -----------------------------
@@ -23,7 +24,7 @@ def swap_iq(x):
     return Cat(i1, q1_neg)
 
 class afe79xx(LiteXModule):
-    def __init__(self, soc, platform, pads, s_clk_domain="sys", m_clk_domain="sys", demux_clk_domain="sys500", with_debug=False, demux=True, resampling_stages=2):
+    def __init__(self, soc, platform, pads, double_clk_domain, s_clk_domain="sys", m_clk_domain="sys", demux_clk_domain="sys500", with_debug=False, demux=True, resampling_stages=4):
         # Add CSRs
 
         self.reg00  = CSRStorage(fields=[
@@ -85,6 +86,21 @@ class afe79xx(LiteXModule):
         self.tx_status0 = CSRStatus(fields=[
             CSRField("jesd_tx_sysref_realign_count", size=4, offset=0, reset=0),
         ])
+
+        self.rx_out_mux = CSRStorage(4)
+        self.tx_out_mux = CSRStorage(4)
+
+        # Synchronize Resampler MUX signals to fpga_1pps domain
+        self.rx_out_mux_fpga_1pps = Signal(4)
+        self.rx_out_mux_change    = Signal(1)
+        self.tx_out_mux_fpga_1pps = Signal(4)
+        self.tx_out_mux_change    = Signal(1)
+        self.specials += [
+            MultiReg(self.rx_out_mux.storage, self.rx_out_mux_fpga_1pps, "fpga_1pps"),
+            MultiReg(self.tx_out_mux.storage, self.tx_out_mux_fpga_1pps, "fpga_1pps"),
+            MultiReg(self.rx_out_mux.re, self.rx_out_mux_change, "fpga_1pps"),
+            MultiReg(self.tx_out_mux.re, self.tx_out_mux_change, "fpga_1pps"),
+        ]
 
 
 
@@ -413,12 +429,12 @@ class afe79xx(LiteXModule):
             # RX data path
             # Create async FIFOs for clock domain crossing (must be buffered=True to improve timing)
             rx_cdc = stream.AsyncFIFO([("data", 256)], 32, buffered=True)
-            rx_cdc = ClockDomainsRenamer({"write": m_clk_domain, "read":demux_clk_domain})(rx_cdc)
+            rx_cdc = ClockDomainsRenamer({"write": m_clk_domain, "read": double_clk_domain.name})(rx_cdc)
             self.rx_cdc = rx_cdc
 
             # Stream converter 256b to 128b
             rx_conv = ResetInserter()(
-                ClockDomainsRenamer(demux_clk_domain)(stream.Converter(256, 128)))
+                ClockDomainsRenamer(double_clk_domain.name)(stream.Converter(256, 128)))
             rx_conv = stream.BufferizeEndpoints({"source": stream.DIR_SOURCE})(rx_conv)
             self.rx_conv = rx_conv
 
@@ -500,190 +516,190 @@ class afe79xx(LiteXModule):
                 rx_conv_ch_mux_data[0 : 32].eq(rx_conv.source.data[96:128]), #CH 4 of AFE is CH A
             ]
 
-            from gateware.LimeDFB.dsp.decimate_4ch.decimate4ch import Decimate4ch
-            self.decimate = Decimate4ch(platform, clk_domain=demux_clk_domain)
+            # Transition from double_clk (491.52MHz) to demux_clk (500MHz) for LimeTop
+            # ------------------------------------------------------------
+            # RX Path Scaffold
+            # ------------------------------------------------------------
+            # Instantiate 4x ResamplerNew(stages=4, direction="down", ssr_mode=True) in fpga_1pps.
+            rx_resamplers = []
+            self.rx_resampler_reset = rx_resampler_reset = Signal()
+            self.comb += rx_resampler_reset.eq(~self.rx_en | (self.rx_out_mux_fpga_1pps == 0))
+            for i in range(4):
+                resampler = ResamplerNew(stages=4, direction="down", ssr_mode=True, auto_scale=True, filter_mode="short", tap_width=18)
+                resampler = ClockDomainsRenamer("fpga_1pps")(resampler)
+                resampler = ResetInserter()(resampler)
+                self.comb += resampler.reset.eq(rx_resampler_reset)
+                rx_resamplers.append(resampler)
+                setattr(self, f"RX_NEW_RESAMPLER_{i}", resampler)
+                self.comb += resampler.mux_sel.eq(self.rx_out_mux_fpga_1pps)
+
+            # Map the slices of data_s0 (Even) and data_s1 (Odd) to the i_even, q_even, i_odd, q_odd sink endpoints.
+            for i in range(4):
+                self.comb += [
+                    rx_resamplers[i].sink.valid.eq(afe_source.valid),
+                    rx_resamplers[i].sink.i_even.eq(data_s0[32*i : 32*i+16]),
+                    rx_resamplers[i].sink.q_even.eq(data_s0[32*i+16 : 32*i+32]),
+                    rx_resamplers[i].sink.i_odd.eq(data_s1[32*i : 32*i+16]),
+                    rx_resamplers[i].sink.q_odd.eq(data_s1[32*i+16 : 32*i+32]),
+                ]
+
+            # 1. Concatenate the raw filtered outputs just like before
+            rx_filtered_raw = Signal(128)
+            self.comb += rx_filtered_raw.eq(Cat(*[Cat(res.source.i, res.source.q) for res in rx_resamplers]))
+
+            # 2. Apply the exact same channel muxing as the bypass path
+            rx_filtered_mapped = Signal(128)
+            self.comb += [
+                rx_filtered_mapped[64: 96].eq(rx_filtered_raw[0 : 32]),   # CH 1 of AFE is CH C
+                rx_filtered_mapped[96:128].eq(rx_filtered_raw[32: 64]),   # CH 2 of AFE is CH D
+                rx_filtered_mapped[32: 64].eq(rx_filtered_raw[64: 96]),   # CH 3 of AFE is CH B
+                rx_filtered_mapped[0 : 32].eq(rx_filtered_raw[96:128]),   # CH 4 of AFE is CH A
+            ]
+
+            # Instantiate a new stream.AsyncFIFO([("data", 128)], 16, buffered=True) to cross this 128-bit filtered data from fpga_1pps to double_clk_domain.name.
+            rx_filtered_cdc = stream.AsyncFIFO([("data", 128)], 16, buffered=True)
+            rx_filtered_cdc = ClockDomainsRenamer({"write": "fpga_1pps", "read": double_clk_domain.name})(rx_filtered_cdc)
+            self.rx_filtered_cdc = rx_filtered_cdc
+
+            # 3. Feed the MAPPED data into the CDC FIFO
+            self.comb += [
+                rx_filtered_cdc.sink.valid.eq(rx_resamplers[0].source.valid),
+                rx_filtered_cdc.sink.data.eq(rx_filtered_mapped), # Use mapped data here!
+            ]
+
+            for i in range(4):
+                self.comb += rx_resamplers[i].source.ready.eq(rx_filtered_cdc.sink.ready)
+
+            # The RX MUX (double_clk)
+            rx_mux = stream.Multiplexer([("data", 128)], 2)
+            rx_mux = ClockDomainsRenamer(double_clk_domain.name)(rx_mux)
+            self.rx_mux = rx_mux
+
+            self.comb += [
+                # sink0 = Bypass data (rx_conv_ch_mux_data).
+                rx_mux.sink0.valid.eq(rx_conv.source.valid),
+                rx_mux.sink0.data.eq(rx_conv_ch_mux_data),
+                rx_conv.source.ready.eq(rx_mux.sink0.ready),
+
+                # sink1 = Filtered data (output of the new AsyncFIFO).
+                rx_mux.sink1.valid.eq(rx_filtered_cdc.source.valid),
+                rx_mux.sink1.data.eq(rx_filtered_cdc.source.data),
+                rx_filtered_cdc.source.ready.eq(rx_mux.sink1.ready),
+
+                # Select based on self.rx_out_mux.storage != 0.
+                rx_mux.sel.eq(self.rx_out_mux.storage != 0),
+            ]
+
+            rx_out_fifo = stream.AsyncFIFO([("data", 128)], 64, buffered=True)
+            rx_out_fifo = ClockDomainsRenamer({"write": double_clk_domain.name, "read": demux_clk_domain})(rx_out_fifo)
+            self.rx_out_fifo = rx_out_fifo
+
 
 
             self.comb += [
-                self.decimate.aresetn.eq(self.rx_en),
-                self.decimate.sink.data.eq(rx_conv_ch_mux_data),
-                self.decimate.sink.valid.eq(rx_conv.source.valid),
-                rx_conv.source.ready.eq(self.decimate.sink.ready),
-
-                self.decimate.source.connect(self.source),
+                # Connect the MUX output to rx_out_fifo.sink.
+                rx_mux.source.connect(rx_out_fifo.sink),
+                
+                rx_out_fifo.source.connect(self.source, keep={"valid", "ready", "data"}),
+                self.source.keep.eq(0xFFFF),
             ]
-
-
-
-            endpoint_dict = {
-                "source": DIR_SOURCE,  # Add output buffer to the 'source' endpoint
-                "sink": DIR_SINK,      # Add input buffer to the 'sink' endpoint
-            }
-            #RX_A_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
-            #RX_B_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
-            #RX_C_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
-            #RX_D_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
-#
-#
-            #self.RX_A_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_A_RESAMPLER)
-            #self.RX_B_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_B_RESAMPLER)
-            #self.RX_C_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_C_RESAMPLER)
-            #self.RX_D_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_D_RESAMPLER)
-            #self.comb += [
-            #    self.RX_A_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[0 : 32]),
-            #    self.RX_A_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
-            #    self.RX_A_RESAMPLER.reset.eq(~self.rx_en),
-            #    rx_conv.source.ready.eq(self.RX_A_RESAMPLER.sink.ready),
-#
-            #    self.RX_B_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[32: 64]),
-            #    self.RX_B_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
-            #    self.RX_B_RESAMPLER.reset.eq(~self.rx_en),
-            #    # No Ready, handled by RX_A
-#
-            #    self.RX_C_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[64: 96]),
-            #    self.RX_C_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
-            #    self.RX_C_RESAMPLER.reset.eq(~self.rx_en), #VHDL instances in resampler use active low reset
-            #    # No Ready, handled by RX_A
-#
-            #    self.RX_D_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[96:128]),
-            #    self.RX_D_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
-            #    self.RX_D_RESAMPLER.reset.eq(~self.rx_en), #VHDL instances in resampler use active low reset
-            #    # No Ready, handled by RX_A
-            #]
-#
-#
-            #self.comb += [
-            #    self.source.data.eq(Cat(
-            #        self.RX_A_RESAMPLER.source.data,
-            #        self.RX_B_RESAMPLER.source.data,
-            #        self.RX_C_RESAMPLER.source.data,
-            #        self.RX_D_RESAMPLER.source.data,
-            #    )),
-            #    self.source.keep.eq(0xFFFF),
-            #    self.source.valid.eq(self.RX_A_RESAMPLER.source.valid),
-            #    self.RX_A_RESAMPLER.source.ready.eq(self.source.ready),
-            #    self.RX_B_RESAMPLER.source.ready.eq(self.source.ready),
-            #    self.RX_C_RESAMPLER.source.ready.eq(self.source.ready),
-            #    self.RX_D_RESAMPLER.source.ready.eq(self.source.ready),
-            #]
 
 
             # -----------------------------------------
             # TX data path
             self.tx_en     = Signal()
 
-            from gateware.LimeDFB.dsp.interpolate_4ch.interpolate_4ch import Interpolate4ch
-            self.interpolate = Interpolate4ch(platform, clk_domain=demux_clk_domain)
+            # Transition from demux_clk (500MHz) to double_clk (491.52MHz) for resamplers
+            tx_in_fifo = stream.AsyncFIFO([("data", 128)], 64, buffered=True)
+            tx_in_fifo = ClockDomainsRenamer({"write": demux_clk_domain, "read": double_clk_domain.name})(tx_in_fifo)
+            self.tx_in_fifo = tx_in_fifo
+            self.comb += self.sink.connect(tx_in_fifo.sink, omit=["keep", "id", "dest", "user"])
+
+            # ------------------------------------------------------------
+            # TX Path Scaffold
+            # ------------------------------------------------------------
+            # 1. AsyncFIFO from double_clk to fpga_1pps
+            tx_filtered_cdc = stream.AsyncFIFO([("data", 128)], 16, buffered=True)
+            tx_filtered_cdc = ClockDomainsRenamer({"write": double_clk_domain.name, "read": "fpga_1pps"})(tx_filtered_cdc)
+            self.tx_filtered_cdc = tx_filtered_cdc
 
             self.comb += [
-                self.interpolate.aresetn.eq(self.tx_en),
-                self.interpolate.sink.data.eq(self.sink.data),
-                self.interpolate.sink.valid.eq(self.sink.valid),
-                self.sink.ready.eq(self.interpolate.sink.ready),
-
+                tx_filtered_cdc.sink.valid.eq(tx_in_fifo.source.valid),
+                tx_filtered_cdc.sink.data.eq(tx_in_fifo.source.data),
             ]
 
+            # 2. 4x ResamplerNew(stages=4, direction="up", ssr_mode=True) in fpga_1pps
+            tx_resamplers = []
+            self.tx_resampler_reset = tx_resampler_reset = Signal()
+            self.comb += self.tx_resampler_reset.eq(~self.tx_en | (self.tx_out_mux_fpga_1pps == 0))
+            for i in range(4):
+                resampler = ResamplerNew(stages=4, direction="up", ssr_mode=True, auto_scale=True, filter_mode="short", tap_width=18)
+                resampler = ClockDomainsRenamer("fpga_1pps")(resampler)
+                resampler = ResetInserter()(resampler)
+                self.comb += resampler.reset.eq(tx_resampler_reset)
+                tx_resamplers.append(resampler)
+                setattr(self, f"TX_NEW_RESAMPLER_{i}", resampler)
+                self.comb += resampler.mux_sel.eq(self.tx_out_mux_fpga_1pps)
 
-            #TX_A_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
-            #TX_B_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
-            #TX_C_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
-            #TX_D_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
-            #self.TX_A_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_A_RESAMPLER)
-            #self.TX_B_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_B_RESAMPLER)
-            #self.TX_C_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_C_RESAMPLER)
-            #self.TX_D_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_D_RESAMPLER)
-            #self.comb += [
-            #    self.TX_A_RESAMPLER.sink.data.eq(self.sink.data[0 : 32]),
-            #    self.TX_A_RESAMPLER.sink.valid.eq(self.sink.valid),
-            #    self.TX_A_RESAMPLER.reset.eq(~self.tx_en),
-            #    self.sink.ready.eq(self.TX_A_RESAMPLER.sink.ready),
-#
-            #    self.TX_B_RESAMPLER.sink.data.eq(self.sink.data[32: 64]),
-            #    self.TX_B_RESAMPLER.sink.valid.eq(self.sink.valid),
-            #    self.TX_B_RESAMPLER.reset.eq(~self.tx_en),
-#
-            #    self.TX_C_RESAMPLER.sink.data.eq(self.sink.data[64: 96]),
-            #    self.TX_C_RESAMPLER.sink.valid.eq(self.sink.valid),
-            #    self.TX_C_RESAMPLER.reset.eq(~self.tx_en),
-#
-            #    self.TX_D_RESAMPLER.sink.data.eq(self.sink.data[96:128]),
-            #    self.TX_D_RESAMPLER.sink.valid.eq(self.sink.valid),
-            #    self.TX_D_RESAMPLER.reset.eq(~self.tx_en),
-            #]
+            # 3. Feed FIFO output into resamplers
+            for i in range(4):
+                self.comb += [
+                    tx_resamplers[i].sink.valid.eq(tx_filtered_cdc.source.valid),
+                    tx_resamplers[i].sink.i.eq(tx_filtered_cdc.source.data[32*i : 32*i+16]),
+                    tx_resamplers[i].sink.q.eq(tx_filtered_cdc.source.data[32*i+16 : 32*i+32]),
+                ]
+            self.comb += tx_filtered_cdc.source.ready.eq(tx_resamplers[0].sink.ready)
+
+            # 4. Concatenate SSR outputs into 256-bit word
+            tx_s0 = Signal(128)
+            tx_s1 = Signal(128)
+            self.comb += tx_s0.eq(Cat(*[Cat(res.source.i_even, res.source.q_even) for res in tx_resamplers]))
+            self.comb += tx_s1.eq(Cat(*[Cat(res.source.i_odd, res.source.q_odd) for res in tx_resamplers]))
+
+            tx_filtered_data_afe = Signal(256)
+            for j in range(8):
+                self.comb += [
+                    tx_filtered_data_afe[32*j : 32*j+16].eq(tx_s0[16*j : 16*j+16]),
+                    tx_filtered_data_afe[32*j+16 : 32*j+32].eq(tx_s1[16*j : 16*j+16]),
+                ]
+
+            # 5. The TX MUX (fpga_1pps)
+            tx_mux = stream.Multiplexer([("data", 256)], 2)
+            tx_mux = ClockDomainsRenamer("fpga_1pps")(tx_mux)
+            self.tx_mux = tx_mux
+
+            self.comb += [
+                # Select based on self.tx_out_mux.storage != 0.
+                tx_mux.sel.eq(self.tx_out_mux_fpga_1pps != 0),
+            ]
+            for i in range(4):
+                self.comb += tx_resamplers[i].source.ready.eq(tx_mux.sink1.ready)
 
             self.Resampler_max_value = CSRStatus(size=4, description="Maximum divider value for resampling")
-            # Temp workaround begin
-            #self.comb += self.Resampler_max_value.status.eq(resampling_stages)
-            if resampling_stages != 0:
-                raise ValueError(
-                    f"resampling_stages must be 0 for this xilinx int/dec configuration (got {resampling_stages})"
-                )
-            self.comb += self.Resampler_max_value.status.eq(4)  # Temp workaround end
+            self.comb += self.Resampler_max_value.status.eq(resampling_stages)
 
             tx_conv = stream.Converter(nbits_from=128, nbits_to=256)
-            tx_conv = ClockDomainsRenamer(demux_clk_domain)(tx_conv)
+            tx_conv = ClockDomainsRenamer(double_clk_domain.name)(tx_conv)
             self.tx_conv = tx_conv
 
-            ## Omit parts of Axi interface we don't use + data, because we handle that seperately
-            ## AFE bindings do not correspond to ABCD channels, channels need to be muxed to fit
-            ## IQ mux Logic: Mux(condition, swapped_data, normal_data)
-            #self.comb += [
-            #    # -----------------------------------------------------------------
-            #    # Channel A -> AFE CH 4 (Bits 96-128) | Controlled by tx_swap_iq[0]
-            #    # -----------------------------------------------------------------
-            #    tx_conv.sink.data[96:128].eq(Mux(self.tx_swap_iq[0],swap_iq(self.TX_A_RESAMPLER.source.data),self.TX_A_RESAMPLER.source.data)),
-            #    # -----------------------------------------------------------------
-            #    # Channel B -> AFE CH 3 (Bits 64-96) | Controlled by tx_swap_iq[1]
-            #    # -----------------------------------------------------------------
-            #    tx_conv.sink.data[64:96].eq(Mux(self.tx_swap_iq[1],swap_iq(self.TX_B_RESAMPLER.source.data),self.TX_B_RESAMPLER.source.data)),
-            #    # -----------------------------------------------------------------
-            #    # Channel C -> AFE CH 1 (Bits 0-32) | Controlled by tx_swap_iq[2]
-            #    # -----------------------------------------------------------------
-            #    tx_conv.sink.data[0:32].eq(Mux(self.tx_swap_iq[2],swap_iq(self.TX_C_RESAMPLER.source.data),self.TX_C_RESAMPLER.source.data)),
-            #    # -----------------------------------------------------------------
-            #    # Channel D -> AFE CH 2 (Bits 32-64) | Controlled by tx_swap_iq[3]
-            #    # -----------------------------------------------------------------
-            #    tx_conv.sink.data[32:64].eq(Mux(self.tx_swap_iq[3],swap_iq(self.TX_D_RESAMPLER.source.data),self.TX_D_RESAMPLER.source.data)),
-            #]
-#
-#
-            #self.comb += [
-            #    self.tx_conv.sink.valid.eq(self.TX_A_RESAMPLER.source.valid),
-            #    self.TX_A_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
-            #    self.TX_B_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
-            #    self.TX_C_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
-            #    self.TX_D_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
-            #]
-
-
-            # Omit parts of Axi interface we don't use + data, because we handle that seperately
-            # AFE bindings do not correspond to ABCD channels, channels need to be muxed to fit
-            # IQ mux Logic: Mux(condition, swapped_data, normal_data)
+            tx_in_mapped = Signal(128)
             self.comb += [
-                # -----------------------------------------------------------------
-                # Channel A -> AFE CH 4 (Bits 96-128) | Controlled by tx_swap_iq[0]
-                # -----------------------------------------------------------------
-                tx_conv.sink.data[96:128].eq(Mux(self.tx_swap_iq[0],swap_iq(self.interpolate.source.data[0:32]),self.interpolate.source.data[0:32])),
-                # -----------------------------------------------------------------
-                # Channel B -> AFE CH 3 (Bits 64-96) | Controlled by tx_swap_iq[1]
-                # -----------------------------------------------------------------
-                tx_conv.sink.data[64:96].eq(Mux(self.tx_swap_iq[1],swap_iq(self.interpolate.source.data[32:64]),self.interpolate.source.data[32:64])),
-                # -----------------------------------------------------------------
-                # Channel C -> AFE CH 1 (Bits 0-32) | Controlled by tx_swap_iq[2]
-                # -----------------------------------------------------------------
-                tx_conv.sink.data[0:32].eq(Mux(self.tx_swap_iq[2],swap_iq(self.interpolate.source.data[64:96]),self.interpolate.source.data[64:96])),
-                # -----------------------------------------------------------------
-                # Channel D -> AFE CH 2 (Bits 32-64) | Controlled by tx_swap_iq[3]
-                # -----------------------------------------------------------------
-                tx_conv.sink.data[32:64].eq(Mux(self.tx_swap_iq[3],swap_iq(self.interpolate.source.data[96:128]),self.interpolate.source.data[96:128])),
+                tx_in_mapped[96:128].eq(Mux(self.tx_swap_iq[0], swap_iq(tx_in_fifo.source.data[0:32]), tx_in_fifo.source.data[0:32])),
+                tx_in_mapped[64:96].eq(Mux(self.tx_swap_iq[1], swap_iq(tx_in_fifo.source.data[32:64]), tx_in_fifo.source.data[32:64])),
+                tx_in_mapped[0:32].eq(Mux(self.tx_swap_iq[2], swap_iq(tx_in_fifo.source.data[64:96]), tx_in_fifo.source.data[64:96])),
+                tx_in_mapped[32:64].eq(Mux(self.tx_swap_iq[3], swap_iq(tx_in_fifo.source.data[96:128]), tx_in_fifo.source.data[96:128])),
+
+                # Bypass Path — only feed when mux selects bypass
+                tx_conv.sink.valid.eq(tx_in_fifo.source.valid & (self.tx_out_mux_fpga_1pps == 0)),
+                tx_conv.sink.data.eq(tx_in_mapped),
+
+                # Filter Path — only feed when mux selects filter
+                tx_filtered_cdc.sink.valid.eq(tx_in_fifo.source.valid & (self.tx_out_mux_fpga_1pps != 0)),
+                tx_filtered_cdc.sink.data.eq(tx_in_mapped),
+
+                # Backpressure
+                tx_in_fifo.source.ready.eq(Mux(self.tx_out_mux_fpga_1pps != 0, tx_filtered_cdc.sink.ready, tx_conv.sink.ready)),
             ]
-
-
-            self.comb += [
-                self.tx_conv.sink.valid.eq(self.interpolate.source.valid),
-                self.interpolate.source.ready.eq(tx_conv.sink.ready),
-            ]
-
 
             self.tx_interleaved = Endpoint([("data", 256)])
             # self.tx_conv.source.connect(self.tx_interleaved,omit={"data"})
@@ -702,16 +718,30 @@ class afe79xx(LiteXModule):
 
             self.tx_cdc = stream.ClockDomainCrossing(
                 layout         =[("data", 256)],
-                cd_from        =demux_clk_domain,
+                cd_from        =double_clk_domain.name,
                 cd_to          =s_clk_domain,
                 buffered       =True,
                 depth          =32
             )
             self.comb += [
                 self.tx_interleaved.connect(self.tx_cdc.sink),
-                self.tx_cdc.source.connect(afe_sink,omit={"ready"}),
+                
+                # sink0 = Bypass data (tx_cdc.source)
+                tx_mux.sink0.valid.eq(self.tx_cdc.source.valid),
+                tx_mux.sink0.data.eq(self.tx_cdc.source.data),
+                self.tx_cdc.source.ready.eq(tx_mux.sink0.ready),
+
+                # sink1 = Filtered data (concatenated SSR outputs)
+                tx_mux.sink1.valid.eq(tx_resamplers[0].source.valid),
+                tx_mux.sink1.data.eq(tx_filtered_data_afe),
+
+                # Connect the MUX output to afe_sink, preserving the reset flush logic
+                tx_mux.source.connect(afe_sink, omit={"ready"}),
+                tx_mux.source.ready.eq(afe_sink.ready | ~self.tx_en)
+
+                #self.tx_cdc.source.connect(afe_sink,omit={"ready"}),
                 # If in reset, assert ready to 'clear out' everything
-                self.tx_cdc.source.ready.eq(afe_sink.ready | ~self.tx_en)
+                #self.tx_cdc.source.ready.eq(afe_sink.ready | ~self.tx_en)
             ]
 
         # Signal lists for debugging
@@ -735,17 +765,18 @@ class afe79xx(LiteXModule):
                 self.tx_cdc.source.valid,
                 self.flow_control_signals.s_clk[0], # afe_sink.ready
             ]
-            self.flow_control_signals.demux_clk = [
+            self.flow_control_signals.double_clk = [
                 rx_cdc.source.valid,
                 rx_cdc.source.ready,
                 rx_conv.sink.valid,
                 rx_conv.sink.ready,
                 rx_conv.source.valid,
                 rx_conv.source.ready,
-                self.source.valid,
-                self.source.ready,
-                self.sink.valid,
-                self.sink.ready,
+                self.rx_out_fifo.sink.valid,
+                self.rx_out_fifo.sink.ready,
+
+                self.tx_in_fifo.source.valid,
+                self.tx_in_fifo.source.ready,
                 self.tx_conv.sink.valid,
                 self.tx_conv.sink.ready,
                 self.tx_conv.source.valid,
@@ -753,17 +784,16 @@ class afe79xx(LiteXModule):
                 self.tx_cdc.sink.valid,
                 self.tx_cdc.sink.ready,
             ]
-            if resampling_stages > 0:
-                self.flow_control_signals.demux_clk += [
-                    self.RX_A_RESAMPLER.sink.valid,
-                    self.RX_A_RESAMPLER.sink.ready,
-                    self.RX_A_RESAMPLER.source.valid,
-                    self.RX_A_RESAMPLER.source.ready,
-                    self.TX_A_RESAMPLER.sink.valid,
-                    self.TX_A_RESAMPLER.sink.ready,
-                    self.TX_A_RESAMPLER.source.valid,
-                    self.TX_A_RESAMPLER.source.ready,
-                ]
+            self.flow_control_signals.demux_clk = [
+                self.rx_out_fifo.source.valid,
+                self.rx_out_fifo.source.ready,
+                self.source.valid,
+                self.source.ready,
+                self.sink.valid,
+                self.sink.ready,
+                self.tx_in_fifo.sink.valid,
+                self.tx_in_fifo.sink.ready,
+            ]
         else:
             self.flow_control_signals.m_clk += [
                 self.source.valid,
