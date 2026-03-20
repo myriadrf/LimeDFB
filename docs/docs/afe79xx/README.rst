@@ -30,7 +30,7 @@ The top-level file integrates the following main blocks:
 - :ref:`TX/RX Converters <txrx_conv_module>` – Bus width converters.
 - :ref:`Interleaver/Deinterleaver <interleaver_module>` – Sample interleaving and deinterleaving.
 - :ref:`TX/RX Channel Multiplexer <txrx_channel_mux_module>` – Channel reordering and mapping.
-- :ref:`Resamplers <resamplers_module>` – Interpolation (TX) and decimation (RX).
+- :ref:`Interpolate/Decimate blocks <int_dec_modules>` – Interpolation (TX) and decimation (RX).
 
 .. image:: afe79xx.drawio.svg
    :align: center
@@ -70,20 +70,26 @@ TX/RX Channel Multiplexer
 -------------------------
 The physical mapping of JESD/AFE channels does not correspond 1:1 with system/board channels. This multiplexer performs the necessary channel reordering to ensure correct signal routing.
 
-.. _resamplers_module:
+.. _int_dec_modules:
 
-Resamplers
-----------
+Interpolate/Decimate
+--------------------
 
-The Resampler module implements configurable upsampling (TX) and downsampling (RX) via a cascade of 2x filters.
+Interpolate/Decimate modules implements configurable upsampling (TX) and downsampling (RX) via a cascade of 2x filters.
 
-* **Architecture:** Cascade of 2x interpolating (HB1) or decimating (HB2d) filters.
-* **Resampling Ratios:** Configurable cascade length. A length of 3 (shown below) enables 1x, 2x, 4x, and 8x rates.
+* **Architecture:** Cascade of 2x interpolating or decimating filters.
+* **Resampling Ratios:** Configurable cascade length. A length of 4 enables 1x, 2x, 4x, x8 and 16x rates.
 * **Precision:** Filters operate on 18-bit I/Q samples, utilizing padding and truncation stages to interface with the 16-bit bus.
 
 .. note::
-   The diagram below simplifies the view by showing a single sample path; however, the hardware processes both I and Q channels in parallel.
+   The diagram below shows a 128-bit bus where four channels are processed in parallel; each channel consists of I and Q data.
 
-.. image:: afe79xx.drawio.svg
+.. image:: ../dsp/decimate_4ch/decimate_4ch.drawio.svg
    :align: center
-   :alt: Resampler details for TX/RX paths
+   :alt: Decimate details for RX path
+
+
+.. image:: ../dsp/interpolate_4ch/interpolate_4ch.drawio.svg
+   :align: center
+   :alt: Interpolate details for TX path
+
