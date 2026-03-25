@@ -260,7 +260,11 @@ end process;
 
 process(all)
 begin
-   m_axis_tvalid_reg <= '1' when wrusedw > 3 else '0';
+   if wrusedw > 3 then
+      m_axis_tvalid_reg <= '1';
+   else
+      m_axis_tvalid_reg <= '0';
+   end if;
 end process;
 
 
