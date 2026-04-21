@@ -27,7 +27,8 @@ class clk_no_ref_test(LiteXModule):
 			i_reset_n = self.RESET_N,
 			i_test_en = self.test_en.storage,
 			o_test_cnt = self.test_cnt.status,
-			o_test_complete = self.test_complete.status
+			o_test_complete = self.test_complete.status,
+			o_test_pass_fail = Open()
 		)
 
 		self.specials += Instance("clk_no_ref_test", **self.param_ios)

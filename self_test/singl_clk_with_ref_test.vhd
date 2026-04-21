@@ -13,6 +13,9 @@ use ieee.numeric_std.all;
 -- Entity declaration
 -- ----------------------------------------------------------------------------
 entity singl_clk_with_ref_test is
+  generic (
+  g_clock_target : integer
+  );
   port (
         --input ports 
         refclk       	: in std_logic; --! Reference clock
@@ -21,9 +24,9 @@ entity singl_clk_with_ref_test is
 		  
 		test_en			: in std_logic; --! Test enable
 		test_cnt0		: out std_logic_vector(23 downto 0); --! Number of clock cycles counted during test
-		test_complete	: out std_logic --! Test complete
+		test_complete	: out std_logic; --! Test complete
 		-- not implemented
-		-- test_pass_fail	: out std_logic -- Test pass
+		test_pass_fail	: out std_logic -- Test pass
      
         );
 end singl_clk_with_ref_test;
@@ -118,7 +121,7 @@ fsm : process(current_state, test_en_reg(1), cnt_ref_clk) begin
 			end if;
 		when count => 					--enable counting
 			if test_en_reg(1)='1' then
-				if cnt_ref_clk>=12500000 then -- 0.1s , if using 125MHz reflock
+				if cnt_ref_clk>=g_clock_target then -- 0.1s , if using 125MHz reflock
 					next_state<=count_end;
 				else 
 					next_state<=count;

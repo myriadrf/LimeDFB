@@ -37,7 +37,13 @@ entity DATA2PACKETS_FSM is
       M_AXIS_TDATA         : out   std_logic_vector(127 downto 0);
       M_AXIS_TLAST         : out   std_logic;
       -- Misc
-      WR_DATA_COUNT_AXIS   : in    std_logic_vector(8 downto 0)
+      WR_DATA_COUNT_AXIS   : in    std_logic_vector(9 downto 0);
+
+      DBG_DROP_SAMPLES : out std_logic;
+      DBG_WR_HEADER    : out std_logic;
+      DBG_STATE        : out  std_logic_vector(3 downto 0);
+      DBG_WR_CNT       : out std_logic_vector(15 downto 0)
+
    );
 end entity DATA2PACKETS_FSM;
 
@@ -66,6 +72,17 @@ architecture ARCH of DATA2PACKETS_FSM is
    signal pct_wrcnt                 : unsigned(15 downto 0);
 
 begin
+
+
+   DBG_STATE <=   x"0" when current_state = IDLE else 
+                  x"1" when current_state = DROP_SAMPLES else 
+                  x"2" when current_state = WR_HEADER else 
+                  x"3" when current_state = WR_PAYLOAD else 
+                  x"4" when current_state = PCT_END else 
+                  x"F";
+
+
+   DBG_WR_CNT <= std_logic_vector(pct_wrcnt);
 
    process (ACLK, ARESET_N) is
    begin
@@ -117,7 +134,7 @@ begin
          -- Droping samples until there is enough space in buffer and making sure that whole frame of bit packed samples are droped.
          when DROP_SAMPLES =>
 
-            if (space_required <= MAX_BUFFER_WORDS  and S_AXIS_TLAST = '1') then
+            if ((space_required <= MAX_BUFFER_WORDS)  and (S_AXIS_TVALID ='1') and (S_AXIS_TLAST = '1')) then
                next_state <= IDLE;
             else
                next_state <= DROP_SAMPLES;
@@ -143,6 +160,10 @@ begin
       end case;
 
    end process FSM;
+
+
+   DBG_DROP_SAMPLES <= '1' when (current_state = DROP_SAMPLES) else '0';
+   DBG_WR_HEADER    <= '1' when (current_state = WR_HEADER)    else '0';
 
    process (ACLK, ARESET_N) is
    begin
@@ -228,7 +249,9 @@ begin
    -- ----------------------------------------------------------------------------
    -- Output ports
    -- ----------------------------------------------------------------------------
-   S_AXIS_TREADY <= s_axis_tready_reg;
+   S_AXIS_TREADY <= '0' when (current_state = IDLE) else
+                    '0' when (current_state = WR_HEADER) else
+                    s_axis_tready_reg;
 
    M_AXIS_TVALID <= m_axis_tvalid_reg;
    M_AXIS_TDATA  <= m_axis_tdata_reg;

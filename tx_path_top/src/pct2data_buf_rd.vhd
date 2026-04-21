@@ -14,7 +14,7 @@
 library ieee;
    use ieee.std_logic_1164.all;
    use ieee.numeric_std.all;
-   use work.tx_top_pkg.t_s_axis_tdata_array;
+   use IEEE.math_real.all;
 -- ----------------------------------------------------------------------------
 -- Entity declaration
 -- ----------------------------------------------------------------------------
@@ -31,7 +31,7 @@ entity PCT2DATA_BUF_RD is
       S_AXIS_ARESET_N               : in    std_logic;
       S_AXIS_BUF_RESET_N            : out   std_logic_vector(G_BUFF_COUNT - 1 downto 0);
       S_AXIS_TVALID                 : in    std_logic_vector(G_BUFF_COUNT - 1 downto 0);
-      S_AXIS_TDATA                  : in    T_S_AXIS_TDATA_ARRAY(G_BUFF_COUNT - 1 downto 0);
+      S_AXIS_TDATA                  : in    std_logic_vector(127 downto 0);
       S_AXIS_TREADY                 : out   std_logic_vector(G_BUFF_COUNT - 1 downto 0);
       S_AXIS_TLAST                  : in    std_logic_vector(G_BUFF_COUNT - 1 downto 0);
 
@@ -41,10 +41,15 @@ entity PCT2DATA_BUF_RD is
       M_AXIS_TREADY                 : in    std_logic;
       M_AXIS_TLAST                  : out   std_logic;
 
+      CURR_BUF_INDEX                : out   std_logic_vector(natural(ceil(log2(real(G_BUFF_COUNT))))-1 downto 0);
+
       SYNCH_DIS                     : in    std_logic;
       SAMPLE_NR                     : in    std_logic_vector(63 downto 0);
       PCT_LOSS_FLG                  : out   std_logic;
-      PCT_LOSS_FLG_CLR              : in    std_logic
+      PCT_LOSS_FLG_CLR              : in    std_logic;
+
+      -- debug
+      conn_buf_o                    : out   std_logic
    );
 end entity PCT2DATA_BUF_RD;
 
@@ -69,9 +74,13 @@ architecture ARCH of PCT2DATA_BUF_RD is
    signal compare_equal                : std_logic;
 
    signal pct_loss_flg_int             : std_logic;
-   signal clr_buf_counter              : unsigned(2 downto 0);
+
+   constant CURBUF_WIDTH               : natural := natural(ceil(log2(real(G_BUFF_COUNT))));
 
 begin
+
+   CURR_BUF_INDEX <= std_logic_vector(to_unsigned(curbuf, CURBUF_WIDTH));
+   conn_buf_o     <= conn_buf;
 
    int_rst <= RESET_N and M_AXIS_ARESET_N and S_AXIS_ARESET_N;
 
@@ -81,6 +90,9 @@ begin
       if (int_rst = '0') then
          state              <= RESET_STATE;
          S_AXIS_BUF_RESET_N <= (others => '0');
+         s_axis_tready_override <= '0';
+         conn_buf               <= '0';
+         curbuf                 <= 0;
       elsif rising_edge(AXIS_ACLK) then
          S_AXIS_BUF_RESET_N     <= (others => '1');
          s_axis_tready_override <= '0';
@@ -95,7 +107,7 @@ begin
             when WAIT_HEADER =>
                if (S_AXIS_TVALID(curbuf) = '1') then
                   -- Sync can be disabled either globally or per buffer
-                  if (SYNCH_DIS = '1' or S_AXIS_TDATA(curbuf)(4) = '1') then
+                  if (SYNCH_DIS = '1' or S_AXIS_TDATA(4) = '1') then
                      state <= HEADER;
                      -- Throw away header by reading it
                      s_axis_tready_override <= '1';
@@ -114,8 +126,8 @@ begin
 
             when CLR_BUF =>
                S_AXIS_BUF_RESET_N(curbuf) <= '0';
-               -- Wait until buffer is reset, and min duration counter to expire
-               if (S_AXIS_TVALID(curbuf) = '0') and clr_buf_counter = "111" then
+               -- Wait until buffer is reset
+               if (S_AXIS_TVALID(curbuf) = '0') then
                   state <= SW_BUF;
                end if;
 
@@ -215,39 +227,18 @@ begin
          -- Check if state is WAIT_HEADER and current buffer's tvalid signal is high
          if (state = WAIT_HEADER and S_AXIS_TVALID(curbuf) = '1') then 
             -- Compare timestamps and set compare_less and compare_equal signals accordingly
-            if (unsigned(S_AXIS_TDATA(curbuf)(127 downto 64)) < unsigned(SAMPLE_NR)) then
+            if (unsigned(S_AXIS_TDATA(127 downto 64)) < unsigned(SAMPLE_NR)) then
                compare_less <= '1';
-            elsif (unsigned(S_AXIS_TDATA(curbuf)(127 downto 64)) = unsigned(SAMPLE_NR)) then
+            elsif (unsigned(S_AXIS_TDATA(127 downto 64)) = unsigned(SAMPLE_NR)) then
                compare_equal <= '1';
             end if;
          end if;
       end if;
 
    end process TS_CMP;
-   
-   ---------------------
-   -- CLR_BUF counter
-   -- Make sure buffers are kept in reset for longer, so that
-   -- packet loss flags have time to propagate
-   ---------------------
-   clr_cnt : process(AXIS_ACLK, int_rst)
-   begin
-        if int_rst = '0' then
-            clr_buf_counter <= "000";
-        elsif rising_edge(AXIS_ACLK) then
-            if state = CLR_BUF then
-                clr_buf_counter <= clr_buf_counter;
-                if clr_buf_counter /= "111" then
-                    clr_buf_counter <= clr_buf_counter + 1;
-                end if;
-            else
-                clr_buf_counter <= "000";
-            end if;
-        end if;
-   end process;
 
    -- Output current buffer's data, last and valid signals to M_AXIS
-   M_AXIS_TDATA  <= S_AXIS_TDATA(curbuf);                             -- Output current buffer's data to M_AXIS
+   M_AXIS_TDATA  <= S_AXIS_TDATA;                                     -- Output current buffer's data to M_AXIS
    M_AXIS_TLAST  <= S_AXIS_TLAST(curbuf) when (conn_buf = '1') else   -- Output current buffer's last signal to M_AXIS if connected
                     '0';                                              -- Otherwise, output 0
    M_AXIS_TVALID <= S_AXIS_TVALID(curbuf) when (conn_buf = '1') else  -- Output current buffer's valid signal to M_AXIS if connected

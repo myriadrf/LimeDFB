@@ -3,7 +3,7 @@ from litex.soc.interconnect.csr import CSRStatus
 from litex.gen import *
 
 class singl_clk_with_ref_test(LiteXModule):
-    def __init__(self, platform, test_clock_domain, ref_clock_domain):
+    def __init__(self, platform, test_clock_domain, ref_clock_domain, clock_target):
         self.test_en = CSRStorage(size=1, reset=0,
                                   description= "1 - enable test, 0 - disable test")
         self.test_cnt = CSRStatus(size=23,
@@ -19,7 +19,8 @@ class singl_clk_with_ref_test(LiteXModule):
         self.param_ios = dict()
 
         # Assign generics
-        self.param_ios.update()
+        self.param_ios.update(
+            p_g_clock_target = clock_target)
 
         # Assign ports
         self.param_ios.update(

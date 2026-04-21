@@ -15,13 +15,12 @@ use ieee.numeric_std.all;
 entity clk_no_ref_test is
   port (
         --input ports 
-        clk       		: in std_logic; --! Clock to be tested
-        reset_n   		: in std_logic; --! Reset, active low
-		test_en			: in std_logic; --! Test enable
-		test_cnt		: out std_logic_vector(15 downto 0); --! Number of cycles counted during test
-		test_complete	: out std_logic --! Test complete
-		-- not implemented
-		-- test_pass_fail	: out std_logic -- Test pass, active high
+        clk       		: in std_logic;
+        reset_n   		: in std_logic;
+		  test_en			: in std_logic;
+		  test_cnt			: out std_logic_vector(15 downto 0);
+		  test_complete	: out std_logic;
+		  test_pass_fail	: out std_logic
      
         );
 end clk_no_ref_test;
@@ -71,10 +70,10 @@ end process;
 process(current_state) begin
 	if(current_state = count_end ) then
 		test_complete<='1';
-		-- test_pass_fail<='1';
+		test_pass_fail<='1';
 	else
 		test_complete<='0';
-		-- test_pass_fail<='0';
+		test_pass_fail<='0';
 	end if;
 end process;	 
 	 
