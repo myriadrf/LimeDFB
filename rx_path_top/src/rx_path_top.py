@@ -124,77 +124,29 @@ class RXPathTop(LiteXModule):
 
         self.s_clk_rst = s_clk_rst
 
+        self.pps = Signal()
+        self.pps_rising = Signal()
+
 
         # Sample Counter, used for TX synchronization logic
-        self.sample_counter_0 = Instance("counter64",
-                                           # Clk/Reset.
-                                           i_clk        = ClockSignal(s_clk_domain),  # S_AXIS_IQSMPLS_ACLK
-                                           i_rst        = s_clk_rst,  # S_AXIS_IQSMPLS_ARESETN
-                                           # AXI Stream Slave
-                                           i_inc_en     = self.sink.valid & self.sink.ready,
-                                           i_inc_val    = Constant(1, 32),
-                                           i_ld         = Constant(0, 1),
-                                           i_ld_val     = Constant(0, 64),
-                                           o_count_o    = self.smpl_nr_cnt,
-                                           )
-
-        self.sample_counter_0_conv = add_vhd2v_converter(self.platform,
-                                                           instance=self.sample_counter_0,
-                                                           files=[
-                                                               "gateware/LimeDFB/rx_path_top/src/counter64.vhd"],
-                                                           )
-        ## Removed Instance to avoid multiple definition
-        self._fragment.specials.remove(self.sample_counter_0)
+        sample_counter_0 = ClockDomainsRenamer(s_clk_domain)(SampleCounter64(platform))
+        self.sample_counter_0 = sample_counter_0
+        self.comb += [
+            sample_counter_0.rst.eq(s_clk_rst),
+            sample_counter_0.inc_en.eq(self.sink.valid & self.sink.ready),
+            sample_counter_0.inc_val.eq(1),
+            sample_counter_0.ld.eq(0),
+            sample_counter_0.ld_val.eq(0),
+            self.smpl_nr_cnt.eq(sample_counter_0.count_o),
+        ]
 
 
         if soc_has_timesource:
-            # Timestamp related
-            # TODO: This all should probably be moved to a separate module
-            # TODO: If int_clk_rst_n is not lms_rx or equivalent, this doesn't work, because reset from int_clk_rst_n is used in lms_rx domain
-            self.timestamp_settings = CSRStorage(size=1,description="Timestamp Settings", fields=[
-                CSRField("TS_SEL", size=1, offset=0, description="Timestamp selector",reset=0, values=[
-                    ("``0b0``", "Classic Timestamp."),
-                    ("``0b1``", "PPS Counter+Clock counter mixed Timestamp."),
-                ])
-            ])
-            self.pps                   = Signal()
-            pps_reg                    = Signal()
-            pps_reg_1                  = Signal()
-            pps_reg_2                  = Signal()
-
-            self.pps_rising            = Signal()
-            self.timestamp_pps_counter = Signal(32)
-            self.timestamp_clk_count   = Signal(32)
-            self.timestamp_mixed       = timestamp_mixed = Signal(64)
+            timestamp_mixer = ClockDomainsRenamer(int_clk_domain)(TimestampMixer(int_clk_rst_n))
+            self.timestamp_mixer = timestamp_mixer
             self.comb += [
-                timestamp_mixed[0:32].eq(self.timestamp_clk_count),
-                timestamp_mixed[32:64].eq(self.timestamp_pps_counter),
-            ]
-            # TODO: find a way to pass a clock domain to this instead of hardcoding lms_rx
-            self.sync.lms_rx +=[
-                pps_reg.eq(self.pps),
-                pps_reg_1.eq(pps_reg),
-                pps_reg_2.eq(pps_reg_1),
-                self.pps_rising.eq(pps_reg_1 & ~pps_reg_2),
-
-                ## Rules for clock counter
-                # TS_SEL does not use clock counter, so keep it in reset
-                If((self.timestamp_settings.fields.TS_SEL == 0) | (int_clk_rst_n == 0) ,[
-                    self.timestamp_clk_count.eq(0),
-                    self.timestamp_pps_counter.eq(0),
-                ]).Elif(self.timestamp_settings.fields.TS_SEL == 1,[
-                    # If clock counter is in use, reset at pps
-                    If((self.pps_rising == 1),[
-                        self.timestamp_clk_count.eq(0),
-                        self.timestamp_pps_counter.eq(self.timestamp_pps_counter + 1),
-                        # Else keep counting
-                    ]).Else([
-                        self.timestamp_clk_count.eq(self.timestamp_clk_count + 1),
-                    ])
-                ]).Else([
-                    # Keep count in reset if undefined
-                    self.timestamp_clk_count.eq(0),
-                ]),
+                self.timestamp_mixer.pps.eq(self.pps),
+                self.pps_rising.eq(self.timestamp_mixer.pps_rising)
             ]
 
         if platform.name.startswith("limesdr_mini"):
@@ -261,23 +213,16 @@ class RXPathTop(LiteXModule):
 
             ]
 
-            self.sample_counter_1 = Instance("counter64",
-                                             i_clk=ClockSignal(s_clk_domain),
-                                             i_rst=s_clk_rst,
-                                             i_inc_en=self.bit_width_selector.source.valid & self.bit_width_selector.source.ready & self.bit_width_selector.source.last,
-                                             i_inc_val=self.sample_counter_1_inc_val,  # example: increment by 2
-                                             i_ld=Constant(0, 1),
-                                             i_ld_val=Constant(0, 64),
-                                             o_count_o=bp_sample_nr_counter
-                                             )
-
-            self.sample_counter_1_conv = add_vhd2v_converter(self.platform,
-                                                             instance=self.sample_counter_1,
-                                                             files=[
-                                                                 "gateware/LimeDFB/rx_path_top/src/counter64.vhd"],
-                                                             )
-            ## Removed Instance to avoid multiple definition
-            self._fragment.specials.remove(self.sample_counter_1)
+            sample_counter_1 = ClockDomainsRenamer(s_clk_domain)(SampleCounter64(platform))
+            self.sample_counter_1 = sample_counter_1
+            self.comb += [
+                sample_counter_1.rst.eq(s_clk_rst),
+                sample_counter_1.inc_en.eq(self.bit_width_selector.source.valid & self.bit_width_selector.source.ready & self.bit_width_selector.source.last),
+                sample_counter_1.inc_val.eq(self.sample_counter_1_inc_val),
+                sample_counter_1.ld.eq(0),
+                sample_counter_1.ld_val.eq(0),
+                bp_sample_nr_counter.eq(sample_counter_1.count_o),
+            ]
 
             # ----------------------------------------------------------------------------------------------------------
             # Packetizer
@@ -341,9 +286,9 @@ class RXPathTop(LiteXModule):
         if not bypass_packets:
             if soc_has_timesource:
                 self.comb += [
-                    If(self.timestamp_settings.fields.TS_SEL == 1,[
-                        self.pct_hdr_1.eq(timestamp_mixed),
-                        self.smpl_nr_cnt_out.eq(timestamp_mixed),
+                    If(self.timestamp_mixer.timestamp_settings.fields.TS_SEL == 1,[
+                        self.pct_hdr_1.eq(self.timestamp_mixer.timestamp_mixed),
+                        self.smpl_nr_cnt_out.eq(self.timestamp_mixer.timestamp_mixed),
                     ]).Else([
                         # Default to classic timestamp
                         self.pct_hdr_1.eq(bp_sample_nr_counter),
@@ -441,6 +386,100 @@ class RXPathTop(LiteXModule):
             self.source.ready,
             self.source_ep_cdc.source.valid,
             self.source_ep_cdc.source.ready,
+        ]
+
+
+# ---------------------------------------------------------------------------------
+#  Helper Class: SampleCounter64
+# ---------------------------------------------------------------------------------
+class SampleCounter64(LiteXModule):
+    """
+    A LiteXModule wrapper for the VHDL COUNTER64.
+
+    This module provides a 64-bit sample counter with programmable
+    increment and load inputs. All internal logic runs in the
+    clock domain this module is instantiated in.
+    """
+
+    def __init__(self, platform):
+        self.rst     = Signal()
+        self.inc_en  = Signal()
+        self.inc_val = Signal(32)
+        self.ld      = Signal()
+        self.ld_val  = Signal(64)
+        self.count_o = Signal(64)
+
+        vhdl_inst = Instance("counter64",
+            i_clk     = ClockSignal(),
+            i_rst     = self.rst,
+            i_inc_en  = self.inc_en,
+            i_inc_val = self.inc_val,
+            i_ld      = self.ld,
+            i_ld_val  = self.ld_val,
+            o_count_o = self.count_o,
+        )
+
+        self.specials += vhdl_inst
+        self.counter64_conv = add_vhd2v_converter(platform,
+            instance=vhdl_inst,
+            files=["gateware/LimeDFB/rx_path_top/src/counter64.vhd"],
+        )
+        self._fragment.specials.remove(vhdl_inst)
+
+
+# ---------------------------------------------------------------------------------
+#  Helper Class: TimestampMixer
+# ---------------------------------------------------------------------------------
+class TimestampMixer(LiteXModule):
+    """
+    Generates a mixed timestamp from a PPS counter and local clock counter.
+
+    The lower 32 bits contain the clock count since the last PPS edge and
+    the upper 32 bits contain the PPS counter. All internal logic runs in
+    the clock domain this module is instantiated in.
+    """
+
+    def __init__(self, int_clk_rst_n):
+        self.timestamp_settings = CSRStorage(size=1, description="Timestamp Settings", fields=[
+            CSRField("TS_SEL", size=1, offset=0, description="Timestamp selector", reset=0, values=[
+                ("``0b0``", "Classic Timestamp."),
+                ("``0b1``", "PPS Counter+Clock counter mixed Timestamp."),
+            ])
+        ])
+        self.pps                   = Signal()
+        self.pps_rising            = Signal()
+        self.timestamp_pps_counter = Signal(32)
+        self.timestamp_clk_count   = Signal(32)
+        self.timestamp_mixed       = Signal(64)
+
+        pps_reg   = Signal()
+        pps_reg_1 = Signal()
+        pps_reg_2 = Signal()
+
+        self.comb += [
+            self.timestamp_mixed[0:32].eq(self.timestamp_clk_count),
+            self.timestamp_mixed[32:64].eq(self.timestamp_pps_counter),
+        ]
+
+        self.sync += [
+            pps_reg.eq(self.pps),
+            pps_reg_1.eq(pps_reg),
+            pps_reg_2.eq(pps_reg_1),
+            self.pps_rising.eq(pps_reg_1 & ~pps_reg_2),
+
+            If((self.timestamp_settings.fields.TS_SEL == 0) | (int_clk_rst_n == 0), [
+                self.timestamp_clk_count.eq(0),
+                self.timestamp_pps_counter.eq(0),
+            ]).Elif(self.timestamp_settings.fields.TS_SEL == 1, [
+                If(self.pps_rising == 1, [
+                    self.timestamp_clk_count.eq(0),
+                    self.timestamp_pps_counter.eq(self.timestamp_pps_counter + 1),
+                ]).Else([
+                    self.timestamp_clk_count.eq(self.timestamp_clk_count + 1),
+                ])
+            ]).Else([
+                self.timestamp_clk_count.eq(0),
+            ]),
         ]
 
 
@@ -727,8 +766,3 @@ class Data2PacketsFSM(LiteXModule):
                                                              "gateware/LimeDFB/rx_path_top/src/data2packets_fsm.vhd"]
                                                          )
         self._fragment.specials.remove(vhdl_inst)
-
-
-
-
-
