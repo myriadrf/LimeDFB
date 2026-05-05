@@ -1,9 +1,10 @@
+from litex.gen import LiteXModule
 from migen import *
 from litex.soc.interconnect.csr import CSRStorage, AutoCSR, CSRField, CSRStatus
 from litex.soc.interconnect import stream
 
 
-class ZDAParser(Module, AutoCSR):
+class ZDAParser(LiteXModule, AutoCSR):
     def __init__(self, soc):
         soc.add_constant("ZDAParser_present")
         soc.add_constant("TimeSource_present")
