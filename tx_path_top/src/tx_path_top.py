@@ -65,7 +65,8 @@ class TXPathTop(LiteXModule):
         m_clk_domain      = "lms_tx",
         s_clk_domain      = "lms_tx",
         output4channels   = False,
-        input_buff_size   = 512
+        input_buff_size   = 512,
+        with_fifo_buff    = False
         ):
         #Input buffer acts as CDC, so a minimum of 4 depth is required to instantiate the async FIFO
         assert input_buff_size >= (128*4), "TXPathTop input_buff_size must be greater than or equal to 4 cycles of 128bit"
@@ -270,28 +271,95 @@ class TXPathTop(LiteXModule):
         # -1 to fix off by one error
         for i in range(BUFF_COUNT):
             usedw_width = math.ceil(math.log2(fifo_depth))
-            # wr_usedw = Signal(usedw_width+1)
-            # rd_usedw = Signal(usedw_width+1)
             sample_data_out = Signal(data_width)
+
+            # --- FIFO Write side (Slave interface) ---
+            # Default connections from PCT2DATA_BUF_WR
+            fifo_s_valid = p2d_wr_tvalid[i]
+            fifo_s_ready = p2d_wr_tready[i]
+            fifo_s_data  = p2d_wr_tdata
+            fifo_s_last  = p2d_wr_tlast[i]
+
+            if with_fifo_buff:
+                # FIFO Input Buffer
+                fifo_in_buff = ClockDomainsRenamer(m_clk_domain)(stream.Buffer(
+                    layout=[("data", data_width)],
+                    pipe_valid=True,
+                    pipe_ready=True,
+                ))
+                setattr(self, f"fifo_in_buff{i}", fifo_in_buff)
+                self.comb += [
+                    fifo_in_buff.sink.valid.eq(fifo_s_valid),
+                    fifo_in_buff.sink.data.eq(fifo_s_data),
+                    fifo_in_buff.sink.last.eq(fifo_s_last),
+                    fifo_s_ready.eq(fifo_in_buff.sink.ready)
+                ]
+                # Re-drive axis_fifo input ports from buffer source
+                fifo_s_valid = fifo_in_buff.source.valid
+                fifo_s_data  = fifo_in_buff.source.data
+                fifo_s_last  = fifo_in_buff.source.last
+                # Buffer source ready is driven by axis_fifo o_s_axis_tready
+                fifo_s_ready_new = Signal()
+                self.comb += fifo_in_buff.source.ready.eq(fifo_s_ready_new)
+                fifo_s_ready = fifo_s_ready_new
+
+            # --- FIFO Read side (Master interface) ---
+            # Default connections to PCT2DATA_BUF_RD
+            fifo_m_valid = p2d_rd_tvalid[i]
+            fifo_m_ready = p2d_rd_tready[i]
+            fifo_m_data  = sample_data_out
+            fifo_m_last  = p2d_rd_tlast[i]
+
+            if with_fifo_buff:
+                # FIFO Output Buffer
+                fifo_out_buff = ClockDomainsRenamer(m_clk_domain)(stream.Buffer(
+                    layout=[("data", data_width)],
+                    pipe_valid=True,
+                    pipe_ready=True,
+                ))
+                setattr(self, f"fifo_out_buff{i}", fifo_out_buff)
+
+                # Intermediate signals between axis_fifo output and fifo_out_buff sink
+                axis_m_valid = Signal()
+                axis_m_ready = Signal()
+                axis_m_data  = Signal(data_width)
+                axis_m_last  = Signal()
+
+                self.comb += [
+                    fifo_out_buff.sink.valid.eq(axis_m_valid),
+                    fifo_out_buff.sink.data.eq(axis_m_data),
+                    fifo_out_buff.sink.last.eq(axis_m_last),
+                    axis_m_ready.eq(fifo_out_buff.sink.ready),
+
+                    fifo_m_valid.eq(fifo_out_buff.source.valid),
+                    fifo_out_buff.source.ready.eq(fifo_m_ready),
+                    fifo_m_data.eq(fifo_out_buff.source.data),
+                    fifo_m_last.eq(fifo_out_buff.source.last)
+                ]
+                # Ports of axis_fifo will connect to these intermediate signals
+                fifo_m_valid = axis_m_valid
+                fifo_m_ready = axis_m_ready
+                fifo_m_data  = axis_m_data
+                fifo_m_last  = axis_m_last
 
             fifo_dict = {
                 # --- Ports (s_axis) ---
                 "i_s_axis_aresetn": (m_reset_n & self.ext_reset_n & p2d_rd_resetn[i]),
                 "i_s_axis_aclk":    ClockSignal(m_clk_domain),
-                "i_s_axis_tvalid":  p2d_wr_tvalid[i],
-                "o_s_axis_tready":  p2d_wr_tready[i],
-                "i_s_axis_tdata":   p2d_wr_tdata,
+                "i_s_axis_tvalid":  fifo_s_valid,
+                "o_s_axis_tready":  fifo_s_ready,
+                "i_s_axis_tdata":   fifo_s_data,
                 "i_s_axis_tkeep":   Replicate(1, tkeep_width),
-                "i_s_axis_tlast":   p2d_wr_tlast[i],
+                "i_s_axis_tlast":   fifo_s_last,
 
                 # --- Ports (m_axis) ---
                 "i_m_axis_aresetn": (m_reset_n & self.ext_reset_n & p2d_rd_resetn[i]),
                 "i_m_axis_aclk":    ClockSignal(m_clk_domain),
-                "o_m_axis_tvalid":  p2d_rd_tvalid[i],
-                "i_m_axis_tready":  p2d_rd_tready[i],
-                "o_m_axis_tdata":   sample_data_out,
+                "o_m_axis_tvalid":  fifo_m_valid,
+                "i_m_axis_tready":  fifo_m_ready,
+                "o_m_axis_tdata":   fifo_m_data,
                 "o_m_axis_tkeep":   Open(),
-                "o_m_axis_tlast":   p2d_rd_tlast[i],
+                "o_m_axis_tlast":   fifo_m_last,
 
                 # --- Ports (usedw) ---
                 "o_rdusedw":        Open(),
@@ -305,7 +373,8 @@ class TXPathTop(LiteXModule):
                 fifo_config["p_G_FIFO_DEPTH"] = fifo_depth
                 fifo_config["p_G_DATA_WIDTH"] = data_width
 
-            self.packet_buf = Instance("axis_fifo", **fifo_config)
+            packet_buf = Instance("axis_fifo", **fifo_config)
+            setattr(self, f"packet_buf{i}", packet_buf)
 
             self.comb +=[
                 p2d_wr_buf_empty[i].eq(~p2d_rd_tvalid[i])
