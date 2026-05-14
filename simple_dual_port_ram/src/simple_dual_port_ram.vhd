@@ -20,7 +20,7 @@ entity simple_dual_port_ram is
         ADDR_WIDTH : positive := 10;
 
         -- Synthesis hints. Unsupported tools usually ignore unknown attributes.
-        AMD_RAM_STYLE    : string := "ultra";      -- Vivado: "block", "distributed", "ultra"
+        AMD_RAM_STYLE    : string := "block";      -- Vivado: "block", "distributed", "ultra"
         INTEL_RAMSTYLE   : string := "M20K";       -- Quartus: "M20K", "MLAB", "AUTO"
         LATTICE_RAMSTYLE : string := "block_ram"   -- Lattice/Synplify/Radiant
     );
@@ -57,12 +57,12 @@ architecture rtl of simple_dual_port_ram is
     -- AMD / Xilinx Vivado
     attribute ram_style : string;
     attribute ram_style of ram : signal is AMD_RAM_STYLE;
-
-    -- Intel / Altera Quartus
+--
+    ---- Intel / Altera Quartus
     attribute ramstyle : string;
     attribute ramstyle of ram : signal is INTEL_RAMSTYLE;
-
-    -- Lattice / Synplify / Radiant
+--
+    ---- Lattice / Synplify / Radiant
     attribute syn_ramstyle : string;
     attribute syn_ramstyle of ram : signal is LATTICE_RAMSTYLE;
 
