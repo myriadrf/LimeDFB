@@ -17,13 +17,7 @@ TX Path Top Module Structure:
     Input Buffer (CDC s_clk -> m_clk)
     |
     v
-    PCT2DATA Buffer Writer
-    |
-    v
-    Multiple Buffer FIFOs (BUFF_COUNT)
-    |
-    v
-    PCT2DATA Buffer Reader <---- Sample Number FIFO (CDC rx_clk -> m_clk)
+    lime_txpct_fifo
     |
     v
     Sample Padder (12->16 bit)
@@ -99,21 +93,6 @@ class TXPathTop(LiteXModule):
 
         pct_loss_flg_clr = Signal()
 
-        p2d_wr_tvalid    = Signal(BUFF_COUNT)
-        p2d_wr_tdata     = Signal(128)
-        p2d_wr_tready    = Signal(BUFF_COUNT)
-        p2d_wr_tlast     = Signal(BUFF_COUNT)
-
-        p2d_rd_tvalid    = Signal(BUFF_COUNT)
-        p2d_rd_tdata     = Signal(128)
-        p2d_rd_tready    = Signal(BUFF_COUNT)
-        p2d_rd_tlast     = Signal(BUFF_COUNT)
-        p2d_rd_resetn    = Signal(BUFF_COUNT)
-
-        curr_buf_index   = Signal(math.ceil(math.log2(BUFF_COUNT)))
-
-        self.p2d_wr_buf_empty = p2d_wr_buf_empty = Signal(BUFF_COUNT)
-
         data_pad_tvalid  = Signal()
         data_pad_tdata   = Signal(128)
         data_pad_tready  = Signal()
@@ -141,20 +120,11 @@ class TXPathTop(LiteXModule):
         # LiteScope probes
         self.smpl_width        = smpl_width
         self.unpack_bypass     = unpack_bypass
-        self.p2d_rd_tready     = p2d_rd_tready
-        self.p2d_rd_tlast      = p2d_rd_tlast
-        self.p2d_rd_tvalid     = p2d_rd_tvalid
-        self.p2d_rd_tdata      = p2d_rd_tdata
-        self.p2d_wr_tvalid     = p2d_wr_tvalid
-        self.p2d_wr_tready     = p2d_wr_tready
-        self.p2d_wr_tlast      = p2d_wr_tlast
-        self.p2d_wr_tdata      = p2d_wr_tdata
         self.conn_buf          = Signal()
         self.data_pad_tready   = data_pad_tready
         self.data_pad_tlast    = data_pad_tlast
         self.data_pad_tvalid   = data_pad_tvalid
         self.data_pad_tdata    = data_pad_tdata
-        self.curr_buf_index    = curr_buf_index
         self.rx_sample_nr_sync = rx_sample_nr_sync
 
         self.s_reset_n = s_reset_n
@@ -207,146 +177,80 @@ class TXPathTop(LiteXModule):
             input_buff.source.ready.eq(p2d_wr_sink_ready | ~m_reset_n),
         ]
 
-        self.pct2data_buf_wr = Instance("PCT2DATA_BUF_WR",
+        pct_rd = Signal()
+        pct_clear = Signal()
+        pct_valid = Signal()
+        pct_header = Signal(128)
+
+        self.pct_rd = pct_rd
+        self.pct_clear = pct_clear
+        self.pct_valid = pct_valid
+        self.pct_header = pct_header
+
+
+        self.lime_txpct_fifo = Instance("lime_txpct_fifo",
             # Parameters.
-            p_G_BUFF_COUNT    = BUFF_COUNT,
+            p_g_MAX_FIFO_WORDS  = PCT_MAX_SIZE/128,
+            p_g_MAX_PACKETS     = BUFF_COUNT,
 
-            # Clk/Reset.
-            i_AXIS_ACLK       = ClockSignal(m_clk_domain),    # m_axis_domain
-            i_S_AXIS_ARESET_N = m_reset_n,                    # m_axis_domain.a_reset_n
+            i_clk               = ClockSignal(m_clk_domain),
+            i_rst               = ~m_reset_n,
+            i_s_axis_tdata      = input_buff.source.data,
+            i_s_axis_tvalid     = input_buff.source.valid,
+            o_s_axis_tready     = p2d_wr_sink_ready,
 
-            # AXI Stream Slave
-            i_S_AXIS_TVALID   = input_buff.source.valid,
-            i_S_AXIS_TDATA    = input_buff.source.data,
-            o_S_AXIS_TREADY   = p2d_wr_sink_ready,
-            i_S_AXIS_TLAST    = input_buff.source.last,
+            o_m_axis_tdata      = data_pad_tdata,
+            o_m_axis_tvalid     = data_pad_tvalid,
+            i_m_axis_tready     = data_pad_tready,
 
-            # AXI Stream Master
-            i_M_AXIS_ARESET_N = m_reset_n,                    # m_axis_domain.a_reset_n
-            o_M_AXIS_TVALID   = p2d_wr_tvalid,
-            o_M_AXIS_TDATA    = p2d_wr_tdata,
-            i_M_AXIS_TREADY   = p2d_wr_tready,
-            o_M_AXIS_TLAST    = p2d_wr_tlast,
-
-            i_BUF_EMPTY       = p2d_wr_buf_empty,
-            i_RESET_N         = self.ext_reset_n,
+            i_pct_rd            = pct_rd,
+            i_pct_clr           = pct_clear,
+            o_pct_valid         = pct_valid,
+            o_pct_header        = pct_header,
         )
 
-        cases = {}
-
-        # local variables to avoid mismatch between
-        # data_width and tkeep_width
-        packet_mode = True
-        data_width  = 128
-        tkeep_width = int(data_width/8)
-        fifo_depth  = int(PCT_MAX_SIZE/(128/8))
-
-        force_convert = platform.vhd2v_force
-        # May be problematic if we need to use fifo somewhere else
-        self.fifo_src_conv =  VHD2VConverter(platform,
-                              work_package   = "work",
-                              force_convert  = force_convert,
-                              flatten_source = False,
-                              add_instance   = False,
-                              files    = ["gateware/LimeDFB/axis_fifo/src/axis_fifo.vhd",
-                                          "gateware/LimeDFB/axis_fifo/src/wptr_handler.vhd",
-                                          "gateware/LimeDFB/axis_fifo/src/rptr_handler.vhd",
-                                          "gateware/LimeDFB/axis_fifo/src/ram_mem_wrapper.vhd",
-                                          # VHD2VConverter is not able to convert this file.
-                                          # OK because it is not used in "Generic" implementation
-                                          #"gateware/LimeDFB/axis_fifo/src/xilinx_simple_dual_port_2_clock_ram.vhd",
-                                          "gateware/LimeDFB/cdc/src/cdc_sync_bit.vhd",
-                                          "gateware/LimeDFB/cdc/src/cdc_sync_bus.vhd",
-                                          ],
-                              params= {
-                                  'p_G_VENDOR'      : "GENERIC", # Only "GENERIC" supported for now
-                                  'p_G_PACKET_MODE' : "true" if packet_mode else "false",
-                                  'p_g_DATA_WIDTH'  : data_width,
-                                  'p_g_FIFO_DEPTH'  : fifo_depth,
-                              },
-                              top_entity='axis_fifo'
-                              )
-
-        # -1 to fix off by one error
-        for i in range(BUFF_COUNT):
-            usedw_width = math.ceil(math.log2(fifo_depth))
-            # wr_usedw = Signal(usedw_width+1)
-            # rd_usedw = Signal(usedw_width+1)
-            sample_data_out = Signal(data_width)
-
-            fifo_dict = {
-                # --- Ports (s_axis) ---
-                "i_s_axis_aresetn": (m_reset_n & self.ext_reset_n & p2d_rd_resetn[i]),
-                "i_s_axis_aclk":    ClockSignal(m_clk_domain),
-                "i_s_axis_tvalid":  p2d_wr_tvalid[i],
-                "o_s_axis_tready":  p2d_wr_tready[i],
-                "i_s_axis_tdata":   p2d_wr_tdata,
-                "i_s_axis_tkeep":   Replicate(1, tkeep_width),
-                "i_s_axis_tlast":   p2d_wr_tlast[i],
-
-                # --- Ports (m_axis) ---
-                "i_m_axis_aresetn": (m_reset_n & self.ext_reset_n & p2d_rd_resetn[i]),
-                "i_m_axis_aclk":    ClockSignal(m_clk_domain),
-                "o_m_axis_tvalid":  p2d_rd_tvalid[i],
-                "i_m_axis_tready":  p2d_rd_tready[i],
-                "o_m_axis_tdata":   sample_data_out,
-                "o_m_axis_tkeep":   Open(),
-                "o_m_axis_tlast":   p2d_rd_tlast[i],
-
-                # --- Ports (usedw) ---
-                "o_rdusedw":        Open(),
-                "o_wrusedw":        Open(),
-            }
-
-            if force_convert:
-                fifo_config = fifo_dict
-            else:
-                fifo_config = fifo_dict.copy()
-                fifo_config["p_G_FIFO_DEPTH"] = fifo_depth
-                fifo_config["p_G_DATA_WIDTH"] = data_width
-
-            self.packet_buf = Instance("axis_fifo", **fifo_config)
-
-            self.comb +=[
-                p2d_wr_buf_empty[i].eq(~p2d_rd_tvalid[i])
-            ]
-
-            cases[i] = p2d_rd_tdata.eq(sample_data_out)
-
-        # Mux data input for p2d_rd
-        self.comb += Case(curr_buf_index, cases)
-
-        self.pct2data_buf_rd = Instance("PCT2DATA_BUF_RD",
-            # Parameters.
-            p_G_BUFF_COUNT       = BUFF_COUNT,
-
-            # Clk/Reset.
-            i_AXIS_ACLK          = ClockSignal(m_clk_domain), #m_axis_domain
-
-            # AXI Stream Slave.
-            i_S_AXIS_ARESET_N    = m_reset_n,                 # m_axis_domain.a_reset_n (iqsample)
-            o_S_AXIS_BUF_RESET_N = p2d_rd_resetn,
-            i_S_AXIS_TVALID      = p2d_rd_tvalid,
-            i_S_AXIS_TDATA       = p2d_rd_tdata,
-            o_S_AXIS_TREADY      = p2d_rd_tready,
-            i_S_AXIS_TLAST       = p2d_rd_tlast,
-
-            # AXI Stream Master.
-            i_M_AXIS_ARESET_N    = m_reset_n,               # m_axis_domain.a_reset_n (iqsample)
-            o_M_AXIS_TVALID      = data_pad_tvalid,
-            o_M_AXIS_TDATA       = data_pad_tdata,
-            i_M_AXIS_TREADY      = data_pad_tready,
-            o_M_AXIS_TLAST       = data_pad_tlast,
-
-            o_CURR_BUF_INDEX     = curr_buf_index,
-
-            i_RESET_N            = self.ext_reset_n,          # Unconnected for XTRX
-            i_SYNCH_DIS          = synch_dis,                 # Disable timestamp sync
-            i_SAMPLE_NR          = rx_sample_nr_sync,
-            o_PCT_LOSS_FLG       = self.pct_loss_flg,         # Goes high when a packet is dropped due to outdated timestamp, stays high until PCT_LOSS_FLG_CLR is set
-            i_PCT_LOSS_FLG_CLR   = pct_loss_flg_clr,          # Clears PCT_LOSS_FLG
-            o_conn_buf_o         = self.conn_buf,
+        self.lime_txpct_fifo_conv = add_vhd2v_converter(self.platform,
+            instance = self.lime_txpct_fifo,
+            files    = ["gateware/LimeDFB/lime_txpct_fifo/src/lime_txpct_fifo.vhd",
+                        "gateware/LimeDFB/simple_dual_port_ram/src/simple_dual_port_ram.vhd"],
         )
+        # Removed Instance to avoid multiple definition
+        self._fragment.specials.remove(self.lime_txpct_fifo)
+
+
+        self.comb += data_pad_tlast.eq(0)
+
+        # Packet read/clear triggers
+        sync_m_clk_domain = getattr(self.sync, m_clk_domain)
+
+        sync_m_clk_domain += [
+            # Default: one-clock pulses only.
+            pct_rd.eq(0),
+            pct_clear.eq(0),
+
+            If(m_reset_n & self.ext_reset_n,
+                If(pct_valid,
+                    # VHDL pct_header(127 downto 64) == Migen pct_header[64:128]
+                    If(rx_sample_nr_sync == pct_header[64:128],
+                        pct_rd.eq(1)
+                    ).Elif(rx_sample_nr_sync > pct_header[64:128],
+                        pct_clear.eq(1)
+                    )
+                )
+            )
+        ]
+
+        # Packet los flag act as sticky bit. In order to dessert it has to be cleared externally
+        sync_m_clk_domain += [
+            If(~m_reset_n | ~self.ext_reset_n,
+                self.pct_loss_flg.eq(0),
+            ).Elif(pct_loss_flg_clr,
+                self.pct_loss_flg.eq(0),
+            ).Elif(pct_valid & (rx_sample_nr_sync > pct_header[64:128]),
+                self.pct_loss_flg.eq(1),
+            )
+        ]
+
 
         # Pad 12 bit samples to 16 bit samples, bypass logic if no padding is needed
         self.sample_padder = Instance("sample_padder",
@@ -441,19 +345,6 @@ class TXPathTop(LiteXModule):
             self.source.last.eq(0),
         ]
 
-        self.pct2data_buf_wr_conv = add_vhd2v_converter(self.platform,
-            instance = self.pct2data_buf_wr,
-            files    = ["gateware/LimeDFB/tx_path_top/src/pct2data_buf_wr.vhd"],
-        )
-        # Removed Instance to avoid multiple definition
-        self._fragment.specials.remove(self.pct2data_buf_wr)
-
-        self.pct2data_buf_rd_conv = add_vhd2v_converter(self.platform,
-            instance = self.pct2data_buf_rd,
-            files    = ["gateware/LimeDFB/tx_path_top/src/pct2data_buf_rd.vhd"],
-        )
-        # Removed Instance to avoid multiple definition
-        self._fragment.specials.remove(self.pct2data_buf_rd)
 
         self.sample_padder_conv = add_vhd2v_converter(self.platform,
             instance = self.sample_padder,
@@ -476,12 +367,6 @@ class TXPathTop(LiteXModule):
             self.source.valid,
             self.source.ready,
             self.source.last,
-            p2d_wr_tvalid,
-            p2d_wr_tready,
-            p2d_wr_tlast,
-            p2d_rd_tvalid,
-            p2d_rd_tready,
-            p2d_rd_tlast,
             data_pad_tvalid,
             data_pad_tready,
             data_pad_tlast,
