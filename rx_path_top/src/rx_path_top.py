@@ -149,18 +149,26 @@ class RXPathTop(LiteXModule):
                 self.pps_rising.eq(self.timestamp_mixer.pps_rising)
             ]
 
+        tx_pct_loss_sync = Signal()
+        self.specials += MultiReg(self.tx_pct_loss_flg, tx_pct_loss_sync, odomain=s_clk_domain)
+
+        self.comb += [
+            # Header0[2:0]  = 0
+            # Header0[3]    = tx_pct_loss
+            # Header0[63:4] = 0
+            pct_hdr_0.eq(Cat(
+                Constant(0, 3), # bits 2:0
+                tx_pct_loss_sync,                   # bit 3
+                Constant(0, 60),      # bits 63:4
+            )),
+        ]
+
         if platform.name.startswith("limesdr_mini"):
-            tx_pct_loss_sync = Signal()
-            self.specials += MultiReg(self.tx_pct_loss_flg, tx_pct_loss_sync, odomain=s_clk_domain)
             self.comb += [
-                # Packet Header 0
-                pct_hdr_0.eq(Cat(Constant(0, 3), tx_pct_loss_sync, Constant(0, 12), 0x060504030201)), # FIXME: 0:15: isn't 0 and 16:63 differs for XTRX
-                pkt_size.eq(Constant(4096 // 16, 16)),              # 256 * 128b = 4096Bytes
+                pkt_size.eq(Constant(4096 // 16, 16)), # 256 * 128b = 4096 bytes
             ]
         else:
             self.comb += [
-                # Packet Header 0
-                pct_hdr_0.eq(0x7766554433221100),
                 pkt_size.eq(Cat(Constant(0, 3), self.pkt_size.storage)[7:]),
             ]
 
@@ -237,6 +245,8 @@ class RXPathTop(LiteXModule):
             # --- 3. Wrap it in the correct Clock Domain ---
             data2packets_fsm = ClockDomainsRenamer(s_clk_domain)(data2packets_fsm)
             self.data2packets_fsm = data2packets_fsm
+
+            self.comb += self.pct_hdr_cap.eq(self.data2packets_fsm.wr_header)
 
 
         #-----------------------------------------------------------------------------------------------------------
