@@ -58,9 +58,8 @@ class TXPathTop(LiteXModule):
         rx_clk_domain     = "lms_rx",
         m_clk_domain      = "lms_tx",
         s_clk_domain      = "lms_tx",
-        output4channels  = False,
-        input_buff_size   = 512,
-        txpct_out_buff_depth   = 4
+        output4channels   = False,
+        input_buff_size   = 512
         ):
         #Input buffer acts as CDC, so a minimum of 4 depth is required to instantiate the async FIFO
         assert input_buff_size >= (128*4), "TXPathTop input_buff_size must be greater than or equal to 4 cycles of 128bit"
@@ -94,16 +93,10 @@ class TXPathTop(LiteXModule):
 
         pct_loss_flg_clr = Signal()
 
-        # lime_txpct_fifo output side.
-        txpct_tvalid = Signal()
-        txpct_tdata = Signal(128)
-        txpct_tready = Signal()
-
-        # sample_padder input side, after timing-cut buffer.
-        data_pad_tvalid = Signal()
-        data_pad_tdata = Signal(128)
-        data_pad_tready = Signal()
-        data_pad_tlast = Signal()
+        data_pad_tvalid  = Signal()
+        data_pad_tdata   = Signal(128)
+        data_pad_tready  = Signal()
+        data_pad_tlast   = Signal()
 
         # AXI Slave sink_width -> 128 (must uses s_axis_domain)
         conv_64_to_128      = ResetInserter()(ClockDomainsRenamer(s_clk_domain)(stream.Converter(sink_width, 128)))
@@ -122,29 +115,16 @@ class TXPathTop(LiteXModule):
         fifo_smpl_buff      = ResetInserter()(ClockDomainsRenamer(m_clk_domain)(stream.SyncFIFO([("data", 128)], 16, buffered=True)))
         self.fifo_smpl_buff = fifo_smpl_buff
 
-        # Timing cut between lime_txpct_fifo and sample_padder.
-        # This removes the direct combinational path from sample_padder TREADY
-        # back into lime_txpct_fifo M_AXIS_TREADY.
-        txpct_to_pad_buf = ResetInserter()(ClockDomainsRenamer(m_clk_domain)(
-            stream.SyncFIFO([("data", 128)], txpct_out_buff_depth, buffered=True)
-        ))
-        self.txpct_to_pad_buf = txpct_to_pad_buf
-
         unpack_bypass       = Signal()
 
         # LiteScope probes
         self.smpl_width        = smpl_width
         self.unpack_bypass     = unpack_bypass
         self.conn_buf          = Signal()
-        self.txpct_tready      = txpct_tready
-        self.txpct_tvalid      = txpct_tvalid
-        self.txpct_tdata       = txpct_tdata
-
         self.data_pad_tready   = data_pad_tready
         self.data_pad_tlast    = data_pad_tlast
         self.data_pad_tvalid   = data_pad_tvalid
         self.data_pad_tdata    = data_pad_tdata
-
         self.rx_sample_nr_sync = rx_sample_nr_sync
 
         self.s_reset_n = s_reset_n
@@ -219,9 +199,9 @@ class TXPathTop(LiteXModule):
             i_s_axis_tvalid     = input_buff.source.valid,
             o_s_axis_tready     = p2d_wr_sink_ready,
 
-            o_m_axis_tdata      = txpct_tdata,
-            o_m_axis_tvalid     = txpct_tvalid,
-            i_m_axis_tready     = txpct_tready,
+            o_m_axis_tdata      = data_pad_tdata,
+            o_m_axis_tvalid     = data_pad_tvalid,
+            i_m_axis_tready     = data_pad_tready,
 
             i_pct_rd            = pct_rd,
             i_pct_clr           = pct_clear,
@@ -237,23 +217,8 @@ class TXPathTop(LiteXModule):
         # Removed Instance to avoid multiple definition
         self._fragment.specials.remove(self.lime_txpct_fifo)
 
-        self.comb += [
-            # Reset timing-cut buffer together with m-domain datapath reset
-            # and external reset.
-            txpct_to_pad_buf.reset.eq(~(m_reset_n & self.ext_reset_n)),
 
-            # lime_txpct_fifo -> timing-cut buffer
-            txpct_to_pad_buf.sink.data.eq(txpct_tdata),
-            txpct_to_pad_buf.sink.valid.eq(txpct_tvalid),
-            txpct_to_pad_buf.sink.last.eq(0),
-            txpct_tready.eq(txpct_to_pad_buf.sink.ready),
-
-            # timing-cut buffer -> sample_padder
-            data_pad_tdata.eq(txpct_to_pad_buf.source.data),
-            data_pad_tvalid.eq(txpct_to_pad_buf.source.valid),
-            data_pad_tlast.eq(txpct_to_pad_buf.source.last),
-            txpct_to_pad_buf.source.ready.eq(data_pad_tready),
-        ]
+        self.comb += data_pad_tlast.eq(0)
 
         # Packet read/clear triggers
         sync_m_clk_domain = getattr(self.sync, m_clk_domain)
@@ -402,14 +367,6 @@ class TXPathTop(LiteXModule):
             self.source.valid,
             self.source.ready,
             self.source.last,
-
-            txpct_tvalid,
-            txpct_tready,
-            txpct_to_pad_buf.sink.valid,
-            txpct_to_pad_buf.sink.ready,
-            txpct_to_pad_buf.source.valid,
-            txpct_to_pad_buf.source.ready,
-
             data_pad_tvalid,
             data_pad_tready,
             data_pad_tlast,
