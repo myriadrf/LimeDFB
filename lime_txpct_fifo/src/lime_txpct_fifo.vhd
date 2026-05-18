@@ -210,8 +210,8 @@ architecture rtl of lime_txpct_fifo is
    -- Number of payload RAM read requests issued for current packet
    signal payload_rd_req_cnt    : unsigned(c_PACKET_PAYLOAD_SIZE_WIDTH-1 downto 0);
 
-   -- Number of AXI words accepted by downstream for current packet
-   signal payload_tx_cnt        : unsigned(c_PACKET_PAYLOAD_SIZE_WIDTH-1 downto 0);
+-- Number of AXI words still to be accepted by downstream for current packet
+   signal payload_tx_remaining : unsigned(c_PACKET_PAYLOAD_SIZE_WIDTH-1 downto 0);
 
    signal payload_buf0          : std_logic_vector(c_AXIS_DATA_WIDTH-1 downto 0);
    signal payload_buf1          : std_logic_vector(c_AXIS_DATA_WIDTH-1 downto 0);
@@ -458,7 +458,7 @@ begin
             payload_mem_rd_en_d <= '0';
 
             payload_rd_req_cnt  <= (others => '0');
-            payload_tx_cnt      <= (others => '0');
+            payload_tx_remaining <= (others => '0');
 
          else
 
@@ -469,8 +469,9 @@ begin
             if payload_read_start = '1' then
                payload_mem_rd_addr <= rd_meta.payload_addr_begin;
                payload_rd_req_cnt  <= (others => '0');
-               payload_tx_cnt      <= (others => '0');
 
+               -- Load number of words that must be accepted by m_axis.
+               payload_tx_remaining <= unsigned(rd_meta.payload_words);
             else
 
                -- Issue payload RAM read
@@ -480,16 +481,18 @@ begin
                   payload_rd_req_cnt  <= payload_rd_req_cnt + 1;
                end if;
 
-               -- Downstream accepted one AXI word
-               if m_axis_handshake = '1' then
-                  payload_tx_cnt <= payload_tx_cnt + 1;
+               -- Downstream accepted one AXI word.
+               if current_read_state = RD_READ_PAYLOAD and m_axis_handshake = '1' then
+                  if payload_tx_remaining /= 0 then
+                     payload_tx_remaining <= payload_tx_remaining - 1;
+                  end if;
                end if;
 
             end if;
 
             if current_read_state = RD_DONE then
-               payload_rd_req_cnt <= (others => '0');
-               payload_tx_cnt     <= (others => '0');
+               payload_rd_req_cnt   <= (others => '0');
+               payload_tx_remaining <= (others => '0');
             end if;
 
          end if;
@@ -635,9 +638,7 @@ begin
                             pct_clr = '1'
                         else '0';
 
-   payload_last_word <= '1' when unsigned(rd_meta.payload_words) /= 0 and
-                                 payload_tx_cnt = unsigned(rd_meta.payload_words) - 1
-                        else '0';
+   payload_last_word <= '1' when payload_tx_remaining = 1 else '0';
 
 
    payload_is_empty <= '1' when unsigned(rd_meta.payload_words) = 0 else '0';
