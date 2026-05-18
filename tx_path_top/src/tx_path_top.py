@@ -244,9 +244,9 @@ class TXPathTop(LiteXModule):
 
             # lime_txpct_fifo -> timing-cut buffer
             txpct_to_pad_buf.sink.data.eq(txpct_tdata),
-            txpct_to_pad_buf.sink.valid.eq(txpct_tvalid & m_reset_n & self.ext_reset_n),
+            txpct_to_pad_buf.sink.valid.eq(txpct_tvalid),
             txpct_to_pad_buf.sink.last.eq(0),
-            txpct_tready.eq(txpct_to_pad_buf.sink.ready & m_reset_n & self.ext_reset_n),
+            txpct_tready.eq(txpct_to_pad_buf.sink.ready),
 
             # timing-cut buffer -> sample_padder
             data_pad_tdata.eq(txpct_to_pad_buf.source.data),
