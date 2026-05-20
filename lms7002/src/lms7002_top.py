@@ -85,33 +85,6 @@ class LMS7002Top(LiteXModule):
 
         ])
 
-        # pllcfg
-        self.reg01     = CSRStatus(16,  reset=1)
-        self.reg03     = CSRStorage(16, fields=[
-            CSRField("pllcfg_start", size=1, offset=0),
-            CSRField("phcfg_start",  size=1, offset=1),
-            CSRField("pllrst_start", size=1, offset=2),
-            CSRField("pll_ind",      size=5, offset=3),
-            CSRField("cnt_ind",      size=5, offset=8),
-            CSRField("phcfg_updn",   size=1, offset=13),
-            CSRField("phcfg_mode",   size=1, offset=14),
-            CSRField("phcfg_tst",    size=1, offset=15),
-        ], reset=0)
-
-        if platform.name not in ["limesdr_mini_v1", "limesdr_mini_v2"]:
-            self.cmp_start = CSRStorage(1, reset=0,
-                description="Start sample compare: 0: idle, 1 transition: start configuration"
-            )
-            self.cmp_length = CSRStorage(16, reset=0xEFFF,
-                description="Sample compare length"
-            )
-            self.cmp_done = CSRStatus(1,
-                description="Sample compare done: 0: Not done, 1: Done"
-            )
-            self.cmp_error = CSRStatus(1,
-                description="Sample compare error: 0: No error, 1: Error"
-            )
-
         # # #
 
         # Clock Domains.
@@ -185,7 +158,7 @@ class LMS7002Top(LiteXModule):
 
         # Clocks.
         # -------
-        self.lms7002_clk = LMS7002CLK(platform, vendor, pads, pllcfg_manager, with_max10_pll=with_max10_pll)
+        self.lms7002_clk = LMS7002CLK(platform, vendor, pads, with_max10_pll=with_max10_pll)
         self.comb += [
             self.cd_lms_tx.clk.eq(self.lms7002_clk.tx_clk),
             self.cd_lms_rx.clk.eq(self.lms7002_clk.rx_clk),
@@ -290,10 +263,7 @@ class LMS7002Top(LiteXModule):
 
         self.txiq_tst_ptrn = Instance("txiq_tst_ptrn", **txiq_tst_ptrn_params)
 
-        # if platform.name.startswith("limesdr_mini"):
         self.specials += MultiReg(fpgacfg_manager.rx_en, tx_reset_n, odomain="lms_tx")
-        # else:
-        #     self.specials += MultiReg(fpgacfg_manager.tx_en, tx_reset_n, odomain="lms_tx")
 
         self.specials += [
             MultiReg(fpgacfg_manager.tx_ptrn_en,      tx_ptrn_en,      odomain="lms_tx"),
@@ -347,34 +317,20 @@ class LMS7002Top(LiteXModule):
             i_cmp_BI        = Constant(0xAAA, diq_width),
             i_cmp_BQ        = Constant(0x555, diq_width),
         )
+        # Debug Signals
+        self.DEBUG_IQ_ERR = Signal()
+        self.DEBUG_AI_ERR = Signal()
+        self.DEBUG_AQ_ERR = Signal()
+        self.DEBUG_BI_ERR = Signal()
+        self.DEBUG_BQ_ERR = Signal()
 
-        if platform.name.startswith("limesdr_mini"):
-            smpl_cmp_params.update(
-                # Mode settings
-                i_mode          = rx_mode,
-                i_trxiqpulse    = rx_trxiqpulse,
-                i_ddr_en        = rx_ddr_en,
-                i_mimo_en       = rx_mimo_en,
-                i_ch_en         = rx_ch_en,
-                i_fidm          = Constant(0, 1),
-
-                # Control signals
-                o_cmp_error_cnt = Open(16),
-            )
-        else:
-            self.DEBUG_IQ_ERR = Signal()
-            self.DEBUG_AI_ERR = Signal()
-            self.DEBUG_AQ_ERR = Signal()
-            self.DEBUG_BI_ERR = Signal()
-            self.DEBUG_BQ_ERR = Signal()
-
-            smpl_cmp_params.update(
-                o_DEBUG_IQ_ERR = self.DEBUG_IQ_ERR,
-                o_DEBUG_AI_ERR = self.DEBUG_AI_ERR,
-                o_DEBUG_AQ_ERR = self.DEBUG_AQ_ERR,
-                o_DEBUG_BI_ERR = self.DEBUG_BI_ERR,
-                o_DEBUG_BQ_ERR = self.DEBUG_BQ_ERR,
-            )
+        smpl_cmp_params.update(
+            o_DEBUG_IQ_ERR = self.DEBUG_IQ_ERR,
+            o_DEBUG_AI_ERR = self.DEBUG_AI_ERR,
+            o_DEBUG_AQ_ERR = self.DEBUG_AQ_ERR,
+            o_DEBUG_BI_ERR = self.DEBUG_BI_ERR,
+            o_DEBUG_BQ_ERR = self.DEBUG_BQ_ERR,
+        )
 
         self.smpl_cmp = Instance("smpl_cmp", **smpl_cmp_params)
 
@@ -455,10 +411,10 @@ class LMS7002Top(LiteXModule):
                 i_reset_n          = ~ResetSignal("lms_rx"),
 
                 #
-                i_delay_en         = self.reg03.fields.phcfg_start,
+                i_delay_en         = self.lms7002_clk.CLK_CTRL.PHCFG_START,
                 i_delay_sel        = self.delay_ctrl_sel,
-                i_delay_dir        = self.reg03.fields.phcfg_updn,
-                i_delay_mode       = self.reg03.fields.phcfg_mode,
+                i_delay_dir        = self.lms7002_clk.CLK_CTRL.PHCFG_UPDN,
+                i_delay_mode       = self.lms7002_clk.CLK_CTRL.PHCFG_MODE,
                 o_delay_done       = self.delay_ctrl_done,
                 o_delay_error      = self.delay_ctrl_error,
 
@@ -541,8 +497,13 @@ class LMS7002Top(LiteXModule):
             self.pads.TXNRX1.eq(     self.lms1.fields.txnrx1),
 
             # pllcfg
-            self.reg01.status.eq(Cat(1, 0, self.delay_ctrl_done, self.delay_ctrl_error, Constant(0, 12))),
-            If(self.reg03.fields.cnt_ind == 0b0011,
+            # TODO: This is direct assignment, this can't be correct
+            # self.lms7002_clk.CLK_CTRL.PLLCFG_DONE.status.eq(1),
+            # self.lms7002_clk.CLK_CTRL.PHCFG_DONE.status.eq(self.delay_ctrl_done),
+            # self.lms7002_clk.CLK_CTRL.PHCFG_ERR.status.eq(self.delay_ctrl_error),
+            # self.reg01.status.eq(Cat(1, 0, self.delay_ctrl_done, self.delay_ctrl_error, Constant(0, 12))),
+
+            If(self.lms7002_clk.CLK_CTRL.CNT_IND.storage == 0b0011,
                 self.delay_ctrl_sel.eq(0),
             ).Else(
                 self.delay_ctrl_sel.eq(3),
@@ -698,13 +659,9 @@ class LMS7002Top(LiteXModule):
         # ---
 
         # Smpl CMP.
-        if self.platform.name.startswith("limesdr_mini"):
-            smpl_cmp_file = "gateware/LimeDFB/lms7002/src/smpl_cmp.vhd"
-        else:
-            smpl_cmp_file = "gateware/LimeDFB/lms7002/src/smpl_cmp_xtrx.vhd"
         self.smpl_cmp_conv = add_vhd2v_converter(self.platform,
             instance = self.smpl_cmp,
-            files    = [smpl_cmp_file],
+            files    = ["gateware/LimeDFB/lms7002/src/smpl_cmp_xtrx.vhd"],
         )
         # Removed Instance to avoid multiple definition
         self._fragment.specials.remove(self.smpl_cmp)

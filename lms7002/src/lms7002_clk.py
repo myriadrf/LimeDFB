@@ -13,18 +13,18 @@ from litex.build.io import DDROutput
 
 # LMS7002 CLK --------------------------------------------------------------------------------------
 
-def LMS7002CLK(platform, vendor, pads=None, pllcfg_manager=None, **kwargs):
+def LMS7002CLK(platform, vendor, pads=None, **kwargs):
     if vendor == "lattice":
-        return LMS7002CLK_Lattice(platform, pads, pllcfg_manager, **kwargs)
+        return LMS7002CLK_Lattice(platform, pads,  **kwargs)
     elif vendor == "altera":
-        return LMS7002CLK_Altera(platform, pads, pllcfg_manager, **kwargs)
+        return LMS7002CLK_Altera(platform, pads,  **kwargs)
     elif vendor == "xilinx":
-        return LMS7002CLK_Xilinx(platform, pads, pllcfg_manager, **kwargs)
+        return LMS7002CLK_Xilinx(platform, pads,  **kwargs)
     else:
         raise ValueError(f"Unsupported vendor: {vendor}")
 
 class LMS7002CLKBase(LiteXModule):
-    def __init__(self, platform, pads=None, pllcfg_manager=None, **kwargs):
+    def __init__(self, platform, pads=None, **kwargs):
         # Configuration
         self.sel            = Signal() # 0 - fclk1 control, 1 - fclk2 control
         self.cflag          = Signal()
@@ -44,9 +44,14 @@ class LMS7002CLKBase(LiteXModule):
         self.smpl_cmp_error = Signal()
         self.smpl_cmp_cnt   = Signal(16)
 
+        from gateware.lms7002_clk import ClkCfgRegs
+        # Clocking control registers
+        self.CLK_CTRL = ClkCfgRegs(use_status_regs=True)
+
+
 class LMS7002CLK_Lattice(LMS7002CLKBase):
-    def __init__(self, platform, pads=None, pllcfg_manager=None, **kwargs):
-        super().__init__(platform, pads, pllcfg_manager, **kwargs)
+    def __init__(self, platform, pads=None, **kwargs):
+        super().__init__(platform, pads, **kwargs)
 
         inst1_q = Signal()
         inst2_q = Signal()
@@ -134,14 +139,14 @@ class LMS7002CLK_Lattice(LMS7002CLKBase):
         ]
 
 class LMS7002CLK_Altera(LMS7002CLKBase):
-    def __init__(self, platform, pads=None, pllcfg_manager=None,
+    def __init__(self, platform, pads=None,
         drct_c0_ndly   = 1,
         drct_c1_ndly   = 8,
         drct_c2_ndly   = 1,
         drct_c3_ndly   = 8,
         with_max10_pll = True,
         **kwargs):
-        super().__init__(platform, pads, pllcfg_manager, **kwargs)
+        super().__init__(platform, pads, **kwargs)
 
         inst1_q = Signal()
         inst2_q = Signal()
@@ -206,15 +211,61 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
         ]
 
         if with_max10_pll:
-            assert pllcfg_manager is not None
             from gateware.max10_pll_top.max10_pll_top import MAX10PLLTop
 
-            self.max10_pll = MAX10PLLTop(platform, pads, pllcfg_manager,
+            self.max10_pll = MAX10PLLTop(platform, pads,
                 drct_c0_ndly = drct_c0_ndly,
                 drct_c1_ndly = drct_c1_ndly,
                 drct_c2_ndly = drct_c2_ndly,
                 drct_c3_ndly = drct_c3_ndly,
             )
+
+            # Control registers
+
+            self.comb += [
+                self.CLK_CTRL.PHCFG_ERR.status.eq   (self.max10_pll.phcfg_error),
+                self.CLK_CTRL.PHCFG_DONE.status.eq  (self.max10_pll.phcfg_done),
+                self.CLK_CTRL.PLLCFG_BUSY.status.eq (self.max10_pll.pllcfg_busy),
+                self.CLK_CTRL.PLLCFG_DONE.status.eq (self.max10_pll.pllcfg_done),
+                self.CLK_CTRL.PLL_LOCK.status.eq    (self.max10_pll.pll_lock),
+                self.max10_pll.phcfg_tst.eq         (Constant(0)), # unused
+                self.max10_pll.phcfg_mode.eq        (self.CLK_CTRL.PHCFG_MODE.storage),
+                self.max10_pll.phcfg_updn.eq        (self.CLK_CTRL.PHCFG_UPDN.storage),
+                self.max10_pll.cnt_ind.eq           (self.CLK_CTRL.CNT_IND.storage),
+                self.max10_pll.pll_ind.eq           (self.CLK_CTRL.PLL_IND.storage),
+                self.max10_pll.pllrst_start.eq      (self.CLK_CTRL.PLLRST_START.storage),
+                self.max10_pll.phcfg_start.eq       (self.CLK_CTRL.PHCFG_START.storage),
+                self.max10_pll.pllcfg_start.eq      (self.CLK_CTRL.PLLCFG_START.storage),
+                self.max10_pll.cnt_phase.eq         (self.CLK_CTRL.CNT_PHASE.storage),
+                self.max10_pll.chp_curr.eq          (Constant(0)), # unused
+                self.max10_pll.pllcfg_vcodiv.eq     (self.CLK_CTRL.PLLCFG_VCODIV.storage),
+                self.max10_pll.pllcfg_lf_res.eq     (Constant(0)), # unused
+                self.max10_pll.pllcfg_lf_cap.eq     (Constant(0)), # unused
+                self.max10_pll.m_odddiv.eq          (self.CLK_CTRL.M_ODD_DIV.storage),
+                self.max10_pll.m_byp.eq             (self.CLK_CTRL.M_Div_BYP.storage),
+                self.max10_pll.n_odddiv.eq          (self.CLK_CTRL.N_ODD_DIV.storage),
+                self.max10_pll.n_byp.eq             (self.CLK_CTRL.N_Div_BYP.storage),
+                self.max10_pll.c0_byp.eq            (self.CLK_CTRL.C0_Div_BYP.storage),
+                self.max10_pll.c0_odddiv.eq         (self.CLK_CTRL.C0_ODDDIV.storage),
+                self.max10_pll.c1_byp.eq            (self.CLK_CTRL.C1_Div_BYP.storage),
+                self.max10_pll.c1_odddiv.eq         (self.CLK_CTRL.C1_ODDDIV.storage),
+                self.max10_pll.c2_byp.eq            (self.CLK_CTRL.C2_Div_BYP.storage),
+                self.max10_pll.c2_odddiv.eq         (self.CLK_CTRL.C2_ODDDIV.storage),
+                self.max10_pll.c3_byp.eq            (self.CLK_CTRL.C3_Div_BYP.storage),
+                self.max10_pll.c3_odddiv.eq         (self.CLK_CTRL.C3_ODDDIV.storage),
+                self.max10_pll.c4_byp.eq            (self.CLK_CTRL.C4_Div_BYP.storage),
+                self.max10_pll.c4_odddiv.eq         (self.CLK_CTRL.C4_ODDDIV.storage),
+                self.max10_pll.n_cnt.eq             (self.CLK_CTRL.N_CNT.storage),
+                self.max10_pll.m_cnt.eq             (self.CLK_CTRL.M_CNT.storage),
+                self.max10_pll.c0_cnt.eq            (self.CLK_CTRL.C0_Div_CNT.storage),
+                self.max10_pll.c1_cnt.eq            (self.CLK_CTRL.C1_Div_CNT.storage),
+                self.max10_pll.c2_cnt.eq            (self.CLK_CTRL.C2_Div_CNT.storage),
+                self.max10_pll.c3_cnt.eq            (self.CLK_CTRL.C3_Div_CNT.storage),
+                self.max10_pll.c4_cnt.eq            (self.CLK_CTRL.C4_Div_CNT.storage),
+                self.max10_pll.auto_phcfg_smpls.eq  (self.CLK_CTRL.Auto_PHcfg_smpls.storage),
+                self.max10_pll.auto_phcfg_step.eq   (Constant(2)), # unused
+            ]
+
 
             self.comb += [
                 self.max10_pll.clk_ena.eq(       self.clk_ena),
@@ -293,15 +344,11 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
             ]
 
 class LMS7002CLK_Xilinx(LMS7002CLKBase):
-    def __init__(self, platform, pads=None, pllcfg_manager=None, **kwargs):
-        super().__init__(platform, pads, pllcfg_manager, **kwargs)
-        from gateware.lms7002_clk import ClkCfgRegs
+    def __init__(self, platform, pads=None, **kwargs):
+        super().__init__(platform, pads, **kwargs)
         from gateware.lms7002_clk import XilinxLmsMMCM
         from gateware.lms7002_clk import ClkMux
         from gateware.lms7002_clk import ClkDlyFxd
-
-        # Clocking control registers
-        self.CLK_CTRL = ClkCfgRegs()
 
         # TX clk
         # Xilinx MMCM is used to support configurable interface frequencies >5NHz
