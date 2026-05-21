@@ -190,7 +190,7 @@ class TXPathTop(LiteXModule):
 
         self.lime_txpct_fifo = Instance("lime_txpct_fifo",
             # Parameters.
-            p_g_MAX_FIFO_WORDS  = PCT_MAX_SIZE//128,
+            p_g_MAX_FIFO_WORDS  = PCT_MAX_SIZE//16,
             p_g_MAX_PACKETS     = BUFF_COUNT,
 
             i_clk               = ClockSignal(m_clk_domain),
