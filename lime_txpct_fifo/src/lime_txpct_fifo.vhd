@@ -231,9 +231,8 @@ begin
    -- ----------------------------------------------------------------------------
    metadata_mem_i : entity work.simple_dual_port_ram
       generic map (
-         DATA_WIDTH => c_META_RAM_DATA_WIDTH,
-         ADDR_WIDTH => c_META_MEM_ADDR_WIDTH,
-         AMD_RAM_STYLE => "block"
+         DATA_WIDTH     => c_META_RAM_DATA_WIDTH,
+         ADDR_WIDTH     => c_META_MEM_ADDR_WIDTH
       )
       port map (
          wr_clk  => clk,
@@ -336,9 +335,8 @@ begin
    -- ----------------------------------------------------------------------------
    payload_mem_i : entity work.simple_dual_port_ram
       generic map (
-         DATA_WIDTH => c_AXIS_DATA_WIDTH,
-         ADDR_WIDTH => c_PAYLOAD_MEM_ADDR_WIDTH,
-         AMD_RAM_STYLE => "block"
+         DATA_WIDTH     => c_AXIS_DATA_WIDTH,
+         ADDR_WIDTH     => c_PAYLOAD_MEM_ADDR_WIDTH
       )
       port map (
          wr_clk  => clk,

@@ -50,21 +50,6 @@ architecture rtl of simple_dual_port_ram is
 
     signal rd_data_r : std_logic_vector(DATA_WIDTH-1 downto 0);
 
-    --------------------------------------------------------------------
-    -- RAM inference attributes
-    --------------------------------------------------------------------
-
-    -- AMD / Xilinx Vivado
-    --attribute ram_style : string;
-    --attribute ram_style of ram : signal is AMD_RAM_STYLE;
---
-    ---- Intel / Altera Quartus
-    attribute ramstyle : string;
-    attribute ramstyle of ram : signal is INTEL_RAMSTYLE;
---
-    ---- Lattice / Synplify / Radiant
-    attribute syn_ramstyle : string;
-    attribute syn_ramstyle of ram : signal is LATTICE_RAMSTYLE;
 
 begin
 
