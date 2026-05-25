@@ -4,12 +4,17 @@
 # Copyright (c) 2024-2025 Lime Microsystems.
 #
 # SPDX-License-Identifier: Apache-2.0
+import warnings
 
+from gateware.common import add_vhd2v_converter
+from litex.soc.interconnect.csr import CSRStatus, CSRStorage
 from migen import *
 
 from litex.gen import *
 
 from litex.build.io import DDROutput
+from migen.genlib.cdc import MultiReg
+
 
 # LMS7002 CLK --------------------------------------------------------------------------------------
 
@@ -25,6 +30,7 @@ def LMS7002CLK(platform, vendor, pads=None, **kwargs):
 
 class LMS7002CLKBase(LiteXModule):
     def __init__(self, platform, pads=None, **kwargs):
+        self.platform = platform
         # Configuration
         self.sel            = Signal() # 0 - fclk1 control, 1 - fclk2 control
         self.cflag          = Signal()
@@ -44,14 +50,14 @@ class LMS7002CLKBase(LiteXModule):
         self.smpl_cmp_error = Signal()
         self.smpl_cmp_cnt   = Signal(16)
 
-        from gateware.lms7002_clk import ClkCfgRegs
-        # Clocking control registers
-        self.CLK_CTRL = ClkCfgRegs(use_status_regs=True)
-
 
 class LMS7002CLK_Lattice(LMS7002CLKBase):
     def __init__(self, platform, pads=None, **kwargs):
         super().__init__(platform, pads, **kwargs)
+
+        from gateware.lms7002_clk import ClkCfgRegs
+        # Clocking control registers
+        self.CLK_CTRL = ClkCfgRegs(use_status_regs=True)
 
         inst1_q = Signal()
         inst2_q = Signal()
@@ -65,6 +71,57 @@ class LMS7002CLK_Lattice(LMS7002CLKBase):
         inst4_move       = Signal()
         inst4_direction  = Signal()
         inst4_cflag      = Signal()
+
+        self.delay_ctrl_sel   = Signal(2)
+        self.delay_ctrl_done  = Signal()
+        self.delay_ctrl_error = Signal()
+        self.inst1_delayf_loadn  = Signal()
+        self.inst1_delayf_move   = Signal()
+        inst0_loadn         = Signal()
+        inst0_move          = Signal()
+
+        self.delay_ctrl_top = Instance("delay_ctrl_top",
+            # Clk/Reset.
+            i_clk              = ClockSignal("lms_rx"),
+            i_reset_n          = ~ResetSignal("lms_rx"),
+
+            #
+            i_delay_en         = self.CLK_CTRL.PHCFG_START.storage,
+            i_delay_sel        = self.delay_ctrl_sel,
+            i_delay_dir        = self.CLK_CTRL.PHCFG_UPDN.storage,
+            i_delay_mode       = self.CLK_CTRL.PHCFG_MODE.storage,
+            o_delay_done       = self.delay_ctrl_done,
+            o_delay_error      = self.delay_ctrl_error,
+
+            # signals from sample compare module (required for automatic phase searching)
+            o_smpl_cmp_en      = self.smpl_cmp_en,
+            i_smpl_cmp_done    = self.smpl_cmp_done,
+            i_smpl_cmp_error   = self.smpl_cmp_error,
+            o_smpl_cmp_cnt     = self.smpl_cmp_cnt,
+
+            o_delayf_loadn     = self.inst1_delayf_loadn,
+            o_delayf_move      = self.inst1_delayf_move,
+            o_delayf_direction = Open(),
+        )
+
+        self.comb += [
+            If(self.CLK_CTRL.CNT_IND.storage == 0b0011,
+                self.delay_ctrl_sel.eq(0),
+            ).Else(
+                self.delay_ctrl_sel.eq(3),
+            ),
+            If(~self.delay_ctrl_sel == 0b00,
+                inst0_loadn.eq(self.inst1_delayf_loadn),
+                inst0_move.eq (self.inst1_delayf_move),
+            ).Else(
+                inst0_loadn.eq(1),
+                inst0_move.eq (0),
+            ),
+            self.CLK_CTRL.PLLCFG_DONE.status.eq(1),
+            self.CLK_CTRL.PHCFG_DONE.status.eq(self.delay_ctrl_done),
+            self.CLK_CTRL.PHCFG_ERR.status.eq(self.delay_ctrl_error),
+
+        ]
 
         # Control logic.
         # --------------
@@ -138,6 +195,21 @@ class LMS7002CLK_Lattice(LMS7002CLKBase):
             ),
         ]
 
+        # Delay Ctrl.
+        if hasattr(self, "delay_ctrl_top"):
+            delay_ctrl_top_files = [
+                "gateware/LimeDFB/delayf_ctrl/delay_ctrl_fsm.vhd",
+                "gateware/LimeDFB/delayf_ctrl/delay_ctrl_top.vhd",
+                "gateware/LimeDFB/delayf_ctrl/delayf_ctrl.vhd",
+            ]
+
+            self.delay_ctrl_top_conv = add_vhd2v_converter(self.platform,
+                instance = self.delay_ctrl_top,
+                files    = delay_ctrl_top_files,
+            )
+            # Removed Instance to avoid multiple definition
+            self._fragment.specials.remove(self.delay_ctrl_top)
+
 class LMS7002CLK_Altera(LMS7002CLKBase):
     def __init__(self, platform, pads=None,
         drct_c0_ndly   = 1,
@@ -147,6 +219,10 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
         with_max10_pll = True,
         **kwargs):
         super().__init__(platform, pads, **kwargs)
+
+        from gateware.lms7002_clk import ClkCfgRegs
+        # Clocking control registers
+        self.CLK_CTRL = ClkCfgRegs(use_status_regs=True)
 
         inst1_q = Signal()
         inst2_q = Signal()
@@ -263,7 +339,7 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
                 self.max10_pll.c3_cnt.eq            (self.CLK_CTRL.C3_Div_CNT.storage),
                 self.max10_pll.c4_cnt.eq            (self.CLK_CTRL.C4_Div_CNT.storage),
                 self.max10_pll.auto_phcfg_smpls.eq  (self.CLK_CTRL.Auto_PHcfg_smpls.storage),
-                self.max10_pll.auto_phcfg_step.eq   (Constant(2)), # unused
+                self.max10_pll.auto_phcfg_step.eq   (self.CLK_CTRL.Auto_PHcfg_step.storage), # unused
             ]
 
 
@@ -282,6 +358,11 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
                 self.rx_clk.eq(                  self.max10_pll.rx_clk),
             ]
         else:
+            warnings.warn(
+                "LMS7002CLK_Altera: with_max10_pll=False selected. "
+                "This direct-clock Altera/MAX10 path is likely untested and should be used with caution.",
+                RuntimeWarning,
+            )
             # TX.
             # ---
             drct_c0_dly_chain = Signal(drct_c0_ndly)
@@ -349,6 +430,30 @@ class LMS7002CLK_Xilinx(LMS7002CLKBase):
         from gateware.lms7002_clk import XilinxLmsMMCM
         from gateware.lms7002_clk import ClkMux
         from gateware.lms7002_clk import ClkDlyFxd
+        from gateware.lms7002_clk import ClkCfgRegs
+        # Clocking control registers
+        self.CLK_CTRL = ClkCfgRegs(use_status_regs=False)
+
+        self.cmp_start = CSRStorage(1, reset=0,
+            description="Start sample compare: 0: idle, 1 transition: start configuration"
+        )
+        self.cmp_length = CSRStorage(16, reset=0xEFFF,
+            description="Sample compare length"
+        )
+        self.cmp_done = CSRStatus(1,
+            description="Sample compare done: 0: Not done, 1: Done"
+        )
+        self.cmp_error = CSRStatus(1,
+            description="Sample compare error: 0: No error, 1: Error"
+        )
+
+        self.specials += [
+            MultiReg(self.cmp_start.storage,  self.smpl_cmp_en,     odomain="lms_rx"),
+            MultiReg(self.cmp_length.storage, self.smpl_cmp_cnt,    odomain="lms_rx"),
+            MultiReg(self.smpl_cmp_done,      self.cmp_done.status, odomain="sys"),
+            MultiReg(self.smpl_cmp_error,     self.cmp_error.status,odomain="sys"),
+        ]
+
 
         # TX clk
         # Xilinx MMCM is used to support configurable interface frequencies >5NHz

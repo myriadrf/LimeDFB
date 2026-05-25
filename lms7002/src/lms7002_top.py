@@ -56,13 +56,9 @@ class LMS7002Top(LiteXModule):
         self.from_tstcfg_tx_tst_i     = Signal(16)
         self.from_tstcfg_tx_tst_q     = Signal(16)
 
-        self.delay_ctrl_sel   = Signal(2)
-        self.delay_ctrl_done  = Signal()
-        self.delay_ctrl_error = Signal()
         self.hw_ver           = Signal(4)
 
         self.smpl_cnt_en      = Signal() # To rx_path
-        self.smpl_cmp_cnt     = Signal(16) # Unused
 
         self.comb += self.hw_ver.eq(hw_ver)
 
@@ -94,13 +90,8 @@ class LMS7002Top(LiteXModule):
 
         # Signals.
         # --------
-        delay_sel           = Signal(2)
-
         inst0_loadn         = Signal()
         inst0_move          = Signal()
-
-        inst1_delayf_loadn  = Signal()
-        inst1_delayf_move   = Signal()
 
         self.rx_reset_n     = Signal()
 
@@ -135,26 +126,15 @@ class LMS7002Top(LiteXModule):
         tx_tst_ptrn_l       = Signal(diq_width + 1)
         tx_mux_sel          = Signal()
         tx_tst_data_en      = Signal()
+        self.txant_en       = txant_en = Signal()
 
-        smpl_cmp_en         = Signal()
-        smpl_cmp_done       = Signal()
-        smpl_cmp_error      = Signal()
+        self.smpl_cmp_en    = smpl_cmp_en         = Signal()
+        self.smpl_cmp_done  = smpl_cmp_done       = Signal()
+        self.smpl_cmp_error = smpl_cmp_error      = Signal()
         smpl_cmp_cnt        = Signal(16)
-        smpl_cmp_length     = Signal(16)
         rx_smpl_cmp_length  = Signal(16)
         tx_smpl_cmp_length  = Signal(16)
 
-        # LiteScope Probes.
-        self.smpl_cmp_en    = Signal()
-        self.smpl_cmp_done  = Signal()
-        self.smpl_cmp_error = Signal()
-        self.smpl_cmp_length= Signal(16)
-
-        # Sync lms_rx <-> sys.
-        smpl_cmp_en_sync    = Signal()
-        smpl_cmp_done_sync  = Signal()
-        smpl_cmp_error_sync = Signal()
-        smpl_cmp_length_sync = Signal(16)
 
         # Clocks.
         # -------
@@ -253,14 +233,6 @@ class LMS7002Top(LiteXModule):
             o_diq_l     = tx_tst_ptrn_l,
         )
 
-        if platform.name.startswith("limesdr_mini"):
-            txiq_tst_ptrn_params.update(
-                # Mode Settings.
-                i_fidm   = Constant(0, 1),            # External Frame ID mode. Frame start at fsync = 0, when 0. Frame start at fsync = 1, when 1.
-                i_ptrn_i = self.from_tstcfg_tx_tst_i,
-                i_ptrn_q = self.from_tstcfg_tx_tst_q,
-            )
-
         self.txiq_tst_ptrn = Instance("txiq_tst_ptrn", **txiq_tst_ptrn_params)
 
         self.specials += MultiReg(fpgacfg_manager.rx_en, tx_reset_n, odomain="lms_tx")
@@ -275,13 +247,7 @@ class LMS7002Top(LiteXModule):
             MultiReg(fpgacfg_manager.mimo_int_en,     tx_mimo_en,      odomain="lms_tx"),
             MultiReg(fpgacfg_manager.ch_en,           tx_ch_en,        odomain="lms_tx"),
         ]
-        if pllcfg_manager is not None:
-            self.specials += MultiReg(pllcfg_manager.auto_phcfg_smpls, tx_smpl_cmp_length, odomain="lms_tx"),
-        else:
-            if platform.name.startswith("limesdr_mini"):
-                self.comb += tx_smpl_cmp_length.eq(0)
-            else:
-                self.comb += tx_smpl_cmp_length.eq(smpl_cmp_cnt)
+        self.comb += tx_smpl_cmp_length.eq(smpl_cmp_cnt)
 
         # RX path (DIQ2). --------------------------------------------------------------------------
         self.lms7002_ddin = ClockDomainsRenamer("lms_rx")(LMS7002DDIN(platform, vendor, 12, pads, invert_input_clock))
@@ -361,7 +327,6 @@ class LMS7002Top(LiteXModule):
             i_reset_n             = self.rx_reset_n,
 
             # Mode settings
-            i_mode                = {True: rx_mode, False: Constant(0, 1)}[platform.name.startswith("limesdr_mini")],
             i_trxiqpulse          = rx_trxiqpulse,
             i_ddr_en              = rx_ddr_en,
             i_mimo_en             = rx_mimo_en,
@@ -381,10 +346,7 @@ class LMS7002Top(LiteXModule):
             o_m_axis_tlast        = self.rx_cdc.sink.last
         )
 
-        # if platform.name.startswith("limesdr_mini"):
         self.specials += MultiReg(fpgacfg_manager.rx_en, self.rx_reset_n, odomain="lms_rx"),
-        # else:
-        #     self.specials += MultiReg(fpgacfg_manager.tx_en, self.rx_reset_n, odomain="lms_rx"),
 
         self.specials += [
             MultiReg(fpgacfg_manager.rx_ptrn_en,      rx_ptrn_en,      odomain="lms_rx"),
@@ -394,88 +356,21 @@ class LMS7002Top(LiteXModule):
             MultiReg(fpgacfg_manager.mimo_int_en,     rx_mimo_en,      odomain="lms_rx"),
             MultiReg(fpgacfg_manager.ch_en,           rx_ch_en,        odomain="lms_rx"),
         ]
-        if pllcfg_manager is not None:
-            self.specials += MultiReg(pllcfg_manager.auto_phcfg_smpls, rx_smpl_cmp_length, odomain="lms_rx"),
-        else:
-            if platform.name.startswith("limesdr_mini"):
-                self.comb += rx_smpl_cmp_length.eq(0)
-            else:
-                self.comb += rx_smpl_cmp_length.eq(smpl_cmp_cnt)
+        self.comb += rx_smpl_cmp_length.eq(smpl_cmp_cnt)
 
         # Delay control module.
         # ---------------------
-        if platform.name in ["limesdr_mini_v2"]:
-            self.delay_ctrl_top = Instance("delay_ctrl_top",
-                # Clk/Reset.
-                i_clk              = ClockSignal("lms_rx"),
-                i_reset_n          = ~ResetSignal("lms_rx"),
-
-                #
-                i_delay_en         = self.lms7002_clk.CLK_CTRL.PHCFG_START,
-                i_delay_sel        = self.delay_ctrl_sel,
-                i_delay_dir        = self.lms7002_clk.CLK_CTRL.PHCFG_UPDN,
-                i_delay_mode       = self.lms7002_clk.CLK_CTRL.PHCFG_MODE,
-                o_delay_done       = self.delay_ctrl_done,
-                o_delay_error      = self.delay_ctrl_error,
-
-                # signals from sample compare module (required for automatic phase searching)
-                o_smpl_cmp_en      = smpl_cmp_en,
-                i_smpl_cmp_done    = smpl_cmp_done,
-                i_smpl_cmp_error   = smpl_cmp_error,
-                o_smpl_cmp_cnt     = smpl_cmp_cnt,
-
-                o_delayf_loadn     = inst1_delayf_loadn,
-                o_delayf_move      = inst1_delayf_move,
-                o_delayf_direction = Open(),
-            )
-        elif platform.name in ["limesdr_mini_v1"]:
-            self.comb += [
-                smpl_cmp_en.eq(                    self.lms7002_clk.smpl_cmp_en),
-                self.lms7002_clk.smpl_cmp_done.eq( smpl_cmp_done),
-                self.lms7002_clk.smpl_cmp_error.eq(smpl_cmp_error),
-                smpl_cmp_cnt.eq(                   self.lms7002_clk.smpl_cmp_cnt),
-            ]
-        else:
-            self.specials += [
-                MultiReg(self.cmp_start.storage,  smpl_cmp_en_sync,     odomain="lms_rx"),
-                MultiReg(self.cmp_length.storage, smpl_cmp_length_sync, odomain="lms_rx"),
-                MultiReg(smpl_cmp_done,           smpl_cmp_done_sync,   odomain="sys"),
-                MultiReg(smpl_cmp_error,          smpl_cmp_error_sync,  odomain="sys"),
-            ]
-            self.comb += [
-                smpl_cmp_en.eq(          smpl_cmp_en_sync),
-                smpl_cmp_cnt.eq(         smpl_cmp_length_sync),
-                self.cmp_done.status.eq( smpl_cmp_done_sync),
-                self.cmp_error.status.eq(smpl_cmp_error_sync),
-
-                # LiteScope Probes.
-                self.smpl_cmp_en.eq(     smpl_cmp_en_sync),
-                self.smpl_cmp_cnt.eq(    smpl_cmp_length_sync),
-                self.smpl_cmp_done.eq(   smpl_cmp_done),
-                self.smpl_cmp_error.eq(  smpl_cmp_error),
-            ]
+        self.comb += [
+            smpl_cmp_en.eq(                    self.lms7002_clk.smpl_cmp_en),
+            self.lms7002_clk.smpl_cmp_done.eq( smpl_cmp_done),
+            self.lms7002_clk.smpl_cmp_error.eq(smpl_cmp_error),
+            smpl_cmp_cnt.eq(                   self.lms7002_clk.smpl_cmp_cnt),
+        ]
 
         # Logic.
         # ------
         self.comb += [
-            # lms7002_clk"
-            If(~self.delay_ctrl_sel == 0b00,
-                inst0_loadn.eq(inst1_delayf_loadn),
-                inst0_move.eq (inst1_delayf_move),
-            ).Else(
-                inst0_loadn.eq(1),
-                inst0_move.eq (0),
-            ),
-            # lms7002_tx
             self.sink.connect(self.tx_cdc.sink, keep=["data", "ready", "last", "valid"]),
-            self.lms7002_ddout.data_direction.eq(0),
-            If(self.delay_ctrl_sel == 0b01,
-                self.lms7002_ddout.data_loadn.eq(inst1_delayf_loadn),
-                self.lms7002_ddout.data_move.eq (inst1_delayf_move),
-            ).Else(
-                self.lms7002_ddout.data_loadn.eq(1),
-                self.lms7002_ddout.data_move.eq (0),
-            ),
             # lms7002_rx
             self.rx_cdc.source.connect(self.source),
             self.rx_cdc.sink.valid.eq(rx_cdc_sink_valid),
@@ -484,48 +379,39 @@ class LMS7002Top(LiteXModule):
                self.source.valid.eq(0),
                self.rx_cdc.sink.valid.eq(0),
             ),
+            # Pads.
+            self.pads.CORE_LDO_EN.eq(self.lms1.fields.core_ldo_en),
+            self.pads.TXNRX1.eq(     self.lms1.fields.txnrx1),
+        ]
+
+        # Lattice does not do direct clock control, but instead delays input/output signals
+        # The logic needs access to both clk control signals AND ddio, so it lives here
+        if vendor == "lattice":
+            self.comb += [
+            #     TX Delay control
+            self.lms7002_ddout.data_direction.eq(0),
+            If(self.lms7002_clk.delay_ctrl_sel == 0b01,
+                self.lms7002_ddout.data_loadn.eq(self.lms7002_clk.inst1_delayf_loadn),
+                self.lms7002_ddout.data_move.eq (self.lms7002_clk.inst1_delayf_move),
+            ).Else(
+                self.lms7002_ddout.data_loadn.eq(1),
+                self.lms7002_ddout.data_move.eq (0),
+            ),
+            #     RX Delay control
             self.lms7002_ddin.data_direction.eq(Constant(0, 1)),
-            If(self.delay_ctrl_sel == 0b11,
-                self.lms7002_ddin.data_loadn.eq(inst1_delayf_loadn),
-                self.lms7002_ddin.data_move.eq (inst1_delayf_move),
+            If(self.lms7002_clk.delay_ctrl_sel == 0b11,
+                self.lms7002_ddin.data_loadn.eq(self.lms7002_clk.inst1_delayf_loadn),
+                self.lms7002_ddin.data_move.eq (self.lms7002_clk.inst1_delayf_move),
             ).Else(
                 self.lms7002_ddin.data_loadn.eq(1),
                 self.lms7002_ddin.data_move.eq (0),
             ),
-            # Pads.
-            self.pads.CORE_LDO_EN.eq(self.lms1.fields.core_ldo_en),
-            self.pads.TXNRX1.eq(     self.lms1.fields.txnrx1),
+            ]
 
-            # pllcfg
-            # TODO: This is direct assignment, this can't be correct
-            # self.lms7002_clk.CLK_CTRL.PLLCFG_DONE.status.eq(1),
-            # self.lms7002_clk.CLK_CTRL.PHCFG_DONE.status.eq(self.delay_ctrl_done),
-            # self.lms7002_clk.CLK_CTRL.PHCFG_ERR.status.eq(self.delay_ctrl_error),
-            # self.reg01.status.eq(Cat(1, 0, self.delay_ctrl_done, self.delay_ctrl_error, Constant(0, 12))),
-
-            If(self.lms7002_clk.CLK_CTRL.CNT_IND.storage == 0b0011,
-                self.delay_ctrl_sel.eq(0),
-            ).Else(
-                self.delay_ctrl_sel.eq(3),
-            ),
+        self.comb += [
+            self.rx_diq2_h_mux.eq(self.lms7002_ddin.rx_diq2_h),
+            self.rx_diq2_l_mux.eq(self.lms7002_ddin.rx_diq2_l),
         ]
-
-        # RX sync
-        if platform.name.startswith("limesdr_mini"):
-            self.sync.lms_rx += [
-                If(rx_ptrn_en,
-                   self.rx_diq2_h_mux.eq(rx_test_data_h),
-                   self.rx_diq2_l_mux.eq(rx_test_data_l),
-                ).Else(
-                   self.rx_diq2_h_mux.eq(self.lms7002_ddin.rx_diq2_h),
-                   self.rx_diq2_l_mux.eq(self.lms7002_ddin.rx_diq2_l),
-                ),
-            ]
-        else:
-            self.comb += [
-                self.rx_diq2_h_mux.eq(self.lms7002_ddin.rx_diq2_h),
-                self.rx_diq2_l_mux.eq(self.lms7002_ddin.rx_diq2_l),
-            ]
 
         self.sync.lms_rx += [
             # Sample counter.
@@ -539,33 +425,15 @@ class LMS7002Top(LiteXModule):
             )
         ]
 
-        if platform.name.startswith("limesdr_mini"):
-            # TX sync
-            self.sync.lms_tx += [
-                If(tx_tst_data_en,
-                    self.lms7002_ddout.tx_diq1_h.eq(tx_test_data_h),
-                    self.lms7002_ddout.tx_diq1_l.eq(tx_test_data_l),
-                ).Elif(tx_ptrn_en,
-                    self.lms7002_ddout.tx_diq1_h.eq(tx_tst_ptrn_h),
-                    self.lms7002_ddout.tx_diq1_l.eq(tx_tst_ptrn_l),
-                ).Elif(tx_mux_sel,
-                    self.lms7002_ddout.tx_diq1_h.eq(Constant(0, diq_width + 1)),
-                    self.lms7002_ddout.tx_diq1_l.eq(Constant(0, diq_width + 1)),
-                ).Else(
-                    self.lms7002_ddout.tx_diq1_h.eq(tx_diq_h),
-                    self.lms7002_ddout.tx_diq1_l.eq(tx_diq_l),
-                ),
-            ]
-        else:
-            self.comb += [
-                If(tx_ptrn_en,
-                    self.lms7002_ddout.tx_diq1_h.eq(tx_tst_ptrn_h),
-                    self.lms7002_ddout.tx_diq1_l.eq(tx_tst_ptrn_l),
-                ).Else(
-                    self.lms7002_ddout.tx_diq1_h.eq(tx_diq_h),
-                    self.lms7002_ddout.tx_diq1_l.eq(tx_diq_l),
-                )
-            ]
+        self.comb += [
+            If(tx_ptrn_en,
+                self.lms7002_ddout.tx_diq1_h.eq(tx_tst_ptrn_h),
+                self.lms7002_ddout.tx_diq1_l.eq(tx_tst_ptrn_l),
+            ).Else(
+                self.lms7002_ddout.tx_diq1_h.eq(tx_diq_h),
+                self.lms7002_ddout.tx_diq1_l.eq(tx_diq_l),
+            )
+        ]
 
 
         # LMS Controls.
@@ -639,14 +507,12 @@ class LMS7002Top(LiteXModule):
         self._fragment.specials.remove(self.tx_test_data_dd)
 
         # txiq_tst_ptrn.
-        if self.platform.name.startswith("limesdr_mini"):
-            txiq_tst_ptrn_files = [
-                "gateware/LimeDFB/lms7002/src/mini_txiq_tst_ptrn.vhd",
-                "gateware/LimeDFB/general/sync_reg.vhd",
-                "gateware/LimeDFB/general/bus_sync_reg.vhd",
-            ]
-        else:
-            txiq_tst_ptrn_files = ["gateware/LimeDFB/lms7002/src/txiq_tst_ptrn.vhd"]
+        txiq_tst_ptrn_files = [
+            # "gateware/LimeDFB/lms7002/src/mini_txiq_tst_ptrn.vhd",
+            "gateware/LimeDFB/lms7002/src/txiq_tst_ptrn.vhd",
+            "gateware/LimeDFB/general/sync_reg.vhd",
+            "gateware/LimeDFB/general/bus_sync_reg.vhd",
+        ]
 
         self.txiq_tst_ptrn_conv = add_vhd2v_converter(self.platform,
             instance = self.txiq_tst_ptrn,
@@ -681,18 +547,3 @@ class LMS7002Top(LiteXModule):
         )
         # Removed Instance to avoid multiple definition
         self._fragment.specials.remove(self.lms7002_rx)
-
-        # Delay Ctrl.
-        if hasattr(self, "delay_ctrl_top"):
-            delay_ctrl_top_files = [
-                "gateware/LimeDFB/delayf_ctrl/delay_ctrl_fsm.vhd",
-                "gateware/LimeDFB/delayf_ctrl/delay_ctrl_top.vhd",
-                "gateware/LimeDFB/delayf_ctrl/delayf_ctrl.vhd",
-            ]
-
-            self.delay_ctrl_top_conv = add_vhd2v_converter(self.platform,
-                instance = self.delay_ctrl_top,
-                files    = delay_ctrl_top_files,
-            )
-            # Removed Instance to avoid multiple definition
-            self._fragment.specials.remove(self.delay_ctrl_top)
