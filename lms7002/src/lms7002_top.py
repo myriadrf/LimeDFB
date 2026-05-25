@@ -437,44 +437,27 @@ class LMS7002Top(LiteXModule):
 
 
         # LMS Controls.
-        if platform.name.startswith("limesdr_mini"):
-            self.comb += [
-                self.pads.TXEN.eq( self.lms1.fields.txen),
-                self.pads.RXEN.eq( self.lms1.fields.rxen),
-                self.pads.RESET.eq(self.lms1.fields.reset & self._lms_ctr_gpio.storage[0]),
-            ]
-            if platform.name in ["limesdr_mini_v2"]:
-                self.comb += [
-                    If((self.hw_ver > 5),
-                        self.pads.TXNRX2_or_CLK_SEL.eq(self.periph_output_val_1),
-                    ).Else(
-                        self.pads.TXNRX2_or_CLK_SEL.eq(self.lms1.fields.txnrx2),
-                    ),
-                ]
-            else:
-                self.comb += self.pads.TXNRX2.eq(self.lms1.fields.txnrx2)
-        else:
-            lms_txen = Signal()
-            lms_rxen = Signal()
-            txant_en = Signal()
-            self.comb += [
-                self.pads.TXNRX2_or_CLK_SEL.eq(self.lms1.fields.txnrx2),
-                self.pads.RESET.eq(            self.lms1.fields.reset),
-                If(self.lms1.fields.txrxen_mux_sel,
-                    lms_txen.eq(txant_en),
-                    lms_rxen.eq(~txant_en),
-                ).Else(
-                    lms_txen.eq(self.lms1.fields.txen),
-                    lms_rxen.eq(self.lms1.fields.rxen),
-                ),
-                If(self.lms1.fields.txrxen_inv,
-                   self.pads.TXEN.eq(~lms_txen),
-                   self.pads.RXEN.eq(~lms_rxen),
-                ).Else(
-                   self.pads.TXEN.eq(lms_txen),
-                   self.pads.RXEN.eq(lms_rxen),
-                )
-            ]
+        lms_txen = Signal()
+        lms_rxen = Signal()
+        txant_en = Signal()
+        self.comb += [
+            self.pads.TXNRX2_or_CLK_SEL.eq(self.lms1.fields.txnrx2),
+            self.pads.RESET.eq(            self.lms1.fields.reset),
+            If(self.lms1.fields.txrxen_mux_sel,
+                lms_txen.eq(txant_en),
+                lms_rxen.eq(~txant_en),
+            ).Else(
+                lms_txen.eq(self.lms1.fields.txen),
+                lms_rxen.eq(self.lms1.fields.rxen),
+            ),
+            If(self.lms1.fields.txrxen_inv,
+               self.pads.TXEN.eq(~lms_txen),
+               self.pads.RXEN.eq(~lms_rxen),
+            ).Else(
+               self.pads.TXEN.eq(lms_txen),
+               self.pads.RXEN.eq(lms_rxen),
+            )
+        ]
 
         self.specials += AsyncResetSynchronizer(self.cd_lms_rx, ResetSignal("sys"))
         self.specials += AsyncResetSynchronizer(self.cd_lms_tx, ResetSignal("sys"))
