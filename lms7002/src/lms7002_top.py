@@ -28,7 +28,7 @@ from gateware.LimeDFB.lms7002.src.lms7002_clk   import LMS7002CLK
 # LMS7002 Top --------------------------------------------------------------------------------------
 
 class LMS7002Top(LiteXModule):
-    def __init__(self, platform, vendor, pads=None, hw_ver=None, add_csr=True,
+    def __init__(self, platform, vendor, pads=None, add_csr=True,
         fpgacfg_manager      = None,
         pllcfg_manager       = None,
         diq_width            = 12,
@@ -41,7 +41,6 @@ class LMS7002Top(LiteXModule):
         ):
 
         assert pads            is not None
-        assert hw_ver          is not None
         assert fpgacfg_manager is not None
 
         self.source            = AXIStreamInterface(64, clock_domain=m_clk_domain)
@@ -56,11 +55,7 @@ class LMS7002Top(LiteXModule):
         self.from_tstcfg_tx_tst_i     = Signal(16)
         self.from_tstcfg_tx_tst_q     = Signal(16)
 
-        self.hw_ver           = Signal(4)
-
         self.smpl_cnt_en      = Signal() # To rx_path
-
-        self.comb += self.hw_ver.eq(hw_ver)
 
         # CSR --------------------------------------------------------------------------------------
         # LMS Ctrl GPIO
@@ -441,8 +436,8 @@ class LMS7002Top(LiteXModule):
         lms_rxen = Signal()
         txant_en = Signal()
         self.comb += [
-            self.pads.TXNRX2_or_CLK_SEL.eq(self.lms1.fields.txnrx2),
-            self.pads.RESET.eq(            self.lms1.fields.reset),
+            self.pads.TXNRX2.eq(self.lms1.fields.txnrx2),
+            self.pads.RESET.eq( self.lms1.fields.reset),
             If(self.lms1.fields.txrxen_mux_sel,
                 lms_txen.eq(txant_en),
                 lms_rxen.eq(~txant_en),
