@@ -35,6 +35,7 @@ class RXPathTop(LiteXModule):
         source_width                 = 64,
         use_channel_combiner         = True,
         bypass_packets               = False,
+        fixed_packet_size            = False,
         ):
 
         assert fpgacfg_manager is not None
@@ -149,20 +150,16 @@ class RXPathTop(LiteXModule):
                 self.pps_rising.eq(self.timestamp_mixer.pps_rising)
             ]
 
-        if platform.name.startswith("limesdr_mini"):
-            tx_pct_loss_sync = Signal()
-            self.specials += MultiReg(self.tx_pct_loss_flg, tx_pct_loss_sync, odomain=s_clk_domain)
-            self.comb += [
-                # Packet Header 0
-                pct_hdr_0.eq(Cat(Constant(0, 3), tx_pct_loss_sync, Constant(0, 12), 0x060504030201)), # FIXME: 0:15: isn't 0 and 16:63 differs for XTRX
-                pkt_size.eq(Constant(4096 // 16, 16)),              # 256 * 128b = 4096Bytes
-            ]
+        tx_pct_loss_sync = Signal()
+        self.specials += MultiReg(self.tx_pct_loss_flg, tx_pct_loss_sync, odomain=s_clk_domain)
+        if fixed_packet_size:
+            self.comb += pkt_size.eq(Constant(4096 // 16, 16)),              # 256 * 128b = 4096Bytes
         else:
-            self.comb += [
-                # Packet Header 0
-                pct_hdr_0.eq(0x7766554433221100),
-                pkt_size.eq(Cat(Constant(0, 3), self.pkt_size.storage)[7:]),
-            ]
+            self.comb += pkt_size.eq(Cat(Constant(0, 3), self.pkt_size.storage)[7:]),
+        self.comb += [
+            # Packet Header 0
+            pct_hdr_0.eq(Cat(Constant(0, 3), tx_pct_loss_sync, Constant(0, 12), 0x060504030201)),
+        ]
 
 
 
