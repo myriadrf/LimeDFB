@@ -8,7 +8,7 @@ Top module for the Transmit (TX) path that accepts packetized IQ data, performs 
 **Functionality:**
     - Receive packetized IQ data on an AXI-Stream sink.
     - Cross from the sink clock domain to the TX domain using an asynchronous FIFO.
-    - Buffer incoming packets into multiple per-packet FIFOs to allow timestamp-based alignment and loss handling.
+    - Buffer incoming packets into RAM-backed payload and metadata memories to allow timestamp-based alignment and loss handling.
     - Optionally synchronize to an external 64-bit sample counter; drop outdated packets and raise a sticky flag on loss.
     - Pad 12-bit IQ samples to 16-bit (bypass when 16-bit is selected).
     - Unpack 128-bit payload words into a 64-bit or 128-bit TX stream depending on channel mode.
@@ -21,9 +21,7 @@ The top-level TX file integrates the following blocks:
 
 - :ref:`Input CDC (input_buff) <input_cdc>` – Asynchronous FIFO crossing from the sink clock domain to the TX domain.
 - :ref:`Slave Width Converter (conv_64_to_128) <slave_width_conv>` – Adapts the sink bus to a fixed 128-bit internal width.
-- :ref:`Packet Buffer Writer (PCT2DATA_BUF_WR) <pct2data_wr>` – Writes incoming packets into one of BUFF_COUNT per-packet FIFOs.
-- :ref:`Packet FIFOs (axis_fifo) <axis_fifo_block>` – FIFOs designed to store one packet at a time.
-- :ref:`Packet Buffer Reader (PCT2DATA_BUF_RD) <pct2data_rd>` – Selects the next packet to transmit, aligns by sample number and emits a continuous payload stream; reports packet loss.
+- :ref:`Packet Fifo (lime_txpct_fifo) <lime_txpct_fifo>` - RAM-backed TX packet FIFO used to synchronize TX stream packets with RX timestamps.
 - :ref:`Sample Padder (sample_padder) <sample_padder_block>` – Pads 12-bit samples to 16-bit; bypass in 16-bit mode.
 - :ref:`Sample Unpacker (SAMPLE_UNPACK / sample_unpack128) <sample_unpack_block>` – Converts 128-bit payload words into the downstream TX stream width and channel ordering.
 - :ref:`Sample Nr CDC (smpl_nr_fifo) <sample_nr_cdc>` – Asynchronous FIFO to cross external timestampt to internal clock domain.
@@ -81,51 +79,26 @@ Slave Width Converter (conv_64_to_128)
 Adapts the sink bus to a fixed internal width of 128 bits using ``stream.Converter``. If ``FIFO_DATA_W`` is already 128, the converter behaves as a pass-through.
 
 
-.. _pct2data_wr:
+.. _lime_txpct_fifo:
 
-Packet Buffer Write (PCT2DATA_BUF_WR)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Writes packets into one of ``BUFF_COUNT`` per-packet AXIS FIFOs. Exposes a vector of write-side handshake signals:
-
-- ``p2d_wr_tvalid/tdata/tlast`` (per buffer index)
-- ``p2d_wr_tready`` back-pressure from the selected FIFO
-
-The module also consumes the global ``p2d_wr_buf_empty`` (one bit per buffer) to avoid selecting a full or busy buffer.
-
-A Complete packet is written into a single FIFO and left untouched until consumed. Since the upstream width converter’s ``last`` is forced to ``0``, ``PCT2DATA_BUF_WR`` is the sole source of ``TLAST``: it parses the header, derives the packet length, counts 128‑bit words, and asserts ``TLAST`` on the final word. Downstream blocks use this ``TLAST`` exclusively to mark end‑of‑packet (EOP), and buffer selection ensures a packet never spans multiple FIFOs.
+Packet FIFO (lime_txpct_fifo)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 
-.. _axis_fifo_block:
+Packet FIFO is a RAM-backed TX packet FIFO used to synchronize TX stream
+packets with RX timestamps. It accepts AXI-Stream packets consisting of one
+128-bit header followed by 128-bit payload words, stores payload data in shared
+payload RAM, and stores packet metadata, including the sample number, in a
+separate metadata FIFO.
 
-Per-Packet AXIS FIFOs (axis_fifo)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The oldest committed packet is exposed through ``pct_valid`` / ``pct_header``.
+External logic compares the TX packet sample number with the RX timestamp. When
+they match, ``pct_rd`` is triggered and Packet FIFO starts streaming the packet.
+When the packet is late, ``pct_clr`` is triggered and the module discards the
+packet.
 
-The design instantiates ``BUFF_COUNT`` copies of an AXIS FIFO (generic VHDL, vendor-agnostic implementation). Each FIFO:
-
-- Data width equals ``FIFO_DATA_W`` (default 128).
-- Depth is ``PCT_MAX_SIZE / FIFO_DATA_W`` words so a full packet fits in one FIFO.
-- Per‑buffer reset (``p2d_rd_resetn[i]``) is used only when the reader drops an outdated packet; normal end‑of‑packet does not reset the FIFO.
-Configured with ``G_PACKET_MODE=true``, these FIFOs do not parse packet size; they store and propagate the writer‑generated ``TLAST`` to preserve boundaries. Exactly one packet occupies a FIFO. ``tkeep`` is unused (all ones). Because a whole packet fits in one FIFO, mid‑packet buffer switches cannot occur.
-
-
-.. _pct2data_rd:
-
-Packet Buffer Read (PCT2DATA_BUF_RD)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Selects which buffer to read next and emits a continuous 128-bit stream:
-
-- Performs optional timestamp synchronization against the external sample number stream.
-- Drives ``data_pad_tvalid/data_pad_tdata/data_pad_tlast``.
-- Exposes the current buffer index (``curr_buf_index``) and a per‑buffer reset vector (``p2d_rd_resetn``) used only when a packet is dropped.
-- Reports packet drops with ``pct_loss_flg``; a write to ``pct_loss_flg_clr`` clears the sticky flag.
-
-Synchronization inputs:
-
-- ``rx_sample_nr`` (64-bit) is written into a small CDC FIFO from ``rx_clk_domain`` and read in ``m_clk_domain`` as ``rx_sample_nr_sync``.
-- ``synch_dis`` disables the synchronization logic when asserted.
-The reader relies solely on the incoming ``TLAST`` from the selected FIFO to detect EOP; it does not infer size itself. It streams all words from the selected buffer until ``TLAST``, then switches to the next buffer; it does not reset the FIFO on normal completion. Per‑buffer reset is asserted only when an outdated packet is dropped. ``data_pad_tlast`` mirrors the selected FIFO's ``TLAST`` for downstream padder/unpacker logic. Sync can be disabled globally (``synch_dis``) or per‑packet via a header flag; the 128‑bit header+counter word is discarded with a one‑cycle ready override before payload streaming.
+Packets with the ``sync_dis`` bit set in the packet header bypass timestamp
+synchronization and are streamed automatically as soon as they arrive.
 
 
 .. _sample_padder_block:
@@ -156,12 +129,18 @@ Channel selection is controlled by ``ch_en`` (propagated from the configuration 
 .. _sample_nr_cdc:
 
 Sample Nr CDC (smpl_nr_fifo)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Transfers the 64‑bit external sample counter from ``rx_clk_domain`` to ``m_clk_domain`` using a small async FIFO (LiteX ``ClockDomainCrossing``) so the reader can align packets by timestamp.
-The write side samples whenever ready, while the read side stays ready to expose the latest value with minimal latency.
-The synchronized value (``rx_sample_nr_sync``) is compared in :ref:`PCT2DATA_BUF_RD <pct2data_rd>` during ``WAIT_HEADER``; sync can be disabled globally (``synch_dis``) or per‑packet via a header bit.
+Transfers the 64-bit external sample counter from ``rx_clk_domain`` to
+``m_clk_domain`` using a small asynchronous FIFO (LiteX
+``ClockDomainCrossing``), allowing the reader to align packets by timestamp.
 
+The write side samples the counter whenever the FIFO is ready, while the read
+side remains ready to expose the latest value with minimal latency.
+
+The synchronized value, ``rx_sample_nr_sync``, is compared with the sample
+number stored in ``pct_header`` from the ``lime_txpct_fifo`` module. Based on
+this comparison, ``pct_rd`` or ``pct_clr`` is triggered.
 
 Interfaces and control
 ----------------------
@@ -186,9 +165,9 @@ Key parameters
 Constructor parameters (with typical defaults):
 
 - ``IQ_WIDTH=12`` — Expected incoming IQ sample width before padding.
-- ``PCT_MAX_SIZE=4096`` — Maximum packet size in bytes; per-packet FIFOs are sized accordingly.
+- ``PCT_MAX_SIZE=4096`` — Maximum payload memory size. Actual payload that can be stored = PCT_MAX_SIZE- 16B Header
 - ``PCT_HDR_SIZE=16`` — Header (8B) + counter (8B) size in bytes.
-- ``BUFF_COUNT=4`` — Number of per-packet FIFOs to pipeline/queue packets.
+- ``BUFF_COUNT=4`` — Number of packets that can be stored. Defines metadata memory size in lime_txpct_fifo module. 
 - ``FIFO_DATA_W=128`` — Internal packet data width; sink width. Converter adapts this to 128 if needed.
 - ``rx_clk_domain='lms_rx'`` — Clock domain of external sample number input.
 - ``m_clk_domain='lms_tx'`` — Main TX processing clock domain.
@@ -200,7 +179,7 @@ Constructor parameters (with typical defaults):
 Notes
 -----
 
-- The packet write/read engines (``PCT2DATA_BUF_WR/RD``) and the AXIS FIFOs are implemented in VHDL and are automatically converted for use within the LiteX build.
+- The packet FIFO ``lime_txpct_fifo`` implemented in VHDL and are automatically converted for use within the LiteX build.
 - ``pct_loss_flg`` asserts when a packet is dropped (e.g., outdated timestamp) and remains high until cleared by ``pct_loss_flg_clr``.
 - The top-level uses standard LiteX/Migen stream components for CDC and width conversion; all outputs are provided as AXI-Stream endpoints.
 
