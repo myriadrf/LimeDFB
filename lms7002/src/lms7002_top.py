@@ -38,6 +38,7 @@ class LMS7002Top(LiteXModule):
         m_clk_domain         = "lms_rx",
         m_axis_rx_fifo_words = 16,
         with_max10_pll       = False,
+        one_chnl             = False,
         ):
 
         assert pads            is not None
@@ -85,8 +86,6 @@ class LMS7002Top(LiteXModule):
 
         # Signals.
         # --------
-        inst0_loadn         = Signal()
-        inst0_move          = Signal()
 
         self.rx_reset_n     = Signal()
 
@@ -128,7 +127,6 @@ class LMS7002Top(LiteXModule):
         self.smpl_cmp_error = smpl_cmp_error      = Signal()
         smpl_cmp_cnt        = Signal(16)
         rx_smpl_cmp_length  = Signal(16)
-        tx_smpl_cmp_length  = Signal(16)
 
 
         # Clocks.
@@ -140,8 +138,6 @@ class LMS7002Top(LiteXModule):
             # Configuration
             self.lms7002_clk.sel.eq(      Constant(0, 1)), # 0 - fclk1 control, 1 - fclk2 control
             self.lms7002_clk.direction.eq(Constant(0, 1)),
-            self.lms7002_clk.loadn.eq(    inst0_loadn),
-            self.lms7002_clk.move.eq(     inst0_move),
             # mini v1
             self.lms7002_clk.clk_ena.eq(    fpgacfg_manager.clk_ena),
             self.lms7002_clk.drct_clk_en.eq(Replicate(fpgacfg_manager.drct_clk_en[0], 4)),
@@ -242,7 +238,6 @@ class LMS7002Top(LiteXModule):
             MultiReg(fpgacfg_manager.mimo_int_en,     tx_mimo_en,      odomain="lms_tx"),
             MultiReg(fpgacfg_manager.ch_en,           tx_ch_en,        odomain="lms_tx"),
         ]
-        self.comb += tx_smpl_cmp_length.eq(smpl_cmp_cnt)
 
         # RX path (DIQ2). --------------------------------------------------------------------------
         self.lms7002_ddin = ClockDomainsRenamer("lms_rx")(LMS7002DDIN(platform, vendor, 12, pads, invert_input_clock))
@@ -259,6 +254,7 @@ class LMS7002Top(LiteXModule):
         smpl_cmp_params.update(
             # Parameters.
             p_smpl_width    = diq_width,
+            p_one_chnl      = one_chnl,
 
             # Clk/Reset.
             i_clk           = ClockSignal("lms_rx"),

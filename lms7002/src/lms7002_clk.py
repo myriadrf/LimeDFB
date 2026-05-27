@@ -77,8 +77,6 @@ class LMS7002CLK_Lattice(LMS7002CLKBase):
         self.delay_ctrl_error = Signal()
         self.inst1_delayf_loadn  = Signal()
         self.inst1_delayf_move   = Signal()
-        inst0_loadn         = Signal()
-        inst0_move          = Signal()
 
         self.delay_ctrl_top = Instance("delay_ctrl_top",
             # Clk/Reset.
@@ -97,7 +95,7 @@ class LMS7002CLK_Lattice(LMS7002CLKBase):
             o_smpl_cmp_en      = self.smpl_cmp_en,
             i_smpl_cmp_done    = self.smpl_cmp_done,
             i_smpl_cmp_error   = self.smpl_cmp_error,
-            o_smpl_cmp_cnt     = self.smpl_cmp_cnt,
+            o_smpl_cmp_cnt     = Open(), # Port actually unused inside vhdl module
 
             o_delayf_loadn     = self.inst1_delayf_loadn,
             o_delayf_move      = self.inst1_delayf_move,
@@ -111,16 +109,20 @@ class LMS7002CLK_Lattice(LMS7002CLKBase):
                 self.delay_ctrl_sel.eq(3),
             ),
             If(~self.delay_ctrl_sel == 0b00,
-                inst0_loadn.eq(self.inst1_delayf_loadn),
-                inst0_move.eq (self.inst1_delayf_move),
+                self.loadn.eq(self.inst1_delayf_loadn),
+                self.move.eq (self.inst1_delayf_move),
             ).Else(
-                inst0_loadn.eq(1),
-                inst0_move.eq (0),
+                self.loadn.eq(1),
+                self.move.eq (0),
             ),
             self.CLK_CTRL.PLLCFG_DONE.status.eq(1),
-            self.CLK_CTRL.PHCFG_DONE.status.eq(self.delay_ctrl_done),
-            self.CLK_CTRL.PHCFG_ERR.status.eq(self.delay_ctrl_error),
+            self.CLK_CTRL.PLLCFG_BUSY.status.eq(0),
+        ]
 
+        self.specials += [
+            MultiReg(self.CLK_CTRL.Auto_PHcfg_smpls.storage, self.smpl_cmp_cnt,    odomain="lms_rx"),
+            MultiReg(self.delay_ctrl_done, self.CLK_CTRL.PHCFG_DONE.status, odomain="sys"),
+            MultiReg(self.delay_ctrl_error, self.CLK_CTRL.PHCFG_ERR.status, odomain="sys"),
         ]
 
         # Control logic.
@@ -313,9 +315,9 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
                 self.max10_pll.phcfg_start.eq       (self.CLK_CTRL.PHCFG_START.storage),
                 self.max10_pll.pllcfg_start.eq      (self.CLK_CTRL.PLLCFG_START.storage),
                 self.max10_pll.cnt_phase.eq         (self.CLK_CTRL.CNT_PHASE.storage),
-                self.max10_pll.chp_curr.eq          (Constant(0)), # unused
+                self.max10_pll.chp_curr.eq          (Constant(1)), # unused
                 self.max10_pll.pllcfg_vcodiv.eq     (self.CLK_CTRL.PLLCFG_VCODIV.storage),
-                self.max10_pll.pllcfg_lf_res.eq     (Constant(0)), # unused
+                self.max10_pll.pllcfg_lf_res.eq     (Constant(0x1C)), # unused
                 self.max10_pll.pllcfg_lf_cap.eq     (Constant(0)), # unused
                 self.max10_pll.m_odddiv.eq          (self.CLK_CTRL.M_ODD_DIV.storage),
                 self.max10_pll.m_byp.eq             (self.CLK_CTRL.M_Div_BYP.storage),
@@ -437,9 +439,6 @@ class LMS7002CLK_Xilinx(LMS7002CLKBase):
         self.cmp_start = CSRStorage(1, reset=0,
             description="Start sample compare: 0: idle, 1 transition: start configuration"
         )
-        self.cmp_length = CSRStorage(16, reset=0xEFFF,
-            description="Sample compare length"
-        )
         self.cmp_done = CSRStatus(1,
             description="Sample compare done: 0: Not done, 1: Done"
         )
@@ -448,8 +447,8 @@ class LMS7002CLK_Xilinx(LMS7002CLKBase):
         )
 
         self.specials += [
+            MultiReg(self.CLK_CTRL.Auto_PHcfg_smpls.storage, self.smpl_cmp_cnt,    odomain="lms_rx"),
             MultiReg(self.cmp_start.storage,  self.smpl_cmp_en,     odomain="lms_rx"),
-            MultiReg(self.cmp_length.storage, self.smpl_cmp_cnt,    odomain="lms_rx"),
             MultiReg(self.smpl_cmp_done,      self.cmp_done.status, odomain="sys"),
             MultiReg(self.smpl_cmp_error,     self.cmp_error.status,odomain="sys"),
         ]

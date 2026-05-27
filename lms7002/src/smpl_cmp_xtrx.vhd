@@ -17,7 +17,8 @@ use ieee.numeric_std.all;
 -- ----------------------------------------------------------------------------
 entity smpl_cmp is
    generic(
-      smpl_width  : integer := 12
+      smpl_width  : integer := 12;
+      one_chnl    : integer range 0 to 1 := 0 -- integer instead of boolean to avoid multilanguage issues
    );
    port (
 
@@ -119,8 +120,12 @@ DEBUG_BQ_ERR <= BQ_err;
          IQ_SEL_err  <= '0';
          smpl_err    <= '0';
       elsif (clk'event AND clk='1') then
-         smpl_err <= AI_err OR AQ_err OR BI_err OR BQ_err OR IQ_SEL_err;
-         
+          if one_chnl = 0 then
+            smpl_err <= AI_err OR AQ_err OR BI_err OR BQ_err OR IQ_SEL_err;
+         else
+            smpl_err <= AI_err OR AQ_err OR IQ_SEL_err;
+         end if;
+
          --compare IQ_SEL signal
          if diq_h_reg(smpl_width) = diq_l_reg(smpl_width) then 
             IQ_SEL_err <= '0';
