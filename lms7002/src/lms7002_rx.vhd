@@ -25,8 +25,6 @@ entity lms7002_rx is
    port (
       clk               : in  std_logic;
       reset_n           : in  std_logic;
-      --Mode settings
-      mode              : in  std_logic; -- JESD207: 1; TRXIQ: 0
       trxiqpulse        : in  std_logic; -- trxiqpulse on: 1; trxiqpulse off: 0
       ddr_en            : in  std_logic; -- DDR: 1; SDR: 0
       mimo_en           : in  std_logic; -- SISO: 1; MIMO: 0

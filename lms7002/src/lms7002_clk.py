@@ -4,27 +4,33 @@
 # Copyright (c) 2024-2025 Lime Microsystems.
 #
 # SPDX-License-Identifier: Apache-2.0
+import warnings
 
+from gateware.common import add_vhd2v_converter
+from litex.soc.interconnect.csr import CSRStatus, CSRStorage
 from migen import *
 
 from litex.gen import *
 
 from litex.build.io import DDROutput
+from migen.genlib.cdc import MultiReg
+
 
 # LMS7002 CLK --------------------------------------------------------------------------------------
 
-def LMS7002CLK(platform, vendor, pads=None, pllcfg_manager=None, **kwargs):
+def LMS7002CLK(platform, vendor, pads=None, **kwargs):
     if vendor == "lattice":
-        return LMS7002CLK_Lattice(platform, pads, pllcfg_manager, **kwargs)
+        return LMS7002CLK_Lattice(platform, pads,  **kwargs)
     elif vendor == "altera":
-        return LMS7002CLK_Altera(platform, pads, pllcfg_manager, **kwargs)
+        return LMS7002CLK_Altera(platform, pads,  **kwargs)
     elif vendor == "xilinx":
-        return LMS7002CLK_Xilinx(platform, pads, pllcfg_manager, **kwargs)
+        return LMS7002CLK_Xilinx(platform, pads,  **kwargs)
     else:
         raise ValueError(f"Unsupported vendor: {vendor}")
 
 class LMS7002CLKBase(LiteXModule):
-    def __init__(self, platform, pads=None, pllcfg_manager=None, **kwargs):
+    def __init__(self, platform, pads=None, **kwargs):
+        self.platform = platform
         # Configuration
         self.sel            = Signal() # 0 - fclk1 control, 1 - fclk2 control
         self.cflag          = Signal()
@@ -44,9 +50,14 @@ class LMS7002CLKBase(LiteXModule):
         self.smpl_cmp_error = Signal()
         self.smpl_cmp_cnt   = Signal(16)
 
+
 class LMS7002CLK_Lattice(LMS7002CLKBase):
-    def __init__(self, platform, pads=None, pllcfg_manager=None, **kwargs):
-        super().__init__(platform, pads, pllcfg_manager, **kwargs)
+    def __init__(self, platform, pads=None, **kwargs):
+        super().__init__(platform, pads, **kwargs)
+
+        from gateware.lms7002_clk import ClkCfgRegs
+        # Clocking control registers
+        self.CLK_CTRL = ClkCfgRegs(use_status_regs=True)
 
         inst1_q = Signal()
         inst2_q = Signal()
@@ -60,6 +71,59 @@ class LMS7002CLK_Lattice(LMS7002CLKBase):
         inst4_move       = Signal()
         inst4_direction  = Signal()
         inst4_cflag      = Signal()
+
+        self.delay_ctrl_sel   = Signal(2)
+        self.delay_ctrl_done  = Signal()
+        self.delay_ctrl_error = Signal()
+        self.inst1_delayf_loadn  = Signal()
+        self.inst1_delayf_move   = Signal()
+
+        self.delay_ctrl_top = Instance("delay_ctrl_top",
+            # Clk/Reset.
+            i_clk              = ClockSignal("lms_rx"),
+            i_reset_n          = ~ResetSignal("lms_rx"),
+
+            #
+            i_delay_en         = self.CLK_CTRL.PHCFG_START.storage,
+            i_delay_sel        = self.delay_ctrl_sel,
+            i_delay_dir        = self.CLK_CTRL.PHCFG_UPDN.storage,
+            i_delay_mode       = self.CLK_CTRL.PHCFG_MODE.storage,
+            o_delay_done       = self.delay_ctrl_done,
+            o_delay_error      = self.delay_ctrl_error,
+
+            # signals from sample compare module (required for automatic phase searching)
+            o_smpl_cmp_en      = self.smpl_cmp_en,
+            i_smpl_cmp_done    = self.smpl_cmp_done,
+            i_smpl_cmp_error   = self.smpl_cmp_error,
+            o_smpl_cmp_cnt     = Open(), # Port actually unused inside vhdl module
+
+            o_delayf_loadn     = self.inst1_delayf_loadn,
+            o_delayf_move      = self.inst1_delayf_move,
+            o_delayf_direction = Open(),
+        )
+
+        self.comb += [
+            If(self.CLK_CTRL.CNT_IND.storage == 0b0011,
+                self.delay_ctrl_sel.eq(0),
+            ).Else(
+                self.delay_ctrl_sel.eq(3),
+            ),
+            If(~self.delay_ctrl_sel == 0b00,
+                self.loadn.eq(self.inst1_delayf_loadn),
+                self.move.eq (self.inst1_delayf_move),
+            ).Else(
+                self.loadn.eq(1),
+                self.move.eq (0),
+            ),
+            self.CLK_CTRL.PLLCFG_DONE.status.eq(1),
+            self.CLK_CTRL.PLLCFG_BUSY.status.eq(0),
+        ]
+
+        self.specials += [
+            MultiReg(self.CLK_CTRL.Auto_PHcfg_smpls.storage, self.smpl_cmp_cnt,    odomain="lms_rx"),
+            MultiReg(self.delay_ctrl_done, self.CLK_CTRL.PHCFG_DONE.status, odomain="sys"),
+            MultiReg(self.delay_ctrl_error, self.CLK_CTRL.PHCFG_ERR.status, odomain="sys"),
+        ]
 
         # Control logic.
         # --------------
@@ -133,15 +197,34 @@ class LMS7002CLK_Lattice(LMS7002CLKBase):
             ),
         ]
 
+        # Delay Ctrl.
+        if hasattr(self, "delay_ctrl_top"):
+            delay_ctrl_top_files = [
+                "gateware/LimeDFB/delayf_ctrl/delay_ctrl_fsm.vhd",
+                "gateware/LimeDFB/delayf_ctrl/delay_ctrl_top.vhd",
+                "gateware/LimeDFB/delayf_ctrl/delayf_ctrl.vhd",
+            ]
+
+            self.delay_ctrl_top_conv = add_vhd2v_converter(self.platform,
+                instance = self.delay_ctrl_top,
+                files    = delay_ctrl_top_files,
+            )
+            # Removed Instance to avoid multiple definition
+            self._fragment.specials.remove(self.delay_ctrl_top)
+
 class LMS7002CLK_Altera(LMS7002CLKBase):
-    def __init__(self, platform, pads=None, pllcfg_manager=None,
+    def __init__(self, platform, pads=None,
         drct_c0_ndly   = 1,
         drct_c1_ndly   = 8,
         drct_c2_ndly   = 1,
         drct_c3_ndly   = 8,
         with_max10_pll = True,
         **kwargs):
-        super().__init__(platform, pads, pllcfg_manager, **kwargs)
+        super().__init__(platform, pads, **kwargs)
+
+        from gateware.lms7002_clk import ClkCfgRegs
+        # Clocking control registers
+        self.CLK_CTRL = ClkCfgRegs(use_status_regs=True)
 
         inst1_q = Signal()
         inst2_q = Signal()
@@ -206,15 +289,61 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
         ]
 
         if with_max10_pll:
-            assert pllcfg_manager is not None
             from gateware.max10_pll_top.max10_pll_top import MAX10PLLTop
 
-            self.max10_pll = MAX10PLLTop(platform, pads, pllcfg_manager,
+            self.max10_pll = MAX10PLLTop(platform, pads,
                 drct_c0_ndly = drct_c0_ndly,
                 drct_c1_ndly = drct_c1_ndly,
                 drct_c2_ndly = drct_c2_ndly,
                 drct_c3_ndly = drct_c3_ndly,
             )
+
+            # Control registers
+
+            self.comb += [
+                self.CLK_CTRL.PHCFG_ERR.status.eq   (self.max10_pll.phcfg_error),
+                self.CLK_CTRL.PHCFG_DONE.status.eq  (self.max10_pll.phcfg_done),
+                self.CLK_CTRL.PLLCFG_BUSY.status.eq (self.max10_pll.pllcfg_busy),
+                self.CLK_CTRL.PLLCFG_DONE.status.eq (self.max10_pll.pllcfg_done),
+                self.CLK_CTRL.PLL_LOCK.status.eq    (self.max10_pll.pll_lock),
+                self.max10_pll.phcfg_tst.eq         (Constant(0)), # unused
+                self.max10_pll.phcfg_mode.eq        (self.CLK_CTRL.PHCFG_MODE.storage),
+                self.max10_pll.phcfg_updn.eq        (self.CLK_CTRL.PHCFG_UPDN.storage),
+                self.max10_pll.cnt_ind.eq           (self.CLK_CTRL.CNT_IND.storage),
+                self.max10_pll.pll_ind.eq           (self.CLK_CTRL.PLL_IND.storage),
+                self.max10_pll.pllrst_start.eq      (self.CLK_CTRL.PLLRST_START.storage),
+                self.max10_pll.phcfg_start.eq       (self.CLK_CTRL.PHCFG_START.storage),
+                self.max10_pll.pllcfg_start.eq      (self.CLK_CTRL.PLLCFG_START.storage),
+                self.max10_pll.cnt_phase.eq         (self.CLK_CTRL.CNT_PHASE.storage),
+                self.max10_pll.chp_curr.eq          (Constant(1)), # unused
+                self.max10_pll.pllcfg_vcodiv.eq     (self.CLK_CTRL.PLLCFG_VCODIV.storage),
+                self.max10_pll.pllcfg_lf_res.eq     (Constant(0x1C)), # unused
+                self.max10_pll.pllcfg_lf_cap.eq     (Constant(0)), # unused
+                self.max10_pll.m_odddiv.eq          (self.CLK_CTRL.M_ODD_DIV.storage),
+                self.max10_pll.m_byp.eq             (self.CLK_CTRL.M_Div_BYP.storage),
+                self.max10_pll.n_odddiv.eq          (self.CLK_CTRL.N_ODD_DIV.storage),
+                self.max10_pll.n_byp.eq             (self.CLK_CTRL.N_Div_BYP.storage),
+                self.max10_pll.c0_byp.eq            (self.CLK_CTRL.C0_Div_BYP.storage),
+                self.max10_pll.c0_odddiv.eq         (self.CLK_CTRL.C0_ODDDIV.storage),
+                self.max10_pll.c1_byp.eq            (self.CLK_CTRL.C1_Div_BYP.storage),
+                self.max10_pll.c1_odddiv.eq         (self.CLK_CTRL.C1_ODDDIV.storage),
+                self.max10_pll.c2_byp.eq            (self.CLK_CTRL.C2_Div_BYP.storage),
+                self.max10_pll.c2_odddiv.eq         (self.CLK_CTRL.C2_ODDDIV.storage),
+                self.max10_pll.c3_byp.eq            (self.CLK_CTRL.C3_Div_BYP.storage),
+                self.max10_pll.c3_odddiv.eq         (self.CLK_CTRL.C3_ODDDIV.storage),
+                self.max10_pll.c4_byp.eq            (self.CLK_CTRL.C4_Div_BYP.storage),
+                self.max10_pll.c4_odddiv.eq         (self.CLK_CTRL.C4_ODDDIV.storage),
+                self.max10_pll.n_cnt.eq             (self.CLK_CTRL.N_CNT.storage),
+                self.max10_pll.m_cnt.eq             (self.CLK_CTRL.M_CNT.storage),
+                self.max10_pll.c0_cnt.eq            (self.CLK_CTRL.C0_Div_CNT.storage),
+                self.max10_pll.c1_cnt.eq            (self.CLK_CTRL.C1_Div_CNT.storage),
+                self.max10_pll.c2_cnt.eq            (self.CLK_CTRL.C2_Div_CNT.storage),
+                self.max10_pll.c3_cnt.eq            (self.CLK_CTRL.C3_Div_CNT.storage),
+                self.max10_pll.c4_cnt.eq            (self.CLK_CTRL.C4_Div_CNT.storage),
+                self.max10_pll.auto_phcfg_smpls.eq  (self.CLK_CTRL.Auto_PHcfg_smpls.storage),
+                self.max10_pll.auto_phcfg_step.eq   (self.CLK_CTRL.Auto_PHcfg_step.storage), # unused
+            ]
+
 
             self.comb += [
                 self.max10_pll.clk_ena.eq(       self.clk_ena),
@@ -231,6 +360,11 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
                 self.rx_clk.eq(                  self.max10_pll.rx_clk),
             ]
         else:
+            warnings.warn(
+                "LMS7002CLK_Altera: with_max10_pll=False selected. "
+                "This direct-clock Altera/MAX10 path is likely untested and should be used with caution.",
+                RuntimeWarning,
+            )
             # TX.
             # ---
             drct_c0_dly_chain = Signal(drct_c0_ndly)
@@ -293,15 +427,32 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
             ]
 
 class LMS7002CLK_Xilinx(LMS7002CLKBase):
-    def __init__(self, platform, pads=None, pllcfg_manager=None, **kwargs):
-        super().__init__(platform, pads, pllcfg_manager, **kwargs)
-        from gateware.lms7002_clk import ClkCfgRegs
+    def __init__(self, platform, pads=None, **kwargs):
+        super().__init__(platform, pads, **kwargs)
         from gateware.lms7002_clk import XilinxLmsMMCM
         from gateware.lms7002_clk import ClkMux
         from gateware.lms7002_clk import ClkDlyFxd
-
+        from gateware.lms7002_clk import ClkCfgRegs
         # Clocking control registers
-        self.CLK_CTRL = ClkCfgRegs()
+        self.CLK_CTRL = ClkCfgRegs(use_status_regs=False)
+
+        self.cmp_start = CSRStorage(1, reset=0,
+            description="Start sample compare: 0: idle, 1 transition: start configuration"
+        )
+        self.cmp_done = CSRStatus(1,
+            description="Sample compare done: 0: Not done, 1: Done"
+        )
+        self.cmp_error = CSRStatus(1,
+            description="Sample compare error: 0: No error, 1: Error"
+        )
+
+        self.specials += [
+            MultiReg(self.CLK_CTRL.Auto_PHcfg_smpls.storage, self.smpl_cmp_cnt,    odomain="lms_rx"),
+            MultiReg(self.cmp_start.storage,  self.smpl_cmp_en,     odomain="lms_rx"),
+            MultiReg(self.smpl_cmp_done,      self.cmp_done.status, odomain="sys"),
+            MultiReg(self.smpl_cmp_error,     self.cmp_error.status,odomain="sys"),
+        ]
+
 
         # TX clk
         # Xilinx MMCM is used to support configurable interface frequencies >5NHz

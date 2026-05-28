@@ -132,23 +132,18 @@ class TXPathTop(LiteXModule):
 
         # Clocks ----------------------------------------------------------------------------------
         # Sample NR FIFO (must be async with sink in RX_CLK, source iqsample, areset_n with iqpacket_areset_n)
-        if platform.name in ["something"]:
-            smpl_nr_fifo      = ResetInserter()(ClockDomainsRenamer("lms_tx")(stream.SyncFIFO([("data", 64)], 128)))
-            self.smpl_nr_fifo = smpl_nr_fifo
-            self.comb += smpl_nr_fifo.reset.eq(~s_reset_n),
-        else:
-            #TODO: check if reset is needed here
-            self.cd_smpl_nr_fifo  = ClockDomain()
-            smpl_nr_fifo          = stream.ClockDomainCrossing([("data", 64)],
-                cd_from = "smpl_nr_fifo",
-                cd_to   = m_clk_domain,
-                depth   = 8,
-            )
-            self.smpl_nr_fifo     = smpl_nr_fifo
-            self.comb += [
-                self.cd_smpl_nr_fifo.clk.eq(ClockSignal(rx_clk_domain)),
-                self.cd_smpl_nr_fifo.rst.eq( (~(s_reset_n & self.ext_reset_n))),
-            ]
+        #TODO: check if reset is needed here
+        self.cd_smpl_nr_fifo  = ClockDomain()
+        smpl_nr_fifo          = stream.ClockDomainCrossing([("data", 64)],
+            cd_from = "smpl_nr_fifo",
+            cd_to   = m_clk_domain,
+            depth   = 8,
+        )
+        self.smpl_nr_fifo     = smpl_nr_fifo
+        self.comb += [
+            self.cd_smpl_nr_fifo.clk.eq(ClockSignal(rx_clk_domain)),
+            self.cd_smpl_nr_fifo.rst.eq( (~(s_reset_n & self.ext_reset_n))),
+        ]
 
         self.p2d_wr_sink_ready = p2d_wr_sink_ready = Signal()
 
@@ -313,16 +308,10 @@ class TXPathTop(LiteXModule):
                 self.sample_unpack.source.ready.eq(self.source.ready),
             ]
 
-        if platform.name.startswith("limesdr_mini"):
-            self.specials += [
-                MultiReg(fpgacfg_manager.rx_en, s_reset_n, odomain=s_clk_domain),
-                MultiReg(fpgacfg_manager.rx_en, m_reset_n, odomain=m_clk_domain),
-            ]
-        else:
-            self.specials += [
-                MultiReg(fpgacfg_manager.rx_en, s_reset_n, odomain=s_clk_domain),
-                MultiReg(fpgacfg_manager.rx_en, m_reset_n, odomain=m_clk_domain),
-            ]
+        self.specials += [
+            MultiReg(fpgacfg_manager.rx_en, s_reset_n, odomain=s_clk_domain),
+            MultiReg(fpgacfg_manager.rx_en, m_reset_n, odomain=m_clk_domain),
+        ]
 
         self.specials += [
             MultiReg(fpgacfg_manager.ch_en,      ch_en,            odomain=m_clk_domain),

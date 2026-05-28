@@ -35,6 +35,7 @@ class RXPathTop(LiteXModule):
         source_width                 = 64,
         use_channel_combiner         = True,
         bypass_packets               = False,
+        fixed_packet_size            = False,
         ):
 
         assert fpgacfg_manager is not None
@@ -163,14 +164,10 @@ class RXPathTop(LiteXModule):
             )),
         ]
 
-        if platform.name.startswith("limesdr_mini"):
-            self.comb += [
-                pkt_size.eq(Constant(4096 // 16, 16)), # 256 * 128b = 4096 bytes
-            ]
+        if fixed_packet_size:
+            self.comb += pkt_size.eq(Constant(4096 // 16, 16)),              # 256 * 128b = 4096Bytes
         else:
-            self.comb += [
-                pkt_size.eq(Cat(Constant(0, 3), self.pkt_size.storage)[7:]),
-            ]
+            self.comb += pkt_size.eq(Cat(Constant(0, 3), self.pkt_size.storage)[7:]),
 
 
 
