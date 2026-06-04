@@ -116,14 +116,14 @@ class afe79xx(LiteXModule):
         # Conditional sources/sinks based on demux parameter
         if not demux:
             # Direct sources/sinks (only when demux=False)
-            self.source = AXIStreamInterface(256, clock_domain=m_clk_domain)
-            self.sink   = AXIStreamInterface(256, clock_domain=s_clk_domain)
+            self.source = AXIStreamInterface(256, clock_domain=afe_sys_cd)
+            self.sink   = AXIStreamInterface(256, clock_domain=afe_sys_cd)
         else:
             self.source = AXIStreamInterface(128, clock_domain=demux_clk_domain)
             self.sink   = AXIStreamInterface(128, clock_domain=demux_clk_domain)
 
-        self.afe_source = afe_source = AXIStreamInterface(256, clock_domain=m_clk_domain)
-        self.afe_sink   = afe_sink   = AXIStreamInterface(256, clock_domain=s_clk_domain)
+        self.afe_source = afe_source = AXIStreamInterface(256, clock_domain=afe_sys_cd)
+        self.afe_sink   = afe_sink   = AXIStreamInterface(256, clock_domain=afe_sys_cd)
         self.rx_en      = Signal()
 
         # Add sources
@@ -350,7 +350,7 @@ class afe79xx(LiteXModule):
             o_rx_samples_valid                      = afe_source.valid,
             o_rx_samples_start_of_emblock           = self.tiafe_rx_samples_start_of_multiframe, # Start of Extended MultiBlock marker for first sample
             o_rx_lane_buffer_overflow               = self.tiafe_jesd_rx_lane_buffer_overflow,        # Elastic buffer overflow status Rx IP
-            i_rx_sysref                             = ClockSignal(afe_sys_cd), # / SYSREF   CLOCK 3.84
+            i_rx_sysref                             = ClockSignal("fpga_sysref"), # / SYSREF   CLOCK 3.84
             o_rx_sysref_realign_count               = self.tiafe_jesd_rx_sysref_realign_count, # / Rx SYSREF realignment counter
             i_rx_clr_sysref_realign_count           = self.tiafe_rx_clr_sysref_realign_count, # / input: Control to clear Rx SYSREF realignment counter
             i_cfg_rx_buffer_release_delay           = self.tiafe_cfg_rx_buffer_release_delay, # input 10 bit: Lane buffer release delay control
@@ -379,7 +379,7 @@ class afe79xx(LiteXModule):
             i_tx_samples                            = afe_sink.data, # # # # # # # # # # # # # # # # # # # # # # # # # # # # / SAMPLES
             o_tx_samples_ready                      = afe_sink.ready, # # # # # # # # # # # # # # # # # # # # # # # # # # # # / SAMPLES
             o_tx_samples_start_of_emblock           = self.tx_samples_start_of_emblock, # out: Start of Extended MultiBlock marker for first sample
-            i_tx_sysref                             = ClockSignal(afe_sys_cd),                                         # / SYSREF   CLOCK 3.84
+            i_tx_sysref                             = ClockSignal("fpga_sysref"),                                         # / SYSREF   CLOCK 3.84
             o_tx_sysref_realign_count               = self.tiafe_jesd_tx_sysref_realign_count, # Tx SYSREF realignment counter
             i_tx_clr_sysref_realign_count           = self.tiafe_tx_clr_sysref_realign_count, # GPO Control to clear Tx SYSREF realignment counter
 
@@ -421,12 +421,12 @@ class afe79xx(LiteXModule):
             # RX data path
             # Create async FIFOs for clock domain crossing (must be buffered=True to improve timing)
             rx_cdc = stream.AsyncFIFO([("data", 256)], 32, buffered=True)
-            rx_cdc = ClockDomainsRenamer({"write": m_clk_domain, "read":demux_clk_domain})(rx_cdc)
+            rx_cdc = ClockDomainsRenamer({"write": afe_sys_cd, "read":afe_sys_2x_cd})(rx_cdc)
             self.rx_cdc = rx_cdc
 
             # Stream converter 256b to 128b
             rx_conv = ResetInserter()(
-                ClockDomainsRenamer(demux_clk_domain)(stream.Converter(256, 128)))
+                ClockDomainsRenamer(afe_sys_2x_cd)(stream.Converter(256, 128)))
             rx_conv = stream.BufferizeEndpoints({"source": stream.DIR_SOURCE})(rx_conv)
             self.rx_conv = rx_conv
 
@@ -511,16 +511,37 @@ class afe79xx(LiteXModule):
             ]
 
             from gateware.LimeDFB.dsp.decimate_4ch.decimate4ch import Decimate4ch
-            self.decimate = Decimate4ch(platform, clk_domain=demux_clk_domain)
+            self.decimate = Decimate4ch(platform, clk_domain=afe_sys_2x_cd)
 
-
+            # rx_conv -> decimate
             self.comb += [
                 self.decimate.aresetn.eq(self.rx_en),
                 self.decimate.sink.data.eq(rx_conv_ch_mux_data),
                 self.decimate.sink.valid.eq(rx_conv.source.valid),
                 rx_conv.source.ready.eq(self.decimate.sink.ready),
 
-                self.decimate.source.connect(self.source),
+            ]
+
+            self.source_cdc = stream.ClockDomainCrossing(
+                layout         =[("data", 128)],
+                cd_from        =afe_sys_2x_cd,
+                cd_to          =demux_clk_domain,
+                buffered       =True,
+                depth          =32
+            )
+
+            # decimate -> source_cdc
+            self.comb += [
+                self.source_cdc.sink.valid.eq(self.decimate.source.valid),
+                self.source_cdc.sink.data.eq(self.decimate.source.data),
+                self.decimate.source.ready.eq(self.source_cdc.sink.ready),
+            ]
+
+            # source_cdc -> source
+            self.comb += [
+                self.source.valid.eq(self.source_cdc.source.valid),
+                self.source.data.eq(self.source_cdc.source.data),
+                self.source_cdc.source.ready.eq(self.source.ready),
             ]
 
 
@@ -583,7 +604,7 @@ class afe79xx(LiteXModule):
             self.tx_en     = Signal()
 
             self.sink_cdc = stream.ClockDomainCrossing(
-                layout         =[("data", 256)],
+                layout         =[("data", 128)],
                 cd_from        =demux_clk_domain,
                 cd_to          =afe_sys_2x_cd,
                 buffered       =True,
@@ -728,7 +749,7 @@ class afe79xx(LiteXModule):
             self.tx_cdc = stream.ClockDomainCrossing(
                 layout         =[("data", 256)],
                 cd_from        =afe_sys_2x_cd,
-                cd_to          =s_clk_domain,
+                cd_to          =afe_sys_cd,
                 buffered       =True,
                 depth          =32
             )
