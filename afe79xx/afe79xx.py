@@ -23,9 +23,17 @@ def swap_iq(x):
     return Cat(i1, q1_neg)
 
 class afe79xx(LiteXModule):
-    def __init__(self, soc, platform, pads, s_clk_domain="sys", m_clk_domain="sys", demux_clk_domain="sys500", with_debug=False, demux=True, resampling_stages=2):
-        # Add CSRs
+    def __init__(self, soc, platform, pads,
+                 s_clk_domain = "sys",
+                 m_clk_domain = "sys",
+                 afe_sys_cd = "fpga_1pps",
+                 afe_sys_2x_cd = "fpga_1pps_2x",
+                 demux_clk_domain = "sys500",
+                 with_debug = False,
+                 demux = True,
+                 resampling_stages = 2):
 
+        # Add CSRs
         self.reg00  = CSRStorage(fields=[
             CSRField("afe_reset",   size=1, offset=0, reset=0),
             CSRField("afe_trst",    size=1, offset=1, reset=0),
@@ -144,13 +152,13 @@ class afe79xx(LiteXModule):
             f.write("# FPGA_GT_AFEREF 245.76Mhz\n")
             f.write("create_clock -period 4.069 -name fpga_gt_aferef_clk [get_ports afe79xx_serdes_x4_fpga_gt_aferef_p]\n\n")
 
-            f.write("# FPGA_1PPS 245.76Mhz\n")
-            f.write("create_clock -period 4.069 -name fpga_1pps_clk [get_ports FPGA_1PPS_p]\n\n")
+            #f.write("# FPGA_1PPS 245.76Mhz\n")
+            #f.write("create_clock -period 4.069 -name fpga_1pps_clk [get_ports FPGA_1PPS_p]\n\n")
 
             f.write("# FPGA_SYSREF 3.84Mhz\n")
             f.write("create_clock -period 260.416 -name fpga_sysref_clk [get_ports FPGA_SYSREF_p]\n\n")
 
-            f.write("set_clock_groups -name afe_async1 -asynchronous -group [get_clocks fpga_1pps_clk]\n\n")
+            #f.write("set_clock_groups -name afe_async1 -asynchronous -group [get_clocks fpga_1pps_clk]\n\n")
             f.write("set_clock_groups -name afe_async2 -asynchronous -group [get_clocks xcvr_top_inst_n_0]\n\n")
             f.write("set_clock_groups -name afe_async3 -asynchronous -group [get_clocks xcvr_top_inst_n_1]\n\n")
         platform.add_source(timings_sdc_filename)
@@ -248,23 +256,23 @@ class afe79xx(LiteXModule):
         ]
 
 
-        self.specials += MultiReg(self.core_ctrl.fields.afe_core_rst_n, self.tiafe_master_reset_n, "fpga_1pps", 2,0)
+        self.specials += MultiReg(self.core_ctrl.fields.afe_core_rst_n, self.tiafe_master_reset_n, afe_sys_cd, 2,0)
 
-        self.specials += MultiReg(self.rx_ctrl.fields.tiafe_rx_sync_reset, self.tiafe_rx_sync_reset, "fpga_1pps", 2,1)
-        self.specials += MultiReg(self.rx_ctrl.fields.rx_clr_sysref_realign_count, self.tiafe_rx_clr_sysref_realign_count, "fpga_1pps", 2,0)
+        self.specials += MultiReg(self.rx_ctrl.fields.tiafe_rx_sync_reset, self.tiafe_rx_sync_reset, afe_sys_cd, 2,1)
+        self.specials += MultiReg(self.rx_ctrl.fields.rx_clr_sysref_realign_count, self.tiafe_rx_clr_sysref_realign_count, afe_sys_cd, 2,0)
 
-        self.specials += MultiReg(self.rx_cfg0.fields.tiafe_cfg_rx_lane_enabled, self.tiafe_cfg_rx_lane_enabled,"fpga_1pps", 2,0)
-        self.specials += MultiReg(self.rx_cfg0.fields.tiafe_cfg_rx_lane_polarity, self.tiafe_cfg_rx_lane_polarity, "fpga_1pps", 2,0)
-        self.specials += MultiReg(self.rx_cfg1.fields.tiafe_cfg_rx_lane_map, self.tiafe_cfg_rx_lane_map, "fpga_1pps", 2,0)
-        self.specials += MultiReg(self.rx_cfg2.fields.tiafe_cfg_rx_buffer_release_delay, self.tiafe_cfg_rx_buffer_release_delay, "fpga_1pps", 2,0)
-        self.specials += MultiReg(self.rx_cfg3.fields.swap_iq,self.rx_swap_iq, "fpga_1pps", 2, 0)
+        self.specials += MultiReg(self.rx_cfg0.fields.tiafe_cfg_rx_lane_enabled, self.tiafe_cfg_rx_lane_enabled,afe_sys_cd, 2,0)
+        self.specials += MultiReg(self.rx_cfg0.fields.tiafe_cfg_rx_lane_polarity, self.tiafe_cfg_rx_lane_polarity, afe_sys_cd, 2,0)
+        self.specials += MultiReg(self.rx_cfg1.fields.tiafe_cfg_rx_lane_map, self.tiafe_cfg_rx_lane_map, afe_sys_cd, 2,0)
+        self.specials += MultiReg(self.rx_cfg2.fields.tiafe_cfg_rx_buffer_release_delay, self.tiafe_cfg_rx_buffer_release_delay, afe_sys_cd, 2,0)
+        self.specials += MultiReg(self.rx_cfg3.fields.swap_iq,self.rx_swap_iq, afe_sys_cd, 2, 0)
 
-        self.specials += MultiReg(self.tx_ctrl.fields.tiafe_tx_sync_reset, self.tiafe_tx_sync_reset, "fpga_1pps", 2, 1)
-        self.specials += MultiReg(self.tx_cfg0.fields.tiafe_cfg_tx_lane_enabled, self.tiafe_cfg_tx_lane_enabled, "fpga_1pps", 2, 0)
-        self.specials += MultiReg(self.tx_cfg0.fields.tiafe_cfg_tx_lane_polarity, self.tiafe_cfg_tx_lane_polarity, "fpga_1pps", 2, 0)
-        self.specials += MultiReg(self.tx_cfg1.fields.tiafe_cfg_tx_lane_map, self.tiafe_cfg_tx_lane_map, "fpga_1pps", 2, 0)
-        self.specials += MultiReg(self.tx_ctrl.fields.tx_clr_sysref_realign_count, self.tiafe_tx_clr_sysref_realign_count, "fpga_1pps", 2, 0)
-        self.specials += MultiReg(self.tx_cfg3.fields.swap_iq, self.tx_swap_iq, "fpga_1pps", 2, 0)
+        self.specials += MultiReg(self.tx_ctrl.fields.tiafe_tx_sync_reset, self.tiafe_tx_sync_reset, afe_sys_cd, 2, 1)
+        self.specials += MultiReg(self.tx_cfg0.fields.tiafe_cfg_tx_lane_enabled, self.tiafe_cfg_tx_lane_enabled, afe_sys_cd, 2, 0)
+        self.specials += MultiReg(self.tx_cfg0.fields.tiafe_cfg_tx_lane_polarity, self.tiafe_cfg_tx_lane_polarity, afe_sys_cd, 2, 0)
+        self.specials += MultiReg(self.tx_cfg1.fields.tiafe_cfg_tx_lane_map, self.tiafe_cfg_tx_lane_map, afe_sys_cd, 2, 0)
+        self.specials += MultiReg(self.tx_ctrl.fields.tx_clr_sysref_realign_count, self.tiafe_tx_clr_sysref_realign_count, afe_sys_cd, 2, 0)
+        self.specials += MultiReg(self.tx_cfg3.fields.swap_iq, self.tx_swap_iq, afe_sys_cd, 2, 0)
 
 
 
@@ -332,7 +340,7 @@ class afe79xx(LiteXModule):
             i_master_reset_n                        = self.tiafe_master_reset_n, # GPO / Asynchronous master reset
             i_xcvr_freerun_clock                    = self.jesd_freerun_clk, # / CLOCK 100.00
             o_xcvr_rx_clock                         = self.afe7900_jesd_ip_top_0_xcvr_rx_clock,
-            i_rx_sys_clock                          = ClockSignal("fpga_1pps"), # / SYSCLK CLOCK 245.76
+            i_rx_sys_clock                          = ClockSignal(afe_sys_cd), # / SYSCLK CLOCK 245.76
             i_rx_sync_reset                         = self.tiafe_rx_sync_reset, # GPO
             i_cfg_rx_lane_enable                    = self.tiafe_cfg_rx_lane_enabled, # GPO
             i_cfg_rx_lane_polarity                  = self.tiafe_cfg_rx_lane_polarity, # GPO
@@ -342,7 +350,7 @@ class afe79xx(LiteXModule):
             o_rx_samples_valid                      = afe_source.valid,
             o_rx_samples_start_of_emblock           = self.tiafe_rx_samples_start_of_multiframe, # Start of Extended MultiBlock marker for first sample
             o_rx_lane_buffer_overflow               = self.tiafe_jesd_rx_lane_buffer_overflow,        # Elastic buffer overflow status Rx IP
-            i_rx_sysref                             = ClockSignal("fpga_sysref"), # / SYSREF   CLOCK 3.84
+            i_rx_sysref                             = ClockSignal(afe_sys_cd), # / SYSREF   CLOCK 3.84
             o_rx_sysref_realign_count               = self.tiafe_jesd_rx_sysref_realign_count, # / Rx SYSREF realignment counter
             i_rx_clr_sysref_realign_count           = self.tiafe_rx_clr_sysref_realign_count, # / input: Control to clear Rx SYSREF realignment counter
             i_cfg_rx_buffer_release_delay           = self.tiafe_cfg_rx_buffer_release_delay, # input 10 bit: Lane buffer release delay control
@@ -363,7 +371,7 @@ class afe79xx(LiteXModule):
 
             # TX signals
             o_xcvr_tx_clock                         = self.afe7900_jesd_ip_top_0_xcvr_tx_clock, # Transceiver interface Tx IP clock
-            i_tx_sys_clock                          = ClockSignal("fpga_1pps"), # / SYSCLK   CLOCK 245.76
+            i_tx_sys_clock                          = ClockSignal(afe_sys_cd), # / SYSCLK   CLOCK 245.76
             i_tx_sync_reset                         = self.tiafe_tx_sync_reset, # GPO Application interface reset for Tx IP
             i_cfg_tx_lane_enable                    = self.tiafe_cfg_tx_lane_enabled, # GPO Lane enable control for Tx IP
             i_cfg_tx_lane_polarity                  = self.tiafe_cfg_tx_lane_polarity, # GPO Lane polarity control for Tx IP
@@ -371,7 +379,7 @@ class afe79xx(LiteXModule):
             i_tx_samples                            = afe_sink.data, # # # # # # # # # # # # # # # # # # # # # # # # # # # # / SAMPLES
             o_tx_samples_ready                      = afe_sink.ready, # # # # # # # # # # # # # # # # # # # # # # # # # # # # / SAMPLES
             o_tx_samples_start_of_emblock           = self.tx_samples_start_of_emblock, # out: Start of Extended MultiBlock marker for first sample
-            i_tx_sysref                             = ClockSignal("fpga_sysref"),                                         # / SYSREF   CLOCK 3.84
+            i_tx_sysref                             = ClockSignal(afe_sys_cd),                                         # / SYSREF   CLOCK 3.84
             o_tx_sysref_realign_count               = self.tiafe_jesd_tx_sysref_realign_count, # Tx SYSREF realignment counter
             i_tx_clr_sysref_realign_count           = self.tiafe_tx_clr_sysref_realign_count, # GPO Control to clear Tx SYSREF realignment counter
 
@@ -467,7 +475,9 @@ class afe79xx(LiteXModule):
                 self.comb += data_s1[lo:hi].eq(Mux(swap_enable, swap_iq(ch_s1), ch_s1))
 
             # Register after IQ mux and connect to rx_cdc
-            self.sync.fpga_1pps += [
+            afe_sys_clock_domain = getattr(self.sync, afe_sys_cd)
+
+            afe_sys_clock_domain += [
                 # AFE -> CDC FIFO -> 256 to 128 conv -> source_demux0
                 # CDC
                 rx_cdc.sink.valid.eq(afe_source.valid),
@@ -572,15 +582,30 @@ class afe79xx(LiteXModule):
             # TX data path
             self.tx_en     = Signal()
 
+            self.sink_cdc = stream.ClockDomainCrossing(
+                layout         =[("data", 256)],
+                cd_from        =demux_clk_domain,
+                cd_to          =afe_sys_2x_cd,
+                buffered       =True,
+                depth          =32
+            )
+
+            self.comb += [
+                self.sink_cdc.sink.data.eq(self.sink.data),
+                self.sink_cdc.sink.valid.eq(self.sink.valid),
+                self.sink.ready.eq(self.sink_cdc.sink.ready),
+            ]
+
+
+
             from gateware.LimeDFB.dsp.interpolate_4ch.interpolate_4ch import Interpolate4ch
-            self.interpolate = Interpolate4ch(platform, clk_domain=demux_clk_domain)
+            self.interpolate = Interpolate4ch(platform, clk_domain=afe_sys_2x_cd)
 
             self.comb += [
                 self.interpolate.aresetn.eq(self.tx_en),
-                self.interpolate.sink.data.eq(self.sink.data),
-                self.interpolate.sink.valid.eq(self.sink.valid),
-                self.sink.ready.eq(self.interpolate.sink.ready),
-
+                self.interpolate.sink.data.eq(self.sink_cdc.source.data),
+                self.interpolate.sink.valid.eq(self.sink_cdc.source.valid),
+                self.sink_cdc.source.ready.eq(self.interpolate.sink.ready),
             ]
 
 
@@ -621,7 +646,7 @@ class afe79xx(LiteXModule):
             self.comb += self.Resampler_max_value.status.eq(4)  # Temp workaround end
 
             tx_conv = stream.Converter(nbits_from=128, nbits_to=256)
-            tx_conv = ClockDomainsRenamer(demux_clk_domain)(tx_conv)
+            tx_conv = ClockDomainsRenamer(afe_sys_2x_cd)(tx_conv)
             self.tx_conv = tx_conv
 
             ## Omit parts of Axi interface we don't use + data, because we handle that seperately
@@ -702,7 +727,7 @@ class afe79xx(LiteXModule):
 
             self.tx_cdc = stream.ClockDomainCrossing(
                 layout         =[("data", 256)],
-                cd_from        =demux_clk_domain,
+                cd_from        =afe_sys_2x_cd,
                 cd_to          =s_clk_domain,
                 buffered       =True,
                 depth          =32
