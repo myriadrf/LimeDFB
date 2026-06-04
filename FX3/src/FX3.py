@@ -4,6 +4,9 @@ from litex.gen import *
 from litex.soc.interconnect.csr import *
 import math
 
+from gateware.common import add_vhd2v_converter
+
+
 #helper functions
 def fifo_words_to_nbits(n_words: int, add_msb: bool) -> int:
     # math.log2 returns a float, ceil rounds it up to the next integer
@@ -20,7 +23,7 @@ def fifo_words_to_nbits(n_words: int, add_msb: bool) -> int:
 # TODO: Add CSR's or some other method for interacting with control FIFOs. Currently only one port of the fifos is being used.
 
 class FX3(LiteXModule):
-    def __init__(self, pads,
+    def __init__(self, platform, pads,
                  EP01_size    = 4096,  # Stream PC->FPGA, FIFO size in bytes, same size for FX3_EP01_0 and FX3_EP01_1
                  EP01_0_rwidth= 32,   # Stream PC->FPGA, FIFO rd width, FIFO number - 0
                  EP01_1_rwidth= 32,    # Stream PC->FPGA, FIFO rd width, FIFO number - 1
@@ -31,6 +34,7 @@ class FX3(LiteXModule):
                  EP8F_size    = 1024,  # Control FPGA->PC, FIFO size in bytes
                  EP8F_wwidth  = 32,):  # Control FPGA->PC, wr width
         self.pads = pads
+        self.platform = platform
 
         # FX3 data throughput is bottlenecked by 32 bit interface
         # no need to support other widths for now
@@ -53,6 +57,17 @@ class FX3(LiteXModule):
         self.data_source = Endpoint([("data", EP01_0_rwidth)])
         self.data_source_1 = Endpoint([("data", EP01_1_rwidth)])
 
+        # Control Interface
+        self._fifo_wdata = CSRStorage(32, description="FIFO Write Register.")
+        self._fifo_rdata = CSRStatus(32, description="FIFO Read Register.")
+        self._fifo_status = CSRStatus(description="FIFO Status Register.", fields=[
+            CSRField("is_rdempty", size=1, offset=0, description="Read FIFO is empty."),
+            CSRField("is_wrfull", size=1, offset=1, description="Write FIFO is full."),
+        ])
+        self._fifo_control = CSRStorage(description="FIFO Control Register.", fields=[
+            CSRField("reset", size=1, offset=0, description="Reset Control (Active High)."),
+        ])
+
         #internal variables
         ep01_0_rdusedw_width = fifo_words_to_nbits(EP01_size//(EP01_0_rwidth//8), add_msb=True)
         # ep01_1_rdusedw_width = fifo_words_to_nbits(EP01_size//(EP01_1_rwidth//8), add_msb=True)
@@ -73,14 +88,29 @@ class FX3(LiteXModule):
 
         # FIFO's
         # # Host -> FPGA data FIFOs
-        self.source_data_fifo_0 = ResetInserter()(SyncFIFO([("data", 32)], EP01_size//(EP01_0_rwidth//8)))
-        self.source_data_fifo_1 = ResetInserter()(SyncFIFO([("data", 32)], EP01_size//(EP01_1_rwidth//8)))
+        self.source_data_fifo_0 = ResetInserter()(SyncFIFO(
+            layout=[("data", 32)],
+            depth=EP01_size//(EP01_0_rwidth//8),
+            buffered=True))
+        self.source_data_fifo_1 = ResetInserter()(SyncFIFO(
+            layout=[("data", 32)],
+            depth=EP01_size//(EP01_1_rwidth//8),
+            buffered=True))
         # # FPGA -> Host data FIFO
-        self.sink_data_fifo = ResetInserter()(SyncFIFO([("data", 32)], EP81_size//(EP81_wwidth//8)))
+        self.sink_data_fifo = ResetInserter()(SyncFIFO(
+            layout=[("data", 32)],
+            depth=EP81_size//(EP81_wwidth//8),
+            buffered=True))
         # # Host -> FPGA control FIFO
-        self.source_ctrl_fifo = ResetInserter()(SyncFIFO([("data", 32)], EP0F_size//(EP0F_rwidth//8)))
+        self.source_ctrl_fifo = ResetInserter()(SyncFIFO(
+            layout=[("data", 32)],
+            depth=EP0F_size//(EP0F_rwidth//8),
+            buffered=True))
         # # FPGA -> Host control FIFO
-        self.sink_ctrl_fifo = ResetInserter()(SyncFIFO([("data", 32)], EP8F_size//(EP8F_wwidth//8)))
+        self.sink_ctrl_fifo = ResetInserter()(SyncFIFO(
+            layout=[("data", 32)],
+            depth=EP8F_size//(EP8F_wwidth//8),
+            buffered=True))
 
         # Host -> FPGA data fifo muxing
         self.comb +=[
@@ -111,11 +141,25 @@ class FX3(LiteXModule):
             self.source_data_fifo_0.reset.eq(self.data_source0_clr),
             self.source_data_fifo_1.reset.eq(self.data_source1_clr),
             self.sink_data_fifo.reset.eq(self.data_sink_clr),
-            self.sink_ctrl_fifo.reset.eq(self.ctrl_sink_clr),
+            self.sink_ctrl_fifo.reset.eq(self.ctrl_sink_clr | self._fifo_control.fields.reset),
+            self.source_ctrl_fifo.reset.eq(self._fifo_control.fields.reset),
+        ]
+
+        # Control Interface logic
+        self.comb += [
+            # Host -> FPGA (CPU Reads)
+            self.source_ctrl_fifo.source.ready.eq(self._fifo_rdata.we),
+            self._fifo_rdata.status.eq(self.source_ctrl_fifo.source.data),
+            self._fifo_status.fields.is_rdempty.eq(~self.source_ctrl_fifo.source.valid),
+
+            # FPGA -> Host (CPU Writes)
+            self.sink_ctrl_fifo.sink.data.eq(self._fifo_wdata.storage),
+            self.sink_ctrl_fifo.sink.valid.eq(self._fifo_wdata.re),
+            self._fifo_status.fields.is_wrfull.eq(~self.sink_ctrl_fifo.sink.ready),
         ]
 
         # Slave FIFO 5b Instance -------------------------------------------------------------------
-        self.specials += Instance("slaveFIFO5b",
+        self.slaveFIFO5b = Instance("slaveFIFO5b",
             # Parameters
             p_num_of_sockets       = 4,
             p_data_width           = 32,
@@ -194,7 +238,7 @@ class FX3(LiteXModule):
         ]
 
         # Packet Payload Extract Instance ----------------------------------------------------------
-        self.specials += Instance("pct_payload_extrct",
+        self.pct_payload_extrct = Instance("pct_payload_extrct",
             # Parameters
             p_data_w      = 32,
             p_header_size = 16,
@@ -209,3 +253,17 @@ class FX3(LiteXModule):
             o_pct_payload_valid = self._payload_extract_source_valid,
             o_pct_payload_dest  = Open(),
         )
+
+        self.pct_payload_extrct_conv = add_vhd2v_converter(self.platform,
+            instance = self.pct_payload_extrct,
+            files    = ["gateware/LimeDFB/FX3/src/pct_payload_extrct.vhd"],
+        )
+        # Removed Instance to avoid multiple definition
+        self._fragment.specials.remove(self.pct_payload_extrct)
+
+        self.slaveFIFO5b_conv = add_vhd2v_converter(self.platform,
+            instance = self.slaveFIFO5b,
+            files    = ["gateware/LimeDFB/FX3/src/slaveFIFO5b.vhd"],
+        )
+        # Removed Instance to avoid multiple definition
+        self._fragment.specials.remove(self.slaveFIFO5b)
