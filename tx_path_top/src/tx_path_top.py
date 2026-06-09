@@ -50,9 +50,7 @@ from gateware.common import *
 class TXPathTop(LiteXModule):
     def __init__(self, platform, fpgacfg_manager=None,
         # TX parameters
-        IQ_WIDTH          = 12,
         PCT_MAX_SIZE      = 4096,
-        PCT_HDR_SIZE      = 16,
         BUFF_COUNT        = 4,
         sink_width        = 128,
         rx_clk_domain     = "lms_rx",

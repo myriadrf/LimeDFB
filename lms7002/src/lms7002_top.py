@@ -28,9 +28,8 @@ from gateware.LimeDFB.lms7002.src.lms7002_clk   import LMS7002CLK
 # LMS7002 Top --------------------------------------------------------------------------------------
 
 class LMS7002Top(LiteXModule):
-    def __init__(self, platform, vendor, pads=None, add_csr=True,
+    def __init__(self, platform, vendor, pads=None,
         fpgacfg_manager      = None,
-        pllcfg_manager       = None,
         diq_width            = 12,
         invert_input_clock   = False,
         s_clk_domain         = "lms_tx",
