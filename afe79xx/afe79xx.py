@@ -606,27 +606,53 @@ class afe79xx(LiteXModule):
             self.sink_cdc = stream.ClockDomainCrossing(
                 layout         =[("data", 128)],
                 cd_from        =demux_clk_domain,
-                cd_to          =afe_sys_2x_cd,
+                cd_to          =afe_sys_cd,
                 buffered       =True,
                 depth          =32
             )
 
+            # sink -> sink_cdc
             self.comb += [
                 self.sink_cdc.sink.data.eq(self.sink.data),
                 self.sink_cdc.sink.valid.eq(self.sink.valid),
                 self.sink.ready.eq(self.sink_cdc.sink.ready),
             ]
 
+            from gateware.LimeDFB.dsp.tx_dsp_4ch.tx_dsp_4ch import TxDsp4Ch
+            self.tx_dsp = tx_dsp = TxDsp4Ch(platform, clk_domain=afe_sys_cd)
+
+            # sink_cdc -> tx_dsp
+            self.comb += [
+                self.tx_dsp.sink.data.eq(self.sink_cdc.source.data),
+                self.tx_dsp.sink.valid.eq(self.sink_cdc.source.valid),
+                self.sink_cdc.source.ready.eq(self.tx_dsp.sink.ready),
+            ]
+
+            self.dsp_cdc = stream.ClockDomainCrossing(
+                layout         =[("data", 128)],
+                cd_from        =afe_sys_cd,
+                cd_to          =afe_sys_2x_cd,
+                buffered       =True,
+                depth          =32
+            )
+
+            # tx_dsp -> dsp_cdc
+            self.comb += [
+                self.dsp_cdc.sink.data.eq(self.tx_dsp.source.data),
+                self.dsp_cdc.sink.valid.eq(self.tx_dsp.source.valid),
+                self.tx_dsp.source.ready.eq(self.dsp_cdc.sink.ready),
+            ]
 
 
             from gateware.LimeDFB.dsp.interpolate_4ch.interpolate_4ch import Interpolate4ch
             self.interpolate = Interpolate4ch(platform, clk_domain=afe_sys_2x_cd)
 
+            # dsp_cdc -> interpolate
             self.comb += [
                 self.interpolate.aresetn.eq(self.tx_en),
-                self.interpolate.sink.data.eq(self.sink_cdc.source.data),
-                self.interpolate.sink.valid.eq(self.sink_cdc.source.valid),
-                self.sink_cdc.source.ready.eq(self.interpolate.sink.ready),
+                self.interpolate.sink.data.eq(self.dsp_cdc.source.data),
+                self.interpolate.sink.valid.eq(self.dsp_cdc.source.valid),
+                self.dsp_cdc.source.ready.eq(self.interpolate.sink.ready),
             ]
 
 
