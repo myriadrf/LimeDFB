@@ -7,6 +7,8 @@ from litex.soc.interconnect.csr import CSRStorage
 from litex.soc.interconnect.axi import AXIStreamInterface
 from litex.soc.interconnect import stream
 
+from migen.genlib.cdc import MultiReg
+
 
 class AXIStreamRegisterSlice(LiteXModule):
     """
@@ -138,9 +140,12 @@ class Interpolate4ch(LiteXModule):
         # ---------------------------------------------------------------------
         # Pipelined Cascade with dynamic stage_count (192-bit)
         # ---------------------------------------------------------------------
+        self.stage_count_sync = Signal(3)
+        self.specials += MultiReg(self.stage_count.storage, self.stage_count_sync, clk_domain, 2, 0)
+
         stage_en = [Signal() for _ in range(4)]
         for i in range(4):
-            self.comb += stage_en[i].eq(self.stage_count.storage > i)
+            self.comb += stage_en[i].eq(self.stage_count_sync > i)
 
         for i in range(4):
             upstream = self.boundaries[i]

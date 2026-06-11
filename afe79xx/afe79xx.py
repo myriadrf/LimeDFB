@@ -26,6 +26,7 @@ class afe79xx(LiteXModule):
     def __init__(self, soc, platform, pads,
                  s_clk_domain = "sys",
                  m_clk_domain = "sys",
+                 sys_clk_freq = 300e6,
                  afe_sys_cd = "fpga_1pps",
                  afe_sys_2x_cd = "fpga_1pps_2x",
                  demux_clk_domain = "sys500",
@@ -619,7 +620,10 @@ class afe79xx(LiteXModule):
             ]
 
             from gateware.LimeDFB.dsp.tx_dsp_4ch.tx_dsp_4ch import TxDsp4Ch
-            self.tx_dsp = tx_dsp = TxDsp4Ch(platform, clk_domain=afe_sys_cd)
+            self.tx_dsp = tx_dsp = TxDsp4Ch(platform, sys_clk_freq=sys_clk_freq, clk1_domain=afe_sys_cd, clk2_domain=afe_sys_2x_cd)
+
+            self.comb += [self.tx_dsp.reset_n.eq(~ResetSignal("sys")),
+                          ]
 
             # sink_cdc -> tx_dsp
             self.comb += [
