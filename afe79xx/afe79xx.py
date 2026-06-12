@@ -11,6 +11,8 @@ from migen.genlib.cdc import MultiReg
 
 from gateware.LimeDFB.Resampler.Resampler import Resampler
 
+from gateware.common import *
+
 
 # -----------------------------
 # Utility functions
@@ -21,6 +23,7 @@ def swap_iq(x):
     q1_neg = -q1
 
     return Cat(i1, q1_neg)
+
 
 class afe79xx(LiteXModule):
     def __init__(self, soc, platform, pads,
@@ -34,85 +37,11 @@ class afe79xx(LiteXModule):
                  demux = True,
                  resampling_stages = 2):
 
+        self.platform = platform
+
+
         # Add CSRs
-        self.reg00  = CSRStorage(fields=[
-            CSRField("afe_reset",   size=1, offset=0, reset=0),
-            CSRField("afe_trst",    size=1, offset=1, reset=0),
-            CSRField("afe_sleep",   size=1, offset=2, reset=0),
-        ])
-
-        self.core_ctrl    = CSRStorage(fields=[
-            CSRField("afe_core_rst_n",              size=1, offset=0, reset=0),
-            CSRField("afe_init_trigger",            size=1, offset=1, reset=0),
-        ])
-
-        self.rx_ctrl    = CSRStorage(fields=[
-            CSRField("tiafe_rx_sync_reset",         size=1, offset=0, reset=1),
-            CSRField("rx_clr_sysref_realign_count", size=1, offset=1, reset=0),
-        ])
-
-        self.rx_cfg0    = CSRStorage(fields=[
-            CSRField("tiafe_cfg_rx_lane_enabled",   size=4, offset=0, reset=0x0),
-            CSRField("tiafe_cfg_rx_lane_polarity",  size=4, offset=4, reset=0),
-        ])
-
-        self.rx_cfg1    = CSRStorage(fields=[
-            CSRField("tiafe_cfg_rx_lane_map",       size=16, offset=0, reset=0),
-        ])
-
-        self.rx_cfg2 = CSRStorage(fields=[
-            CSRField("tiafe_cfg_rx_buffer_release_delay",       size=10, offset=0, reset=0),
-        ])
-
-        self.rx_cfg3 = CSRStorage(fields=[
-            CSRField("swap_iq",       size=4, offset=0, reset=0xF),
-        ])
-
-        self.rx_status0 = CSRStatus(fields=[
-            CSRField("jesd_rx_sysref_realign_count",       size=4, offset=0, reset=0),
-        ])
-
-        self.tx_ctrl    = CSRStorage(fields=[
-            CSRField("tiafe_tx_sync_reset",         size=1, offset=0, reset=1),
-            CSRField("tx_clr_sysref_realign_count", size=1, offset=1, reset=0),
-
-        ])
-
-        self.tx_cfg0    = CSRStorage(fields=[
-            CSRField("tiafe_cfg_tx_lane_enabled",   size=4, offset=0, reset=0x0),
-            CSRField("tiafe_cfg_tx_lane_polarity",  size=4, offset=4, reset=0),
-        ])
-
-        self.tx_cfg1    = CSRStorage(fields=[
-            CSRField("tiafe_cfg_tx_lane_map",       size=16, offset=0, reset=0),
-        ])
-
-        self.tx_cfg3 = CSRStorage(fields=[
-            CSRField("swap_iq",       size=4, offset=0, reset=0xF),
-        ])
-
-        self.tx_status0 = CSRStatus(fields=[
-            CSRField("jesd_tx_sysref_realign_count", size=4, offset=0, reset=0),
-        ])
-
-
-
-
-
-        self.ch_en = CSRStorage(2, reset=3,
-            description="01 - Channel A enabled, 10 - Channel B enabled, 11 - Channels A and B enabled"
-        )
-        self.smpl_width = CSRStorage(2, reset=2,
-            description="10 - 12bit, 01 - Reserved, 00 - 16bit"
-        )
-        self.pkt_size = CSRStorage(16, reset=253,
-            description="Packet Size in bytes, "
-        )
-
-        self.core_status0 = CSRStatus(fields=[
-            CSRField("xcvr_plls_locked", size=1, offset=0, reset=0),
-            CSRField("rx_all_lanes_locked", size=1, offset=1, reset=0),
-        ])
+        self._add_csrs()
 
         # Conditional sources/sinks based on demux parameter
         if not demux:
@@ -128,44 +57,11 @@ class afe79xx(LiteXModule):
         self.rx_en      = Signal()
 
         # Add sources
-        platform.add_source("./gateware/AFE79xx/afe79xx_jesd_ip_top.v")
-        platform.add_source("./gateware/AFE79xx/afe79xx_ti_ip_top.v")
-        platform.add_source("./gateware/AFE79xx/afe79xx_xcvr_top.v")
-        platform.add_source("./gateware/AFE79xx/afe79xx_xcvr_wrapper.sv")
-        platform.add_source("./gateware/AFE79xx/TI_IP_core_66b64/TI_204c_IP_6664.svp")
-
-        #platform.add_ip("./gateware/afe79xx/ip/gth_uscale_64b66b_xcvr_xcau15p/gth_uscale_64b66b_xcvr_xcau15p.xci")
-        #platform.toolchain.project_commands.append("source " + os.path.abspath("./gateware/afe79xx/ip/gth_uscale_64b66b_xcvr_xcau15p/gth_uscale_64b66b_xcvr_xcau15p.tcl"))
-        #platform.toolchain.project_commands.append("synth_ip [get_ips gth_uscale_64b66b_xcvr_xcau15p] -force")
-
-        platform.toolchain.project_commands.append("import_ip " + os.path.abspath("./gateware/AFE79xx/ip/gth_uscale_64b66b_xcvr_xcau15p/gth_uscale_64b66b_xcvr_xcau15p.xci"))
-        platform.toolchain.project_commands.append("upgrade_ip [get_ips gth_uscale_64b66b_xcvr_xcau15p]")
-        platform.toolchain.project_commands.append("synth_ip [get_ips gth_uscale_64b66b_xcvr_xcau15p] -force")
-        platform.toolchain.project_commands.append("set hipersdr_44xx_defines {{GT_XCVR_NAME=gth_uscale_64b66b_xcvr_xcau15p}}")
-        platform.toolchain.project_commands.append("set_property verilog_define $hipersdr_44xx_defines [get_filesets sources_1]")
-        platform.toolchain.project_commands.append("get_ips")
+        self._add_platform_sources()
 
         # Timing Constraints -----------------------------------------------------------------------
-        # FIXME: Improve, minimal for now.
-        timings_sdc_filename = "afe79xx_timing.xdc"
-        with open(timings_sdc_filename, "w") as f:
-            # Write timing constraints.
-            f.write("# FPGA_GT_AFEREF 245.76Mhz\n")
-            f.write("create_clock -period 4.069 -name fpga_gt_aferef_clk [get_ports afe79xx_serdes_x4_fpga_gt_aferef_p]\n\n")
+        self._add_timing_constraints()
 
-            #f.write("# FPGA_1PPS 245.76Mhz\n")
-            #f.write("create_clock -period 4.069 -name fpga_1pps_clk [get_ports FPGA_1PPS_p]\n\n")
-
-            f.write("# FPGA_SYSREF 3.84Mhz\n")
-            f.write("create_clock -period 260.416 -name fpga_sysref_clk [get_ports FPGA_SYSREF_p]\n\n")
-
-            #f.write("set_clock_groups -name afe_async1 -asynchronous -group [get_clocks fpga_1pps_clk]\n\n")
-            f.write("set_clock_groups -name afe_async2 -asynchronous -group [get_clocks xcvr_top_inst_n_0]\n\n")
-            f.write("set_clock_groups -name afe_async3 -asynchronous -group [get_clocks xcvr_top_inst_n_1]\n\n")
-        platform.add_source(timings_sdc_filename)
-
-
-        #platform.add_platform_command("source ./gateware/afe79xx/ip/gth_uscale_64b66b_xcvr_xcau15p/gth.tcl")
 
         # Clock Domains.
         # --------------
@@ -546,60 +442,6 @@ class afe79xx(LiteXModule):
             ]
 
 
-
-            endpoint_dict = {
-                "source": DIR_SOURCE,  # Add output buffer to the 'source' endpoint
-                "sink": DIR_SINK,      # Add input buffer to the 'sink' endpoint
-            }
-            #RX_A_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
-            #RX_B_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
-            #RX_C_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
-            #RX_D_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="down",clock_domain=demux_clk_domain))
-#
-#
-            #self.RX_A_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_A_RESAMPLER)
-            #self.RX_B_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_B_RESAMPLER)
-            #self.RX_C_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_C_RESAMPLER)
-            #self.RX_D_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(RX_D_RESAMPLER)
-            #self.comb += [
-            #    self.RX_A_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[0 : 32]),
-            #    self.RX_A_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
-            #    self.RX_A_RESAMPLER.reset.eq(~self.rx_en),
-            #    rx_conv.source.ready.eq(self.RX_A_RESAMPLER.sink.ready),
-#
-            #    self.RX_B_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[32: 64]),
-            #    self.RX_B_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
-            #    self.RX_B_RESAMPLER.reset.eq(~self.rx_en),
-            #    # No Ready, handled by RX_A
-#
-            #    self.RX_C_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[64: 96]),
-            #    self.RX_C_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
-            #    self.RX_C_RESAMPLER.reset.eq(~self.rx_en), #VHDL instances in resampler use active low reset
-            #    # No Ready, handled by RX_A
-#
-            #    self.RX_D_RESAMPLER.sink.data.eq(rx_conv_ch_mux_data[96:128]),
-            #    self.RX_D_RESAMPLER.sink.valid.eq(rx_conv.source.valid),
-            #    self.RX_D_RESAMPLER.reset.eq(~self.rx_en), #VHDL instances in resampler use active low reset
-            #    # No Ready, handled by RX_A
-            #]
-#
-#
-            #self.comb += [
-            #    self.source.data.eq(Cat(
-            #        self.RX_A_RESAMPLER.source.data,
-            #        self.RX_B_RESAMPLER.source.data,
-            #        self.RX_C_RESAMPLER.source.data,
-            #        self.RX_D_RESAMPLER.source.data,
-            #    )),
-            #    self.source.keep.eq(0xFFFF),
-            #    self.source.valid.eq(self.RX_A_RESAMPLER.source.valid),
-            #    self.RX_A_RESAMPLER.source.ready.eq(self.source.ready),
-            #    self.RX_B_RESAMPLER.source.ready.eq(self.source.ready),
-            #    self.RX_C_RESAMPLER.source.ready.eq(self.source.ready),
-            #    self.RX_D_RESAMPLER.source.ready.eq(self.source.ready),
-            #]
-
-
             # -----------------------------------------
             # TX data path
             self.tx_en     = Signal()
@@ -660,33 +502,6 @@ class afe79xx(LiteXModule):
             ]
 
 
-            #TX_A_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
-            #TX_B_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
-            #TX_C_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
-            #TX_D_RESAMPLER = BufferizeEndpoints(endpoint_dict)(Resampler(soc,sample_width=16,stages=resampling_stages,direction="up",clock_domain=demux_clk_domain))
-            #self.TX_A_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_A_RESAMPLER)
-            #self.TX_B_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_B_RESAMPLER)
-            #self.TX_C_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_C_RESAMPLER)
-            #self.TX_D_RESAMPLER = ClockDomainsRenamer(demux_clk_domain)(TX_D_RESAMPLER)
-            #self.comb += [
-            #    self.TX_A_RESAMPLER.sink.data.eq(self.sink.data[0 : 32]),
-            #    self.TX_A_RESAMPLER.sink.valid.eq(self.sink.valid),
-            #    self.TX_A_RESAMPLER.reset.eq(~self.tx_en),
-            #    self.sink.ready.eq(self.TX_A_RESAMPLER.sink.ready),
-#
-            #    self.TX_B_RESAMPLER.sink.data.eq(self.sink.data[32: 64]),
-            #    self.TX_B_RESAMPLER.sink.valid.eq(self.sink.valid),
-            #    self.TX_B_RESAMPLER.reset.eq(~self.tx_en),
-#
-            #    self.TX_C_RESAMPLER.sink.data.eq(self.sink.data[64: 96]),
-            #    self.TX_C_RESAMPLER.sink.valid.eq(self.sink.valid),
-            #    self.TX_C_RESAMPLER.reset.eq(~self.tx_en),
-#
-            #    self.TX_D_RESAMPLER.sink.data.eq(self.sink.data[96:128]),
-            #    self.TX_D_RESAMPLER.sink.valid.eq(self.sink.valid),
-            #    self.TX_D_RESAMPLER.reset.eq(~self.tx_en),
-            #]
-
             self.Resampler_max_value = CSRStatus(size=4, description="Maximum divider value for resampling")
             # Temp workaround begin
             #self.comb += self.Resampler_max_value.status.eq(resampling_stages)
@@ -696,40 +511,49 @@ class afe79xx(LiteXModule):
                 )
             self.comb += self.Resampler_max_value.status.eq(4)  # Temp workaround end
 
+            # ------------------------------------------------------------
+            # QADPD on TX Channel A only, after interpolate
+            # ------------------------------------------------------------
+            from gateware.LimeDFB.dsp.DPD.src.adpd.qadpd import QADPD
+            self.submodules.qadpd_a = QADPD(
+                platform,
+                n=4,
+                m=2,
+                mul_n=18,
+                clk_domain=afe_sys_2x_cd,
+            )
+
+            # Channel A from interpolate:
+            # bits [0:16]  = I
+            # bits [16:32] = Q
+            #
+            # QADPD input is 14-bit, while interpolate output is 16-bit.
+            # Use [2:16] to keep the signed MSBs and drop 2 LSBs.
+            self.comb += [
+                self.qadpd_a.reset_n.eq(self.tx_en),
+                self.qadpd_a.reset_mem_n.eq(self.tx_en),
+
+                # If QADPD config SPI is unused for now, tie these off.
+                self.qadpd_a.sclk.eq(self.tx_dsp.sclk),
+                self.qadpd_a.spi_ctrl.eq(self.tx_dsp.txdsp1ch.adpd_ctrl_reg),
+                self.qadpd_a.spi_data.eq(self.tx_dsp.txdsp1ch.adpd_data_reg),
+
+                self.qadpd_a.xpi.eq(self.interpolate.source.data[2:16]),
+                self.qadpd_a.xpq.eq(self.interpolate.source.data[18:32]),
+            ]
+
+            # QADPD output is 18-bit. Convert back to 16-bit for TX stream.
+            # Use [2:18] to keep signed MSBs and drop 2 LSBs.
+            qadpd_a_data = Signal(32)
+            self.comb += [
+                qadpd_a_data[0:16].eq(self.qadpd_a.ypi[2:18]),
+                qadpd_a_data[16:32].eq(self.qadpd_a.ypq[2:18]),
+            ]
+
+
             tx_conv = stream.Converter(nbits_from=128, nbits_to=256)
             tx_conv = ClockDomainsRenamer(afe_sys_2x_cd)(tx_conv)
             self.tx_conv = tx_conv
-
-            ## Omit parts of Axi interface we don't use + data, because we handle that seperately
-            ## AFE bindings do not correspond to ABCD channels, channels need to be muxed to fit
-            ## IQ mux Logic: Mux(condition, swapped_data, normal_data)
-            #self.comb += [
-            #    # -----------------------------------------------------------------
-            #    # Channel A -> AFE CH 4 (Bits 96-128) | Controlled by tx_swap_iq[0]
-            #    # -----------------------------------------------------------------
-            #    tx_conv.sink.data[96:128].eq(Mux(self.tx_swap_iq[0],swap_iq(self.TX_A_RESAMPLER.source.data),self.TX_A_RESAMPLER.source.data)),
-            #    # -----------------------------------------------------------------
-            #    # Channel B -> AFE CH 3 (Bits 64-96) | Controlled by tx_swap_iq[1]
-            #    # -----------------------------------------------------------------
-            #    tx_conv.sink.data[64:96].eq(Mux(self.tx_swap_iq[1],swap_iq(self.TX_B_RESAMPLER.source.data),self.TX_B_RESAMPLER.source.data)),
-            #    # -----------------------------------------------------------------
-            #    # Channel C -> AFE CH 1 (Bits 0-32) | Controlled by tx_swap_iq[2]
-            #    # -----------------------------------------------------------------
-            #    tx_conv.sink.data[0:32].eq(Mux(self.tx_swap_iq[2],swap_iq(self.TX_C_RESAMPLER.source.data),self.TX_C_RESAMPLER.source.data)),
-            #    # -----------------------------------------------------------------
-            #    # Channel D -> AFE CH 2 (Bits 32-64) | Controlled by tx_swap_iq[3]
-            #    # -----------------------------------------------------------------
-            #    tx_conv.sink.data[32:64].eq(Mux(self.tx_swap_iq[3],swap_iq(self.TX_D_RESAMPLER.source.data),self.TX_D_RESAMPLER.source.data)),
-            #]
-#
-#
-            #self.comb += [
-            #    self.tx_conv.sink.valid.eq(self.TX_A_RESAMPLER.source.valid),
-            #    self.TX_A_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
-            #    self.TX_B_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
-            #    self.TX_C_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
-            #    self.TX_D_RESAMPLER.source.ready.eq(tx_conv.sink.ready),
-            #]
 
 
             # Omit parts of Axi interface we don't use + data, because we handle that seperately
@@ -739,7 +563,7 @@ class afe79xx(LiteXModule):
                 # -----------------------------------------------------------------
                 # Channel A -> AFE CH 4 (Bits 96-128) | Controlled by tx_swap_iq[0]
                 # -----------------------------------------------------------------
-                tx_conv.sink.data[96:128].eq(Mux(self.tx_swap_iq[0],swap_iq(self.interpolate.source.data[0:32]),self.interpolate.source.data[0:32])),
+                tx_conv.sink.data[96:128].eq(Mux(self.tx_swap_iq[0],swap_iq(qadpd_a_data),qadpd_a_data)),
                 # -----------------------------------------------------------------
                 # Channel B -> AFE CH 3 (Bits 64-96) | Controlled by tx_swap_iq[1]
                 # -----------------------------------------------------------------
@@ -849,3 +673,143 @@ class afe79xx(LiteXModule):
                 self.sink.valid,
                 self.sink.ready,
             ]
+
+
+    def _add_csrs(self):
+        self.reg00 = CSRStorage(fields=[
+            CSRField("afe_reset", size=1, offset=0, reset=0),
+            CSRField("afe_trst", size=1, offset=1, reset=0),
+            CSRField("afe_sleep", size=1, offset=2, reset=0),
+        ])
+
+        self.core_ctrl = CSRStorage(fields=[
+            CSRField("afe_core_rst_n", size=1, offset=0, reset=0),
+            CSRField("afe_init_trigger", size=1, offset=1, reset=0),
+        ])
+
+        self.rx_ctrl = CSRStorage(fields=[
+            CSRField("tiafe_rx_sync_reset", size=1, offset=0, reset=1),
+            CSRField("rx_clr_sysref_realign_count", size=1, offset=1, reset=0),
+        ])
+
+        self.rx_cfg0 = CSRStorage(fields=[
+            CSRField("tiafe_cfg_rx_lane_enabled", size=4, offset=0, reset=0x0),
+            CSRField("tiafe_cfg_rx_lane_polarity", size=4, offset=4, reset=0),
+        ])
+
+        self.rx_cfg1 = CSRStorage(fields=[
+            CSRField("tiafe_cfg_rx_lane_map", size=16, offset=0, reset=0),
+        ])
+
+        self.rx_cfg2 = CSRStorage(fields=[
+            CSRField("tiafe_cfg_rx_buffer_release_delay", size=10, offset=0, reset=0),
+        ])
+
+        self.rx_cfg3 = CSRStorage(fields=[
+            CSRField("swap_iq", size=4, offset=0, reset=0xF),
+        ])
+
+        self.rx_status0 = CSRStatus(fields=[
+            CSRField("jesd_rx_sysref_realign_count", size=4, offset=0, reset=0),
+        ])
+
+        self.tx_ctrl = CSRStorage(fields=[
+            CSRField("tiafe_tx_sync_reset", size=1, offset=0, reset=1),
+            CSRField("tx_clr_sysref_realign_count", size=1, offset=1, reset=0),
+
+        ])
+
+        self.tx_cfg0 = CSRStorage(fields=[
+            CSRField("tiafe_cfg_tx_lane_enabled", size=4, offset=0, reset=0x0),
+            CSRField("tiafe_cfg_tx_lane_polarity", size=4, offset=4, reset=0),
+        ])
+
+        self.tx_cfg1 = CSRStorage(fields=[
+            CSRField("tiafe_cfg_tx_lane_map", size=16, offset=0, reset=0),
+        ])
+
+        self.tx_cfg3 = CSRStorage(fields=[
+            CSRField("swap_iq", size=4, offset=0, reset=0xF),
+        ])
+
+        self.tx_status0 = CSRStatus(fields=[
+            CSRField("jesd_tx_sysref_realign_count", size=4, offset=0, reset=0),
+        ])
+
+        self.ch_en = CSRStorage(2, reset=3,
+                                description="01 - Channel A enabled, 10 - Channel B enabled, 11 - Channels A and B enabled"
+                                )
+        self.smpl_width = CSRStorage(2, reset=2,
+                                     description="10 - 12bit, 01 - Reserved, 00 - 16bit"
+                                     )
+        self.pkt_size = CSRStorage(16, reset=253,
+                                   description="Packet Size in bytes, "
+                                   )
+
+        self.core_status0 = CSRStatus(fields=[
+            CSRField("xcvr_plls_locked", size=1, offset=0, reset=0),
+            CSRField("rx_all_lanes_locked", size=1, offset=1, reset=0),
+        ])
+
+    def _add_platform_sources(self):
+        platform = self.platform
+
+        for source in [
+            "./gateware/AFE79xx/afe79xx_jesd_ip_top.v",
+            "./gateware/AFE79xx/afe79xx_ti_ip_top.v",
+            "./gateware/AFE79xx/afe79xx_xcvr_top.v",
+            "./gateware/AFE79xx/afe79xx_xcvr_wrapper.sv",
+            "./gateware/AFE79xx/TI_IP_core_66b64/TI_204c_IP_6664.svp",
+        ]:
+            platform.add_source(source)
+
+        ip_path = os.path.abspath(
+            "./gateware/AFE79xx/ip/gth_uscale_64b66b_xcvr_xcau15p/"
+            "gth_uscale_64b66b_xcvr_xcau15p.xci"
+        )
+
+        platform.toolchain.project_commands += [
+            f"import_ip {ip_path}",
+            "upgrade_ip [get_ips gth_uscale_64b66b_xcvr_xcau15p]",
+            "synth_ip [get_ips gth_uscale_64b66b_xcvr_xcau15p] -force",
+            "set hipersdr_44xx_defines {{GT_XCVR_NAME=gth_uscale_64b66b_xcvr_xcau15p}}",
+            "set_property verilog_define $hipersdr_44xx_defines [get_filesets sources_1]",
+            "get_ips",
+        ]
+
+        #platform.add_source("./gateware/AFE79xx/afe79xx_jesd_ip_top.v")
+        #platform.add_source("./gateware/AFE79xx/afe79xx_ti_ip_top.v")
+        #platform.add_source("./gateware/AFE79xx/afe79xx_xcvr_top.v")
+        #platform.add_source("./gateware/AFE79xx/afe79xx_xcvr_wrapper.sv")
+        #platform.add_source("./gateware/AFE79xx/TI_IP_core_66b64/TI_204c_IP_6664.svp")
+#
+        ##platform.add_ip("./gateware/afe79xx/ip/gth_uscale_64b66b_xcvr_xcau15p/gth_uscale_64b66b_xcvr_xcau15p.xci")
+        ##platform.toolchain.project_commands.append("source " + os.path.abspath("./gateware/afe79xx/ip/gth_uscale_64b66b_xcvr_xcau15p/gth_uscale_64b66b_xcvr_xcau15p.tcl"))
+        ##platform.toolchain.project_commands.append("synth_ip [get_ips gth_uscale_64b66b_xcvr_xcau15p] -force")
+#
+        #platform.toolchain.project_commands.append("import_ip " + os.path.abspath("./gateware/AFE79xx/ip/gth_uscale_64b66b_xcvr_xcau15p/gth_uscale_64b66b_xcvr_xcau15p.xci"))
+        #platform.toolchain.project_commands.append("upgrade_ip [get_ips gth_uscale_64b66b_xcvr_xcau15p]")
+        #platform.toolchain.project_commands.append("synth_ip [get_ips gth_uscale_64b66b_xcvr_xcau15p] -force")
+        #platform.toolchain.project_commands.append("set hipersdr_44xx_defines {{GT_XCVR_NAME=gth_uscale_64b66b_xcvr_xcau15p}}")
+        #platform.toolchain.project_commands.append("set_property verilog_define $hipersdr_44xx_defines [get_filesets sources_1]")
+        #platform.toolchain.project_commands.append("get_ips")
+
+    def _add_timing_constraints(self):
+        timings_sdc_filename = "afe79xx_timing.xdc"
+
+        with open(timings_sdc_filename, "w") as f:
+            f.write("# FPGA_GT_AFEREF 245.76Mhz\n")
+            f.write("create_clock -period 4.069 -name fpga_gt_aferef_clk "
+                    "[get_ports afe79xx_serdes_x4_fpga_gt_aferef_p]\n\n")
+
+            f.write("# FPGA_SYSREF 3.84Mhz\n")
+            f.write("create_clock -period 260.416 -name fpga_sysref_clk "
+                    "[get_ports FPGA_SYSREF_p]\n\n")
+
+            f.write("set_clock_groups -name afe_async2 -asynchronous "
+                    "-group [get_clocks xcvr_top_inst_n_0]\n\n")
+
+            f.write("set_clock_groups -name afe_async3 -asynchronous "
+                    "-group [get_clocks xcvr_top_inst_n_1]\n\n")
+
+        self.platform.add_source(timings_sdc_filename)

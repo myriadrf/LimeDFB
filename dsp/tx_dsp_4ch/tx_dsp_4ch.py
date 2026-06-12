@@ -209,6 +209,12 @@ class TxDsp1Ch(LiteXModule):
         self.monq = Signal(16)
 
         # ---------------------------------------------------------------------
+        # DPD control signals
+        # ---------------------------------------------------------------------
+        self.adpd_ctrl_reg = Signal(16)
+        self.adpd_data_reg = Signal(16)
+
+        # ---------------------------------------------------------------------
         # VHDL instance
         # ---------------------------------------------------------------------
         self.tx_dsp = Instance("tx_dsp",
@@ -247,6 +253,10 @@ class TxDsp1Ch(LiteXModule):
             # Monitoring path capture
             i_moni    = self.moni,
             i_monq    = self.monq,
+
+            # DPD control signals
+            o_adpd_ctrl_reg = self.adpd_ctrl_reg,
+            o_adpd_data_reg = self.adpd_data_reg
         )
 
         self.tx_dsp_conv = add_vhd2v_converter(self.platform,
@@ -265,8 +275,6 @@ class TxDsp1Ch(LiteXModule):
                 "gateware/LimeDFB/dsp/DPD/src/cfr_nr/nr_mem_package.vhd",
                 "gateware/LimeDFB/dsp/DPD/src/cfr_nr/nr_sqroot.vhd",
                 "gateware/LimeDFB/dsp/DPD/src/adpd/iqim_gain_corr.vhd",
-                "gateware/LimeDFB/dsp/DPD/src/adpd/QADPD.vhd",
-                "gateware/LimeDFB/dsp/DPD/src/adpd/adder.vhd",
                 "gateware/LimeDFB/dsp/DPD/src/spi/mcfg32wm_fsm.vhd",
                 "gateware/LimeDFB/dsp/DPD/src/spi/mcfg64wm_fsm.vhd",
                 "gateware/LimeDFB/dsp/DPD/src/spi/mcfg_components.vhd",

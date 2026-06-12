@@ -39,7 +39,11 @@ entity tx_dsp is
     mem_doutb  : out std_logic_vector(127 downto 0);
 
     -- monitoring path capture
-    moni, monq : in  std_logic_vector(15 downto 0)
+    moni, monq : in  std_logic_vector(15 downto 0);
+
+    adpd_ctrl_reg     : out STD_LOGIC_VECTOR(15 downto 0);
+    adpd_data_reg     : out STD_LOGIC_VECTOR(15 downto 0)
+
   );
 end entity;
 
@@ -240,8 +244,8 @@ architecture tx_dsparch of tx_dsp is
   signal xpi, xpq : std_logic_vector(15 downto 0);
   signal ypi, ypq : std_logic_vector(15 downto 0);
 
-  signal adpd_ctrl_reg : STD_LOGIC_VECTOR(15 downto 0);
-  signal adpd_data_reg : STD_LOGIC_VECTOR(15 downto 0);
+  --signal adpd_ctrl_reg : STD_LOGIC_VECTOR(15 downto 0);
+  --signal adpd_data_reg : STD_LOGIC_VECTOR(15 downto 0);
 
   signal cfg_sdout       : std_logic;
   signal mem_start_write : std_logic;
