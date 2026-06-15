@@ -261,10 +261,14 @@ begin
           res2(i)(j) <= signed(b(i)(j)) * signed(xQep(i)(j));
           res3(i)(j) <= signed(a(i)(j)) * signed(xQep(i)(j));
           res4(i)(j) <= signed(b(i)(j)) * signed(xIep(i)(j));
-          res1_s(i)(j) <= STD_LOGIC_VECTOR(res1(i)(j)(2 * mul_n - 6 downto 0 ));
-          res2_s(i)(j) <= STD_LOGIC_VECTOR(res2(i)(j)(2 * mul_n - 6 downto 0 ));
-          res3_s(i)(j) <= STD_LOGIC_VECTOR(res3(i)(j)(2 * mul_n - 6 downto 0 ));
-          res4_s(i)(j) <= STD_LOGIC_VECTOR(res4(i)(j)(2 * mul_n - 6 downto 0 )); 
+          --res1_s(i)(j) <= STD_LOGIC_VECTOR(res1(i)(j)(2 * mul_n - 6 downto 0 ));
+          --res2_s(i)(j) <= STD_LOGIC_VECTOR(res2(i)(j)(2 * mul_n - 6 downto 0 ));
+          --res3_s(i)(j) <= STD_LOGIC_VECTOR(res3(i)(j)(2 * mul_n - 6 downto 0 ));
+          --res4_s(i)(j) <= STD_LOGIC_VECTOR(res4(i)(j)(2 * mul_n - 6 downto 0 )); 
+          res1_s(i)(j) <= STD_LOGIC_VECTOR(res1(i)(j)(2 * mul_n - 1 downto mul_n - 13 ));
+          res2_s(i)(j) <= STD_LOGIC_VECTOR(res2(i)(j)(2 * mul_n - 1 downto mul_n - 13 ));
+          res3_s(i)(j) <= STD_LOGIC_VECTOR(res3(i)(j)(2 * mul_n - 1 downto mul_n - 13 ));
+          res4_s(i)(j) <= STD_LOGIC_VECTOR(res4(i)(j)(2 * mul_n - 1 downto mul_n - 13 ));
         end if;
       end process;
 
@@ -325,10 +329,15 @@ begin
           res6(i)(j) <= signed(d(i)(j)) * signed(xQep(i)(j));
           res7(i)(j) <= signed(d(i)(j)) * signed(xIep(i)(j));
           res8(i)(j) <= signed(c(i)(j)) * signed(xQep(i)(j));          
-          res5_s(i)(j) <= STD_LOGIC_VECTOR(res5(i)(j)(2 * mul_n - 6 downto 0)); 
-          res6_s(i)(j) <= STD_LOGIC_VECTOR(res6(i)(j)(2 * mul_n - 6 downto 0));
-          res7_s(i)(j) <= STD_LOGIC_VECTOR(res7(i)(j)(2 * mul_n - 6 downto 0));
-          res8_s(i)(j) <= STD_LOGIC_VECTOR(res8(i)(j)(2 * mul_n - 6 downto 0));
+          --res5_s(i)(j) <= STD_LOGIC_VECTOR(res5(i)(j)(2 * mul_n - 6 downto 0)); 
+          --res6_s(i)(j) <= STD_LOGIC_VECTOR(res6(i)(j)(2 * mul_n - 6 downto 0));
+          --res7_s(i)(j) <= STD_LOGIC_VECTOR(res7(i)(j)(2 * mul_n - 6 downto 0));
+          --res8_s(i)(j) <= STD_LOGIC_VECTOR(res8(i)(j)(2 * mul_n - 6 downto 0));
+          res5_s(i)(j) <= STD_LOGIC_VECTOR(res5(i)(j)(2 * mul_n - 1 downto mul_n - 13)); 
+          res6_s(i)(j) <= STD_LOGIC_VECTOR(res6(i)(j)(2 * mul_n - 1 downto mul_n - 13));
+          res7_s(i)(j) <= STD_LOGIC_VECTOR(res7(i)(j)(2 * mul_n - 1 downto mul_n - 13));
+          res8_s(i)(j) <= STD_LOGIC_VECTOR(res8(i)(j)(2 * mul_n - 1 downto mul_n - 13));
+       
         end if;
       end process;
 
