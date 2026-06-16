@@ -77,14 +77,15 @@ class _InterpolatorStage(LiteXModule):
 
 
 class Interpolate4ch(LiteXModule):
-    def __init__(self, platform, clk_domain="sys"):
+    def __init__(self, platform, clk_domain="sys", num_stages=4):
+        assert num_stages in [2, 3, 4]
         # External: 8x int16 packed => 128-bit (Q1.15)
         self.sink   = AXIStreamInterface(128, clock_domain=clk_domain)
         self.source = AXIStreamInterface(128, clock_domain=clk_domain)
 
         self.aresetn = Signal()
 
-        self.stage_count = CSRStorage(3, reset=0, description="Number of active interpolator stages (0..4).")
+        self.stage_count = CSRStorage(3, reset=0, description=f"Number of active interpolator stages (0..{num_stages}).")
 
         # Keep register space compatibility
         self.blank0 = CSRStorage(1, reset=0, description="Blank")
@@ -104,11 +105,11 @@ class Interpolate4ch(LiteXModule):
 
         # Internal 192-bit boundaries
         self.interpolator_stages = []
-        self.boundaries = [AXIStreamInterface(192, clock_domain=clk_domain) for _ in range(5)]
+        self.boundaries = [AXIStreamInterface(192, clock_domain=clk_domain) for _ in range(num_stages + 1)]
         self.mux_outs   = []
 
-        # Build 4 stages
-        for i in range(4):
+        # Build selected number of stages
+        for i in range(num_stages):
             st = _InterpolatorStage(platform, clk_domain=clk_domain, instance_name=f"fir_interp_{i}")
             self.interpolator_stages.append(st)
             setattr(self.submodules, f"interpolator_stage_{i}", st)
@@ -143,11 +144,11 @@ class Interpolate4ch(LiteXModule):
         self.stage_count_sync = Signal(3)
         self.specials += MultiReg(self.stage_count.storage, self.stage_count_sync, clk_domain, 2, 0)
 
-        stage_en = [Signal() for _ in range(4)]
-        for i in range(4):
+        stage_en = [Signal() for _ in range(num_stages)]
+        for i in range(num_stages):
             self.comb += stage_en[i].eq(self.stage_count_sync > i)
 
-        for i in range(4):
+        for i in range(num_stages):
             upstream = self.boundaries[i]
             st       = self.interpolator_stages[i]
 
@@ -197,7 +198,7 @@ class Interpolate4ch(LiteXModule):
         # Assumes payload is LSB-aligned: lane24[0:19]. If your IP MSB-aligns
         # the payload, adjust the slice accordingly.
         # ---------------------------------------------------------------------
-        out192 = self.boundaries[4]
+        out192 = self.boundaries[num_stages]
         self.comb += [
             self.source.valid.eq(out192.valid),
             out192.ready.eq(self.source.ready),

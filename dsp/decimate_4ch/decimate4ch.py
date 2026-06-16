@@ -7,6 +7,8 @@ from litex.soc.interconnect.csr import CSRStorage
 from litex.soc.interconnect.axi import AXIStreamInterface
 from litex.soc.interconnect import stream
 
+from migen.genlib.cdc import MultiReg
+
 
 class AXIStreamRegisterSlice(LiteXModule):
     """
@@ -89,12 +91,14 @@ class _DecimatorStage(LiteXModule):
 
 
 class Decimate4ch(LiteXModule):
-    def __init__(self, platform, clk_domain="sys"):
+    def __init__(self, platform, clk_domain="sys", num_stages=4):
+        assert num_stages in [2, 3, 4]
+
         self.sink = AXIStreamInterface(128, clock_domain=clk_domain)
         self.source = AXIStreamInterface(128, clock_domain=clk_domain)
         self.aresetn = Signal()
         # Stage count config
-        self.stage_count = CSRStorage(3, reset=0, description="Number of active decimator stages (0..4).")
+        self.stage_count = CSRStorage(3, reset=0, description=f"Number of active decimator stages (0..{num_stages}).")
 
         # Dumb workaround to have same register space as previuos implementation
         self.blank0 = CSRStorage(1, reset=0, description="Blank")
@@ -111,11 +115,11 @@ class Decimate4ch(LiteXModule):
         # Expose Stages and Boundaries as Class Attributes for Debugging
         # ---------------------------------------------------------------------
         self.decimator_stages = []
-        self.boundaries = [AXIStreamInterface(128, clock_domain=clk_domain) for _ in range(5)]
+        self.boundaries = [AXIStreamInterface(128, clock_domain=clk_domain) for _ in range(num_stages+1)]
         self.mux_outs = [] # To tap into the combinatorial output of each bypass mux
 
-        # Build 4 stages
-        for i in range(4):
+        # Build selected number of stages
+        for i in range(num_stages):
             st = _DecimatorStage(platform, clk_domain=clk_domain, instance_name=f"fir{i}")
             self.decimator_stages.append(st)
             # Use setattr to give the submodule a precise name in the generated Verilog
@@ -132,12 +136,15 @@ class Decimate4ch(LiteXModule):
             self.sink.ready.eq(self.boundaries[0].ready),
         ]
 
-        stage_en = [Signal() for _ in range(4)]
-        for i in range(4):
-            self.comb += stage_en[i].eq(self.stage_count.storage > i)
+        self.stage_count_sync = Signal(3)
+        self.specials += MultiReg(self.stage_count.storage,self.stage_count_sync,clk_domain,2,0)
+
+        stage_en = [Signal() for _ in range(num_stages)]
+        for i in range(num_stages):
+            self.comb += stage_en[i].eq(self.stage_count_sync > i)
 
         # Wire each stage with bypass mux and pipeline register slice
-        for i in range(4):
+        for i in range(num_stages):
             upstream = self.boundaries[i]
             st = self.decimator_stages[i]
 
@@ -186,7 +193,7 @@ class Decimate4ch(LiteXModule):
 
         # Final pipelined boundary drives the top-level source
         self.comb += [
-            self.source.valid.eq(self.boundaries[4].valid),
-            self.source.data.eq(self.boundaries[4].data),
-            self.boundaries[4].ready.eq(self.source.ready),
+            self.source.valid.eq(self.boundaries[num_stages].valid),
+            self.source.data.eq(self.boundaries[num_stages].data),
+            self.boundaries[num_stages].ready.eq(self.source.ready),
         ]
