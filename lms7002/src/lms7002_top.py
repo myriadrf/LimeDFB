@@ -28,7 +28,7 @@ from gateware.LimeDFB.lms7002.src.lms7002_clk   import LMS7002CLK
 # LMS7002 Top --------------------------------------------------------------------------------------
 
 class LMS7002Top(LiteXModule):
-    def __init__(self, platform, vendor, pads=None,
+    def __init__(self, platform, vendor, family, pads=None,
         fpgacfg_manager      = None,
         diq_width            = 12,
         invert_input_clock   = False,
@@ -36,7 +36,6 @@ class LMS7002Top(LiteXModule):
         s_axis_tx_fifo_words = 8,
         m_clk_domain         = "lms_rx",
         m_axis_rx_fifo_words = 16,
-        with_max10_pll       = False,
         one_chnl             = False,
         ):
 
@@ -130,7 +129,7 @@ class LMS7002Top(LiteXModule):
 
         # Clocks.
         # -------
-        self.lms7002_clk = LMS7002CLK(platform, vendor, pads, with_max10_pll=with_max10_pll)
+        self.lms7002_clk = LMS7002CLK(platform, vendor, family, pads)
         self.comb += [
             self.cd_lms_tx.clk.eq(self.lms7002_clk.tx_clk),
             self.cd_lms_rx.clk.eq(self.lms7002_clk.rx_clk),
