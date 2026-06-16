@@ -383,35 +383,35 @@ begin
   --xi5 <= yi4(17 downto 4);
   --xq5 <= yq4(17 downto 4);
 
-  --process (clk2) is
-  --begin
-  --  if clk2'event and clk2 = '1' then
-  --    case sel_buffer_source is
-  --      when "00" => -- 0: CFR       
-  --        xpi <= xi1;
-  --        xpq <= xq1;
-  --        ypi <= yi1;
-  --        ypq <= yq1;
-  --      when "01" => -- 1: FIR       
-  --        xpi <= xi3;
-  --        xpq <= xq3;
-  --        ypi <= yi3(17 downto 2);
-  --        ypq <= yq3(17 downto 2);
-  --      when "10" => -- 2: interpolator       
-  --        xpi <= xi4(17 downto 2);
-  --        xpq <= xq4(17 downto 2);
-  --        ypi <= yi4(17 downto 2);
-  --        ypq <= yq4(17 downto 2);
-  --      when others => -- 3: DPD
-  --        xpi <= yi4(17 downto 2);
-  --        xpq <= yq4(17 downto 2);
-  --        ypi <= yi5(17 downto 2);
-  --        ypq <= yq5(17 downto 2);
-  --    end case;
+  process (clk2) is
+  begin
+    if clk2'event and clk2 = '1' then
+      case sel_buffer_source is
+        when "00" => -- 0: CFR       
+          xpi <= xi1;
+          xpq <= xq1;
+          ypi <= yi1;
+          ypq <= yq1;
+        when "01" => -- 1: FIR       
+          xpi <= xi3;
+          xpq <= xq3;
+          ypi <= yi3(17 downto 2);
+          ypq <= yq3(17 downto 2);
+        when "10" => -- 2: interpolator       
+          xpi <= xi4(17 downto 2);
+          xpq <= xq4(17 downto 2);
+          ypi <= yi4(17 downto 2);
+          ypq <= yq4(17 downto 2);
+        when others => -- 3: DPD
+          xpi <= yi4(17 downto 2);
+          xpq <= yq4(17 downto 2);
+          ypi <= yi5(17 downto 2);
+          ypq <= yq5(17 downto 2);
+      end case;
       
       
-  --  end if;
-  --end process;
+    end if;
+  end process;
 
   --qadpd_i: QADPD
   --  generic map (
@@ -438,29 +438,29 @@ begin
   yi <= yi3(17 downto 2);
   yq <= yq3(17 downto 2);
 
-  --bram_ctrl: bram_write
-  --  generic map (
-  --    DATA_WIDTH => 128, -- Data bus width
-  --    ADDR_WIDTH => 15 -- Address bus width (for 1024 locations)
-  --  )
-  --  port map (
-  --    clk         => clk2,            -- 491.52 MHz
-  --    reset_n     => reset_n,
-  --    start_write => mem_start_write, -- start active high
-  --    full        => mem_full,        --active high
-  --    -- data ports
-  --    xpi         => xpi,
-  --    xpq         => xpq,
-  --    ypi         => ypi,
-  --    ypq         => ypq,
-  --    xi          => moni,
-  --    xq          => monq,
-  --    -- memory control ports
-  --    web         => mem_web,
-  --    enb         => mem_enb,
-  --    addrb       => mem_addrb,
-  --    doutb       => mem_doutb
-  --  );
+  bram_ctrl: bram_write
+    generic map (
+      DATA_WIDTH => 128, -- Data bus width
+      ADDR_WIDTH => 15 -- Address bus width (for 1024 locations)
+    )
+    port map (
+      clk         => clk2,            -- 491.52 MHz
+      reset_n     => reset_n,
+      start_write => mem_start_write, -- start active high
+      full        => mem_full,        --active high
+      -- data ports
+      xpi         => xpi,
+      xpq         => xpq,
+      ypi         => ypi,
+      ypq         => ypq,
+      xi          => moni,
+      xq          => monq,
+      -- memory control ports
+      web         => mem_web,
+      enb         => mem_enb,
+      addrb       => mem_addrb,
+      doutb       => mem_doutb
+    );
 
 end architecture;
 

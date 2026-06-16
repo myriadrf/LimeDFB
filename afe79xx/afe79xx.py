@@ -408,7 +408,7 @@ class afe79xx(LiteXModule):
             ]
 
             from gateware.LimeDFB.dsp.decimate_4ch.decimate4ch import Decimate4ch
-            self.decimate = Decimate4ch(platform, clk_domain=afe_sys_2x_cd)
+            self.decimate = Decimate4ch(platform, clk_domain=afe_sys_2x_cd, num_stages=3)
 
             # rx_conv -> decimate
             self.comb += [
@@ -461,6 +461,18 @@ class afe79xx(LiteXModule):
                 self.sink.ready.eq(self.sink_cdc.sink.ready),
             ]
 
+            from gateware.LimeDFB.dsp.interpolate_4ch.interpolate_4ch import Interpolate4ch
+            self.interpolate = Interpolate4ch(platform, clk_domain=afe_sys_2x_cd, num_stages=3)
+
+            self.Resampler_max_value = CSRStatus(size=4, description="Maximum divider value for resampling")
+            # Temp workaround begin
+            #self.comb += self.Resampler_max_value.status.eq(resampling_stages)
+            if resampling_stages != 0:
+                raise ValueError(
+                    f"resampling_stages must be 0 for this xilinx int/dec configuration (got {resampling_stages})"
+                )
+            self.comb += self.Resampler_max_value.status.eq(4)  # Temp workaround end
+
             from gateware.LimeDFB.dsp.tx_dsp_4ch.tx_dsp_4ch import TxDsp4Ch
             self.tx_dsp = tx_dsp = TxDsp4Ch(platform, sys_clk_freq=sys_clk_freq, clk1_domain=afe_sys_cd, clk2_domain=afe_sys_2x_cd)
 
@@ -490,8 +502,7 @@ class afe79xx(LiteXModule):
             ]
 
 
-            from gateware.LimeDFB.dsp.interpolate_4ch.interpolate_4ch import Interpolate4ch
-            self.interpolate = Interpolate4ch(platform, clk_domain=afe_sys_2x_cd)
+
 
             # dsp_cdc -> interpolate
             self.comb += [
@@ -500,16 +511,6 @@ class afe79xx(LiteXModule):
                 self.interpolate.sink.valid.eq(self.dsp_cdc.source.valid),
                 self.dsp_cdc.source.ready.eq(self.interpolate.sink.ready),
             ]
-
-
-            self.Resampler_max_value = CSRStatus(size=4, description="Maximum divider value for resampling")
-            # Temp workaround begin
-            #self.comb += self.Resampler_max_value.status.eq(resampling_stages)
-            if resampling_stages != 0:
-                raise ValueError(
-                    f"resampling_stages must be 0 for this xilinx int/dec configuration (got {resampling_stages})"
-                )
-            self.comb += self.Resampler_max_value.status.eq(4)  # Temp workaround end
 
             # ------------------------------------------------------------
             # QADPD on TX Channel A only, after interpolate
