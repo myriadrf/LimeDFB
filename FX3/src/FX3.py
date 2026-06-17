@@ -1,3 +1,4 @@
+from litex.soc.interconnect.axi import AXIStreamInterface
 from litex.soc.interconnect.stream import SyncFIFO, Endpoint
 from migen import *
 from litex.gen import *
@@ -19,8 +20,6 @@ def fifo_words_to_nbits(n_words: int, add_msb: bool) -> int:
 # FX3 ----------------------------------------------------------------------------------------------
 # This module assumes that sys clk is actually FX3_PCLK. If that is not the case, please use a ClockDomainsRenamer and
 # other appropriate CDC measures.
-
-# TODO: Add CSR's or some other method for interacting with control FIFOs. Currently only one port of the fifos is being used.
 
 class FX3(LiteXModule):
     def __init__(self, platform, pads, vendor="altera",
@@ -53,9 +52,9 @@ class FX3(LiteXModule):
         self.data_sink_clr    = Signal()
         self.ctrl_sink_clr    = Signal()
 
-        self.data_sink = Endpoint([("data", EP81_wwidth)])
-        self.data_source = Endpoint([("data", EP01_0_rwidth)])
-        self.data_source_1 = Endpoint([("data", EP01_1_rwidth)])
+        self.data_sink = AXIStreamInterface(EP81_wwidth)
+        self.data_source = AXIStreamInterface(EP01_0_rwidth)
+        self.data_source_1 = AXIStreamInterface(EP01_1_rwidth)
 
         # Control Interface
         self._fifo_wdata = CSRStorage(32, description="FIFO Write Register.")
@@ -131,9 +130,9 @@ class FX3(LiteXModule):
 
         # Connect fifos to sinks/sources
         self.comb += [
-            self.data_sink.connect(self.sink_data_fifo.sink),
-            self.source_data_fifo_0.source.connect(self.data_source),
-            self.source_data_fifo_1.source.connect(self.data_source_1),
+            self.data_sink.connect(self.sink_data_fifo.sink,omit=["keep","id","dest","user"]),
+            self.source_data_fifo_0.source.connect(self.data_source,omit=["keep","id","dest","user"]),
+            self.source_data_fifo_1.source.connect(self.data_source_1,omit=["keep","id","dest","user"]),
         ]
 
         # FIFO clear signals

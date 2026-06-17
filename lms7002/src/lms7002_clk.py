@@ -41,14 +41,16 @@ class LMS7002CLKBase(LiteXModule):
         self.rx_clk         = Signal()
         self.tx_clk         = Signal()
 
-        # mini V1 only
-        self.clk_ena        = Signal(4)
-        self.drct_clk_en    = Signal(4)
-        self.pll_locked     = Signal()
         self.smpl_cmp_en    = Signal()
         self.smpl_cmp_done  = Signal()
         self.smpl_cmp_error = Signal()
         self.smpl_cmp_cnt   = Signal(16)
+
+        # Altera only
+        self.clk_ena        = Signal(4)
+        self.drct_clk_en    = Signal(4)
+        self.pll_locked     = Signal()
+
 
 
 class LMS7002CLK_Lattice(LMS7002CLKBase):
@@ -294,7 +296,7 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
             from gateware.LimeDFB.CycloneIV.CycloneIV_PLL_TOP.src.cycloneIV_pll_top import CycloneIVPLLTop
 
             self.cycloneiv_pll = CycloneIVPLLTop(platform, pads)
-
+            # Config ports
             self.comb += [
                 self.CLK_CTRL.PHCFG_ERR.status.eq       (self.cycloneiv_pll.phcfg_error),
                 self.CLK_CTRL.PHCFG_DONE.status.eq      (self.cycloneiv_pll.phcfg_done),
@@ -338,8 +340,18 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
                 self.cycloneiv_pll.auto_phcfg_smpls.eq  (self.CLK_CTRL.Auto_PHcfg_smpls.storage),
                 self.cycloneiv_pll.auto_phcfg_step.eq   (self.CLK_CTRL.Auto_PHcfg_step.storage), # unused
             ]
-
+            # Other ports
             self.comb += [
+                # smpl_cmp signals
+                self.smpl_cmp_en.eq(self.cycloneiv_pll.smpl_cmp_cnt),
+                self.cycloneiv_pll.smpl_cmp_done.eq(self.smpl_cmp_done),
+                self.cycloneiv_pll.smpl_cmp_error.eq(self.smpl_cmp_error),
+                self.smpl_cmp_cnt.eq(self.cycloneiv_pll.smpl_cmp_cnt),
+                # others
+                self.cycloneiv_pll.clk_ena.eq(self.clk_ena),
+                self.cycloneiv_pll.drct_clk_en.eq(self.drct_clk_en),
+                self.pll_locked.eq(self.cycloneiv_pll.pll_lock),
+                # Clocks
                 self.tx_clk.eq(self.cycloneiv_pll.tx_clk),
                 self.rx_clk.eq(self.cycloneiv_pll.rx_clk),
             #     pads assigned within cycloneiv_pll
