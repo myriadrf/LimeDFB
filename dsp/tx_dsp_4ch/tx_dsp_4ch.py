@@ -230,7 +230,7 @@ class TxDsp4Ch(LiteXModule):
                  cfr1cfg_start_addr=128,
                  fir0cfg_start_addr=192,
                  fir1cfg_start_addr=256,
-                 instance_name="tx_dsp_4ch_i"):
+                 ):
 
         self.platform = platform
 
@@ -242,21 +242,15 @@ class TxDsp4Ch(LiteXModule):
         # ---------------------------------------------------------------------
         self.reset_n = Signal(reset=1)
 
+        self.adpd_ctrl_reg = Signal(16)
+        self.adpd_data_reg = Signal(16)
+
         # SPI interface
         self.sdin  = Signal()
         self.sclk  = Signal()
         self.sen   = Signal()
         self.sdout = Signal()
 
-        # BRAM control interface from TxDsp1Ch
-        self.mem_web   = Signal()
-        self.mem_enb   = Signal()
-        self.mem_addrb = Signal(15)
-        self.mem_doutb = Signal(128)
-
-        # Monitoring path inputs to TxDsp1Ch
-        self.moni = Signal(16)
-        self.monq = Signal(16)
 
         # Board SPI (used in DPD)
         # SPI master used to configure tx_dsp over its internal SPI port.
@@ -286,45 +280,43 @@ class TxDsp4Ch(LiteXModule):
         self.txdsp1ch = TxDsp1Ch(
             platform,
             clk1_domain=clk1_domain,
-            clk2_domain=clk2_domain,
             txchaincfg_start_addr=txchaincfg_start_addr,
             cfr0cfg_start_addr=cfr0cfg_start_addr,
             cfr1cfg_start_addr=cfr1cfg_start_addr,
             fir0cfg_start_addr=fir0cfg_start_addr,
             fir1cfg_start_addr=fir1cfg_start_addr,
-            instance_name=instance_name + "_txdsp1ch"
         )
 
         # ---------------------------------------------------------------------
         # MMAP RAM exposed to CPU
         # ---------------------------------------------------------------------
-
-        self.txdsp_mmap = DspMmap128ToAXILite32(
-            size              = 0x20000,
-            axi_domain        = "sys",
-            dsp_domain        = clk2_domain,
-            dsp_addr_width    = 13,
-
-            # Use 0 if mem_addrb already addresses 128-bit rows.
-            # Use 2 if mem_addrb addresses 32-bit words.
-            # Use 4 if mem_addrb addresses bytes.
-            dsp_addr_shift    = 0,
-
-            # Check VHDL polarity.
-            # If mem_web means "write enable bar", keep True.
-            # If mem_web is active-high write enable, set False.
-            dsp_we_active_low = False,
-        )
-
-        # Expose AXI-Lite bus to SoC.
-        self.mmap = self.txdsp_mmap.bus
-
-        self.comb += [
-            self.txdsp_mmap.dsp_en.eq(self.txdsp1ch.mem_enb),
-            self.txdsp_mmap.dsp_we.eq(self.txdsp1ch.mem_web),
-            self.txdsp_mmap.dsp_addr.eq(self.txdsp1ch.mem_addrb),
-            self.txdsp_mmap.dsp_data.eq(self.txdsp1ch.mem_doutb),
-        ]
+        #
+        #self.txdsp_mmap = DspMmap128ToAXILite32(
+        #    size              = 0x20000,
+        #    axi_domain        = "sys",
+        #    dsp_domain        = clk2_domain,
+        #    dsp_addr_width    = 13,
+#
+        #    # Use 0 if mem_addrb already addresses 128-bit rows.
+        #    # Use 2 if mem_addrb addresses 32-bit words.
+        #    # Use 4 if mem_addrb addresses bytes.
+        #    dsp_addr_shift    = 0,
+#
+        #    # Check VHDL polarity.
+        #    # If mem_web means "write enable bar", keep True.
+        #    # If mem_web is active-high write enable, set False.
+        #    dsp_we_active_low = False,
+        #)
+#
+        ## Expose AXI-Lite bus to SoC.
+        #self.mmap = self.txdsp_mmap.bus
+#
+        #self.comb += [
+        #    self.txdsp_mmap.dsp_en.eq(self.txdsp1ch.mem_enb),
+        #    self.txdsp_mmap.dsp_we.eq(self.txdsp1ch.mem_web),
+        #    self.txdsp_mmap.dsp_addr.eq(self.txdsp1ch.mem_addrb),
+        #    self.txdsp_mmap.dsp_data.eq(self.txdsp1ch.mem_doutb),
+        #]
 
 
         # ---------------------------------------------------------------------
@@ -341,18 +333,13 @@ class TxDsp4Ch(LiteXModule):
             # Reset/control to TxDsp1Ch
             self.txdsp1ch.reset_n.eq(self.reset_n),
 
+            self.adpd_ctrl_reg.eq(self.txdsp1ch.adpd_ctrl_reg),
+            self.adpd_data_reg.eq(self.txdsp1ch.adpd_data_reg),
+
             self.txdsp1ch.sdin.eq(self.sdin),
             self.txdsp1ch.sclk.eq(self.sclk),
             self.txdsp1ch.sen.eq(self.sen),
             self.sdout.eq(self.txdsp1ch.sdout),
-
-            self.mem_web.eq(self.txdsp1ch.mem_web),
-            self.mem_enb.eq(self.txdsp1ch.mem_enb),
-            self.mem_addrb.eq(self.txdsp1ch.mem_addrb),
-            self.mem_doutb.eq(self.txdsp1ch.mem_doutb),
-
-            self.txdsp1ch.moni.eq(self.moni),
-            self.txdsp1ch.monq.eq(self.monq),
 
             # -----------------------------------------------------------------
             # Channel 0 into TxDsp1Ch
@@ -390,8 +377,7 @@ class TxDsp1Ch(LiteXModule):
                  cfr0cfg_start_addr=64,
                  cfr1cfg_start_addr=128,
                  fir0cfg_start_addr=192,
-                 fir1cfg_start_addr=256,
-                 instance_name="tx_dsp_1ch_i"):
+                 fir1cfg_start_addr=256):
 
         self.platform = platform
         # ---------------------------------------------------------------------
@@ -417,24 +403,13 @@ class TxDsp1Ch(LiteXModule):
         self.sdout = Signal()
 
         # ---------------------------------------------------------------------
-        # Control interface to BRAM
-        # ---------------------------------------------------------------------
-        self.mem_web   = Signal()
-        self.mem_enb   = Signal()
-        self.mem_addrb = Signal(15)
-        self.mem_doutb = Signal(128)
-
-        # ---------------------------------------------------------------------
-        # Monitoring path capture inputs
-        # ---------------------------------------------------------------------
-        self.moni = Signal(16)
-        self.monq = Signal(16)
-
-        # ---------------------------------------------------------------------
         # DPD control signals
         # ---------------------------------------------------------------------
         self.adpd_ctrl_reg = Signal(16)
         self.adpd_data_reg = Signal(16)
+
+        self.mem_start_write = Signal()
+        self.mem_full = Signal()
 
         # ---------------------------------------------------------------------
         # VHDL instance
@@ -449,7 +424,6 @@ class TxDsp1Ch(LiteXModule):
 
             # Clocks
             i_clk1    = ClockSignal(clk1_domain),
-            i_clk2    = ClockSignal(clk2_domain),
 
             # Reset
             i_reset_n = self.reset_n,
@@ -466,26 +440,18 @@ class TxDsp1Ch(LiteXModule):
             i_sen     = self.sen,
             o_sdout   = self.sdout,
 
-            # Control interface to BRAM
-            o_mem_web   = self.mem_web,
-            o_mem_enb   = self.mem_enb,
-            o_mem_addrb = self.mem_addrb,
-            o_mem_doutb = self.mem_doutb,
-
-            # Monitoring path capture
-            i_moni    = self.moni,
-            i_monq    = self.monq,
-
             # DPD control signals
             o_adpd_ctrl_reg = self.adpd_ctrl_reg,
-            o_adpd_data_reg = self.adpd_data_reg
+            o_adpd_data_reg = self.adpd_data_reg,
+            o_mem_start_write = self.mem_start_write,
+            i_mem_full = self.mem_full,
         )
 
         self.tx_dsp_conv = add_vhd2v_converter(self.platform,
             instance = self.tx_dsp,
             files    = [
                 "gateware/LimeDFB/dsp/DPD/src/txchain/tx_dsp.vhd",
-                "gateware/LimeDFB/dsp/DPD/src/txchain/bram_write.vhd",
+                #"gateware/LimeDFB/dsp/DPD/src/txchain/bram_write.vhd",
                 "gateware/LimeDFB/dsp/DPD/src/cfr_nr/nr_cfr.vhd",
                 "gateware/LimeDFB/dsp/DPD/src/cfr_nr/nr_division.vhd",
                 "gateware/LimeDFB/dsp/DPD/src/cfr_nr/nr_fehf.vhd",

@@ -536,8 +536,8 @@ class afe79xx(LiteXModule):
 
                 # If QADPD config SPI is unused for now, tie these off.
                 self.qadpd_a.sclk.eq(self.tx_dsp.sclk),
-                self.qadpd_a.spi_ctrl.eq(self.tx_dsp.txdsp1ch.adpd_ctrl_reg),
-                self.qadpd_a.spi_data.eq(self.tx_dsp.txdsp1ch.adpd_data_reg),
+                self.qadpd_a.spi_ctrl.eq(self.tx_dsp.adpd_ctrl_reg),
+                self.qadpd_a.spi_data.eq(self.tx_dsp.adpd_data_reg),
 
                 self.qadpd_a.xpi.eq(self.interpolate.source.data[2:16]),
                 self.qadpd_a.xpq.eq(self.interpolate.source.data[18:32]),
@@ -551,6 +551,46 @@ class afe79xx(LiteXModule):
                 qadpd_a_data[16:32].eq(self.qadpd_a.ypq[2:18]),
             ]
 
+
+            # ------------------------------------------------------------
+            # QADPD Capture
+            # ------------------------------------------------------------
+            from gateware.LimeDFB.dsp.DPD.src.txchain.dpd_capture_buffer import DPDCaptureBuffer
+            self.dpd_capture_buffer = DPDCaptureBuffer(platform, 0x20000, "sys", afe_sys_2x_cd, 128, 13)
+
+
+            # TX Channel A before DPD.
+            # interpolate.source.data[0:16]  = A I before DPD
+            # interpolate.source.data[16:32] = A Q before DPD
+            tx_a_before_dpd = self.interpolate.source.data[0:32]
+
+            # TX Channel A after DPD.
+            # qadpd_a_data[0:16]  = A I after DPD
+            # qadpd_a_data[16:32] = A Q after DPD
+            tx_a_after_dpd = qadpd_a_data
+
+            # RX Channel A from AFE receive path.
+            # rx_conv_ch_mux_data[0:32] is logical Channel A after AFE channel remap.
+            rx_a_from_afe = rx_conv_ch_mux_data[0:32]
+
+
+            self.comb += [
+                self.dpd_capture_buffer.reset_n.eq(~ResetSignal("sys")),
+                self.dpd_capture_buffer.start_write.eq(self.tx_dsp.txdsp1ch.mem_start_write),
+                self.tx_dsp.txdsp1ch.mem_full.eq(self.dpd_capture_buffer.full),
+
+                # x = TX Channel A before DPD
+                self.dpd_capture_buffer.xpi.eq(tx_a_before_dpd[0:16]),
+                self.dpd_capture_buffer.xpq.eq(tx_a_before_dpd[16:32]),
+
+                # y = TX Channel A after DPD
+                self.dpd_capture_buffer.ypi.eq(tx_a_after_dpd[0:16]),
+                self.dpd_capture_buffer.ypq.eq(tx_a_after_dpd[16:32]),
+
+                # xi/xq = RX feedback Channel A from AFE receive
+                self.dpd_capture_buffer.xi.eq(rx_a_from_afe[0:16]),
+                self.dpd_capture_buffer.xq.eq(rx_a_from_afe[16:32]),
+            ]
 
             tx_conv = stream.Converter(nbits_from=128, nbits_to=256)
             tx_conv = ClockDomainsRenamer(afe_sys_2x_cd)(tx_conv)

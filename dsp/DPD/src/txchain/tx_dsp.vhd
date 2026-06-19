@@ -18,7 +18,7 @@ entity tx_dsp is
   );
   port (
     clk1       : in  std_logic; -- 245.76 MHz
-    clk2       : in  std_logic; -- 491.52 MHz 
+    --clk2       : in  std_logic; -- 491.52 MHz 
 
     reset_n    : in  std_logic; -- active 0
 
@@ -33,16 +33,18 @@ entity tx_dsp is
     sdout      : out STD_LOGIC; -- Data out
 
     -- control interface to BRAM
-    mem_web    : out std_logic; -- Write enable
-    mem_enb    : out std_logic; -- Memory enable
-    mem_addrb  : out std_logic_vector(14 downto 0);
-    mem_doutb  : out std_logic_vector(127 downto 0);
+    --mem_web    : out std_logic; -- Write enable
+    --mem_enb    : out std_logic; -- Memory enable
+    --mem_addrb  : out std_logic_vector(14 downto 0);
+    --mem_doutb  : out std_logic_vector(127 downto 0)--;
 
     -- monitoring path capture
-    moni, monq : in  std_logic_vector(15 downto 0);
+    --moni, monq : in  std_logic_vector(15 downto 0);
 
     adpd_ctrl_reg     : out STD_LOGIC_VECTOR(15 downto 0);
-    adpd_data_reg     : out STD_LOGIC_VECTOR(15 downto 0)
+    adpd_data_reg     : out STD_LOGIC_VECTOR(15 downto 0);
+    mem_start_write   : out std_logic;
+    mem_full          : in  std_logic
 
   );
 end entity;
@@ -248,8 +250,8 @@ architecture tx_dsparch of tx_dsp is
   --signal adpd_data_reg : STD_LOGIC_VECTOR(15 downto 0);
 
   signal cfg_sdout       : std_logic;
-  signal mem_start_write : std_logic;
-  signal mem_full        : std_logic;
+  --signal mem_start_write : std_logic;
+  --signal mem_full        : std_logic;
 
   signal sel_buffer_source : std_logic_vector(1 downto 0);
   signal hb1_delay : std_logic;
@@ -383,35 +385,35 @@ begin
   --xi5 <= yi4(17 downto 4);
   --xq5 <= yq4(17 downto 4);
 
-  process (clk2) is
-  begin
-    if clk2'event and clk2 = '1' then
-      case sel_buffer_source is
-        when "00" => -- 0: CFR       
-          xpi <= xi1;
-          xpq <= xq1;
-          ypi <= yi1;
-          ypq <= yq1;
-        when "01" => -- 1: FIR       
-          xpi <= xi3;
-          xpq <= xq3;
-          ypi <= yi3(17 downto 2);
-          ypq <= yq3(17 downto 2);
-        when "10" => -- 2: interpolator       
-          xpi <= xi4(17 downto 2);
-          xpq <= xq4(17 downto 2);
-          ypi <= yi4(17 downto 2);
-          ypq <= yq4(17 downto 2);
-        when others => -- 3: DPD
-          xpi <= yi4(17 downto 2);
-          xpq <= yq4(17 downto 2);
-          ypi <= yi5(17 downto 2);
-          ypq <= yq5(17 downto 2);
-      end case;
-      
-      
-    end if;
-  end process;
+ --process (clk2) is
+ --begin
+ --  if clk2'event and clk2 = '1' then
+ --    case sel_buffer_source is
+ --      when "00" => -- 0: CFR       
+ --        xpi <= xi1;
+ --        xpq <= xq1;
+ --        ypi <= yi1;
+ --        ypq <= yq1;
+ --      when "01" => -- 1: FIR       
+ --        xpi <= xi3;
+ --        xpq <= xq3;
+ --        ypi <= yi3(17 downto 2);
+ --        ypq <= yq3(17 downto 2);
+ --      when "10" => -- 2: interpolator       
+ --        xpi <= xi4(17 downto 2);
+ --        xpq <= xq4(17 downto 2);
+ --        ypi <= yi4(17 downto 2);
+ --        ypq <= yq4(17 downto 2);
+ --      when others => -- 3: DPD
+ --        xpi <= yi4(17 downto 2);
+ --        xpq <= yq4(17 downto 2);
+ --        ypi <= yi5(17 downto 2);
+ --        ypq <= yq5(17 downto 2);
+ --    end case;
+ --    
+ --    
+ --  end if;
+ --end process;
 
   --qadpd_i: QADPD
   --  generic map (
@@ -438,29 +440,29 @@ begin
   yi <= yi3(17 downto 2);
   yq <= yq3(17 downto 2);
 
-  bram_ctrl: bram_write
-    generic map (
-      DATA_WIDTH => 128, -- Data bus width
-      ADDR_WIDTH => 15 -- Address bus width (for 1024 locations)
-    )
-    port map (
-      clk         => clk2,            -- 491.52 MHz
-      reset_n     => reset_n,
-      start_write => mem_start_write, -- start active high
-      full        => mem_full,        --active high
-      -- data ports
-      xpi         => xpi,
-      xpq         => xpq,
-      ypi         => ypi,
-      ypq         => ypq,
-      xi          => moni,
-      xq          => monq,
-      -- memory control ports
-      web         => mem_web,
-      enb         => mem_enb,
-      addrb       => mem_addrb,
-      doutb       => mem_doutb
-    );
+  --bram_ctrl: bram_write
+  --  generic map (
+  --    DATA_WIDTH => 128, -- Data bus width
+  --    ADDR_WIDTH => 15 -- Address bus width (for 1024 locations)
+  --  )
+  --  port map (
+  --    clk         => clk2,            -- 491.52 MHz
+  --    reset_n     => reset_n,
+  --    start_write => mem_start_write, -- start active high
+  --    full        => mem_full,        --active high
+  --    -- data ports
+  --    xpi         => xpi,
+  --    xpq         => xpq,
+  --    ypi         => ypi,
+  --    ypq         => ypq,
+  --    xi          => moni,
+  --    xq          => monq,
+  --    -- memory control ports
+  --    web         => mem_web,
+  --    enb         => mem_enb,
+  --    addrb       => mem_addrb,
+  --    doutb       => mem_doutb
+  --  );
 
 end architecture;
 
