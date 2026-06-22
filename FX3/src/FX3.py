@@ -166,20 +166,24 @@ class FX3(LiteXModule):
             p_control_dma_size     = 4096,
             p_data_pct_size        = 4096,
             p_control_pct_size     = 64,
-            p_socket0_wrusedw_size = ep01_0_rdusedw_width,
+            p_socket0_wrusedw_size = ep01_0_rdusedw_width, # data source
             p_socket0_rdusedw_size = ep01_0_rdusedw_width,
-            p_socket1_wrusedw_size = ep0f_rdusedw_width,
+            p_socket1_wrusedw_size = ep0f_rdusedw_width, # control cource
             p_socket1_rdusedw_size = ep0f_rdusedw_width,
-            p_socket2_wrusedw_size = ep81_wrusedw_width,
+            p_socket2_wrusedw_size = ep81_wrusedw_width, # data sink
             p_socket2_rdusedw_size = ep81_wrusedw_width,
-            p_socket3_wrusedw_size = ep8f_wrusedw_width,
+            p_socket3_wrusedw_size = ep8f_wrusedw_width, # control sink
             p_socket3_rdusedw_size = ep8f_wrusedw_width,
+            p_socket0_max_wrwords_int = self.source_data_fifo_0.depth,
+            p_socket1_max_wrwords_int = self.source_ctrl_fifo.depth,
+            p_socket2_max_wrwords_int = self.sink_data_fifo.depth,
+            p_socket3_max_wrwords_int = self.sink_ctrl_fifo.depth,
 
             # Ports
             i_reset_n              = ~ResetSignal("sys"),
             i_clk                  = ClockSignal("sys"),
             o_clk_out              = Open(),
-            i_usb_speed            = self.usb_speed,
+            i_usb_speed            = Constant(1),
             o_slcs                 = pads.ctl0,
             io_fdata               = pads.dq,
             o_faddr                = self._faddr,

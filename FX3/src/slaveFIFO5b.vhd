@@ -18,14 +18,18 @@ entity slaveFIFO5b is
 				control_dma_size		: integer := 1024;							--control endpoint dma size in bytes
 				data_pct_size			: integer := 1024;							--packet size in bytes
 				control_pct_size		: integer := 64;								--packet size in bytes, should be less then max dma size
-				socket0_wrusedw_size : integer := 11;
+				socket0_wrusedw_size    : integer := 11;
 				socket0_rdusedw_size	: integer := 10;
-				socket1_wrusedw_size : integer := 11;
+				socket1_wrusedw_size    : integer := 11;
 				socket1_rdusedw_size	: integer := 10;
-				socket2_wrusedw_size : integer := 11;
+				socket2_wrusedw_size    : integer := 11;
 				socket2_rdusedw_size	: integer := 10;
-				socket3_wrusedw_size : integer := 11;
-				socket3_rdusedw_size	: integer := 10
+				socket3_wrusedw_size    : integer := 11;
+				socket3_rdusedw_size	: integer := 10;
+				socket0_max_wrwords_int : integer;
+				socket1_max_wrwords_int : integer;
+				socket2_max_wrwords_int : integer;
+				socket3_max_wrwords_int : integer
 				);
 	port(
 		reset_n 					: in std_logic;									--input reset active low
@@ -204,7 +208,7 @@ socket_type<="00000000000000000000000000001010";
 
 
 --to determine socket0 watermarks and when socket is ready
-socket0_max_wrwords			<=((socket0_wrusedw_size-1)=>'1', others=>'0');
+socket0_max_wrwords         <= to_unsigned(socket0_max_wrwords_int, socket0_wrusedw_size);
 
 socket0_fifo_reserve 		<= to_unsigned((data_pct_size*8)/data_width,socket0_fifo_reserve'length) when (socket_type(0)='0' and usb_speed='1') else
 										to_unsigned((data_pct_size*8)/data_width/USB2DIV,socket0_fifo_reserve'length) when (socket_type(0)='0' and usb_speed='0') else
@@ -225,7 +229,7 @@ socket0_fifo_rdy				<= '1' when (rd_wr(0)='0' and
 						 				'0';
 
 --to determine socket1 watermarks and when socket is ready
-socket1_max_wrwords			<= ((socket1_wrusedw_size-1)=>'1', others=>'0');
+socket1_max_wrwords         <= to_unsigned(socket1_max_wrwords_int, socket1_wrusedw_size);
 
 socket1_fifo_reserve 		<= to_unsigned((data_pct_size*8)/data_width,socket1_fifo_reserve'length) when (socket_type(1)='0' and usb_speed='1') else
 										to_unsigned((data_pct_size*8)/data_width/USB2DIV,socket1_fifo_reserve'length) when (socket_type(1)='0' and usb_speed='0') else
@@ -246,7 +250,7 @@ socket1_fifo_rdy				<= '1' when (rd_wr(1)='0' and
 										'0';
 
 --to determine socket2 watermarks and when socket is ready
-socket2_max_wrwords			<= ((socket2_wrusedw_size-1)=>'1', others=>'0');
+socket2_max_wrwords         <= to_unsigned(socket2_max_wrwords_int, socket2_wrusedw_size);
 
 socket2_fifo_reserve 		<= to_unsigned((data_pct_size*8)/data_width,socket2_fifo_reserve'length) when (socket_type(2)='0' and usb_speed='1') else
 										to_unsigned((data_pct_size*8)/data_width/USB2DIV,socket2_fifo_reserve'length) when (socket_type(2)='0' and usb_speed='0') else
@@ -263,7 +267,7 @@ socket2_fifo_rdy				<= '1' when (rd_wr(2)='0' and unsigned(socket2_fifo_wrusedw)
 						 				'0';
 
 --to determine socket3 watermarks and when socket is ready
-socket3_max_wrwords			<= ((socket3_wrusedw_size-1)=>'1', others=>'0');
+socket3_max_wrwords         <= to_unsigned(socket3_max_wrwords_int, socket3_wrusedw_size);
 
 socket3_fifo_reserve 		<= to_unsigned((data_pct_size*8)/data_width,socket3_fifo_reserve'length) when (socket_type(3)='0' and usb_speed='1') else
 										to_unsigned((data_pct_size*8)/data_width/USB2DIV,socket3_fifo_reserve'length) when (socket_type(3)='0' and usb_speed='0') else
