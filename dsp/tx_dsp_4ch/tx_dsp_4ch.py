@@ -223,8 +223,7 @@ class TxDsp4Ch(LiteXModule):
     def __init__(self,
                  platform,
                  sys_clk_freq = 300e6,
-                 clk1_domain="sys",
-                 clk2_domain="sys2x",
+                 clk_domain="sys",
                  txchaincfg_start_addr=0,
                  cfr0cfg_start_addr=64,
                  cfr1cfg_start_addr=128,
@@ -234,8 +233,8 @@ class TxDsp4Ch(LiteXModule):
 
         self.platform = platform
 
-        self.sink   = AXIStreamInterface(128, clock_domain=clk1_domain)
-        self.source = AXIStreamInterface(128, clock_domain=clk1_domain)
+        self.sink   = AXIStreamInterface(128, clock_domain=clk_domain)
+        self.source = AXIStreamInterface(128, clock_domain=clk_domain)
 
         # ---------------------------------------------------------------------
         # External reset/control interface
@@ -279,7 +278,7 @@ class TxDsp4Ch(LiteXModule):
 
         self.txdsp1ch = TxDsp1Ch(
             platform,
-            clk1_domain=clk1_domain,
+            clk_domain=clk_domain,
             txchaincfg_start_addr=txchaincfg_start_addr,
             cfr0cfg_start_addr=cfr0cfg_start_addr,
             cfr1cfg_start_addr=cfr1cfg_start_addr,
@@ -371,8 +370,7 @@ class TxDsp1Ch(LiteXModule):
     """
     def __init__(self,
                  platform,
-                 clk1_domain="sys",
-                 clk2_domain="sys2x",
+                 clk_domain="sys",
                  txchaincfg_start_addr=0,
                  cfr0cfg_start_addr=64,
                  cfr1cfg_start_addr=128,
@@ -423,7 +421,7 @@ class TxDsp1Ch(LiteXModule):
             p_FIR1CFG_START_ADDR    = fir1cfg_start_addr,
 
             # Clocks
-            i_clk1    = ClockSignal(clk1_domain),
+            i_clk1    = ClockSignal(clk_domain),
 
             # Reset
             i_reset_n = self.reset_n,

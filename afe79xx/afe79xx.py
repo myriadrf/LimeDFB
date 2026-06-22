@@ -32,6 +32,7 @@ class afe79xx(LiteXModule):
                  sys_clk_freq = 300e6,
                  afe_sys_cd = "fpga_1pps",
                  afe_sys_2x_cd = "fpga_1pps_2x",
+                 afe_dsp_cd = "fpga_1pps_dsp",
                  demux_clk_domain = "sys500",
                  with_debug = False,
                  demux = True,
@@ -449,7 +450,7 @@ class afe79xx(LiteXModule):
             self.sink_cdc = stream.ClockDomainCrossing(
                 layout         =[("data", 128)],
                 cd_from        =demux_clk_domain,
-                cd_to          =afe_sys_cd,
+                cd_to          =afe_dsp_cd,
                 buffered       =True,
                 depth          =32
             )
@@ -474,9 +475,9 @@ class afe79xx(LiteXModule):
             self.comb += self.Resampler_max_value.status.eq(4)  # Temp workaround end
 
             from gateware.LimeDFB.dsp.tx_dsp_4ch.tx_dsp_4ch import TxDsp4Ch
-            self.tx_dsp = tx_dsp = TxDsp4Ch(platform, sys_clk_freq=sys_clk_freq, clk1_domain=afe_sys_cd, clk2_domain=afe_sys_2x_cd)
+            self.tx_dsp = tx_dsp = TxDsp4Ch(platform, sys_clk_freq=sys_clk_freq, clk_domain=afe_dsp_cd)
 
-            self.comb += [self.tx_dsp.reset_n.eq(~ResetSignal("sys")),
+            self.comb += [self.tx_dsp.reset_n.eq(~ResetSignal(afe_dsp_cd)),
                           ]
 
             # sink_cdc -> tx_dsp
@@ -488,7 +489,7 @@ class afe79xx(LiteXModule):
 
             self.dsp_cdc = stream.ClockDomainCrossing(
                 layout         =[("data", 128)],
-                cd_from        =afe_sys_cd,
+                cd_from        =afe_dsp_cd,
                 cd_to          =afe_sys_2x_cd,
                 buffered       =True,
                 depth          =32
