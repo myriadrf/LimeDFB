@@ -214,11 +214,8 @@ class TxDsp4Ch(LiteXModule):
     Only channel 0 is processed by TxDsp1Ch.
     Channels 1..3 are passed through unchanged.
 
-    Important:
-      tx_dsp has no valid/ready or clock-enable input. This wrapper assumes
-      a continuous stream with no meaningful downstream backpressure. If
-      source.ready can stall, tx_dsp cannot be cleanly stopped unless the VHDL
-      block is modified to add a clock-enable/sample-valid port.
+    The VHDL sample pipeline advances only for an AXI-Stream transfer. When
+    either endpoint stalls, all sample-processing stages hold their state.
     """
     def __init__(self,
                  platform,
@@ -329,6 +326,9 @@ class TxDsp4Ch(LiteXModule):
             self.sink.ready.eq(self.source.ready),
             self.source.valid.eq(self.sink.valid),
 
+            # Advance every DSP sample register exactly once per transfer.
+            self.txdsp1ch.en.eq(self.sink.valid & self.source.ready),
+
             # Reset/control to TxDsp1Ch
             self.txdsp1ch.reset_n.eq(self.reset_n),
 
@@ -382,6 +382,7 @@ class TxDsp1Ch(LiteXModule):
         # Reset
         # ---------------------------------------------------------------------
         self.reset_n = Signal(reset=1)  # active-low reset
+        self.en = Signal()
 
         # ---------------------------------------------------------------------
         # Block sample inputs/outputs
@@ -422,6 +423,7 @@ class TxDsp1Ch(LiteXModule):
 
             # Clocks
             i_clk1    = ClockSignal(clk_domain),
+            i_en      = self.en,
 
             # Reset
             i_reset_n = self.reset_n,

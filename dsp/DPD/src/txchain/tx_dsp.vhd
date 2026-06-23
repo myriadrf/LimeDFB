@@ -19,6 +19,7 @@ entity tx_dsp is
   port (
     clk1       : in  std_logic; -- 245.76 MHz
     --clk2       : in  std_logic; -- 491.52 MHz 
+    en         : in std_logic;
 
     reset_n    : in  std_logic; -- active 0
 
@@ -82,6 +83,7 @@ architecture tx_dsparch of tx_dsp is
   component nr_cfr is
     generic (nd : NATURAL := 40);
     port (
+      en          : in  STD_LOGIC; -- Sample pipeline clock enable
       sleep       : in  STD_LOGIC; -- Sleep signal
       clk         : in  STD_LOGIC; -- Clock
       reset       : in  STD_LOGIC; -- Reset
@@ -256,11 +258,16 @@ architecture tx_dsparch of tx_dsp is
   signal sel_buffer_source : std_logic_vector(1 downto 0);
   signal hb1_delay : std_logic;
 
+  signal cfr_sample_sleep : std_logic;
+  signal fir_sample_sleep : std_logic;
+
 begin
 
 
   sdout       <= cfg_sdout or cfr_sdout or fir_sdout;
   mem_reset_n <= reset_n;
+  cfr_sample_sleep <= cfr_sleep or not en;
+  fir_sample_sleep <= fir_sleep or not en;
 
   txchaincfg_i: txchaincfg
     port map (
@@ -299,7 +306,8 @@ begin
     generic map (nd => 40)
     port map (
       -- Clock related inputs
-      sleep       => cfr_sleep,
+      en          => en,
+      sleep       => cfr_sample_sleep,
       clk         => clk1,      -- 245.76MHz
       reset       => reset_n,
       reset_mem_n => mem_reset_n,
@@ -327,7 +335,7 @@ begin
     port map (
       clk     => clk1, -- 245.76 MHz
       reset_n => reset_n,
-      en      => '1',
+      en      => en,
       bypass  => gain_corr_bypass,
       ypi     => xi2,
       ypq     => xq2,
@@ -341,7 +349,7 @@ begin
 
   nr_gfirhf_i: nr_gfirhf
     port map (
-      sleep       => fir_sleep,
+      sleep       => fir_sample_sleep,
       clk         => clk1, -- 245.76 MHz
       reset       => reset_n,
       reset_mem_n => mem_reset_n,
@@ -465,5 +473,3 @@ begin
   --  );
 
 end architecture;
-
-

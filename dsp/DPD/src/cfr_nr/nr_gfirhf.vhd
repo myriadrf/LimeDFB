@@ -140,10 +140,10 @@ BEGIN
 			yi <= (OTHERS => '0');
 			yq <= (OTHERS => '0');
 		ELSIF clk'event AND clk = '1' THEN
-			--IF sleep = '0' THEN
-			yi <= yim;
-			yq <= yqm;
-			--END IF;
+			IF sleep = '0' THEN
+				yi <= yim;
+				yq <= yqm;
+			END IF;
 		END IF;
 	END PROCESS dl;
 END nr_gfirhf_arch;

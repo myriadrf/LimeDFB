@@ -10,8 +10,9 @@ USE ieee.std_logic_arith.ALL;
 ENTITY nr_cfr IS
 	GENERIC (nd : NATURAL := 40);
 	PORT (
-		-- Clock related inputs
-		sleep : IN STD_LOGIC; -- Sleep signal
+			-- Clock related inputs
+			en : IN STD_LOGIC; -- Sample pipeline clock enable
+			sleep : IN STD_LOGIC; -- Sleep signal
 		clk : IN STD_LOGIC; -- Clock
 		reset : IN STD_LOGIC; -- Reset
 		reset_mem_n : IN STD_LOGIC;
@@ -126,7 +127,7 @@ ARCHITECTURE struct OF nr_cfr IS
 	TYPE array2 IS ARRAY (0 TO DELAY) OF STD_LOGIC_VECTOR(17 DOWNTO 0);
 	SIGNAL xi_reg, xq_reg : array2;
 
-	SIGNAL xen1, data_valid : STD_LOGIC;
+	SIGNAL xen1, data_valid, gfir_sleep : STD_LOGIC;
 	--SIGNAL o1, f1 : STD_LOGIC_VECTOR (24 DOWNTO 0);
 	SIGNAL o1, f1 : STD_LOGIC_VECTOR (17 DOWNTO 0);
 
@@ -150,8 +151,9 @@ ARCHITECTURE struct OF nr_cfr IS
 BEGIN
 
 	threshold1 <= "00" & threshold;
-	data_valid <= xen1;
-	xen <= xen1;
+	data_valid <= xen1 AND en;
+	xen <= data_valid;
+	gfir_sleep <= sleep OR NOT en;
 	PROCESS (clk) IS
 	BEGIN
 		IF clk'event AND clk = '1' THEN
@@ -280,7 +282,7 @@ BEGIN
 		END IF;
 	END PROCESS;
 	gfir : nr_gfirhf PORT MAP(
-		sleep => sleep,
+		sleep => gfir_sleep,
 		clk => clk,
 		reset => reset,
 		reset_mem_n => reset_mem_n,

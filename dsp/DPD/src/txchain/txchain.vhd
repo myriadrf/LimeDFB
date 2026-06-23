@@ -76,6 +76,7 @@ architecture txchain_arch of txchain is
   component nr_cfr is
     generic (nd : NATURAL := 40);
     port (
+      en          : in  STD_LOGIC; -- Sample pipeline clock enable
       sleep       : in  STD_LOGIC; -- Sleep signal
       clk         : in  STD_LOGIC; -- Clock
       reset       : in  STD_LOGIC; -- Reset
@@ -293,6 +294,7 @@ begin
     generic map (nd => 40)
     port map (
       -- Clock related inputs
+      en          => '1',
       sleep       => cfr_sleep,
       clk         => clk1,      -- 245.76MHz
       reset       => reset_n,
@@ -456,5 +458,3 @@ begin
     );
 
 end architecture;
-
-
