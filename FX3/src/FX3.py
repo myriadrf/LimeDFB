@@ -1,4 +1,5 @@
 from litex.soc.interconnect.axi import AXIStreamInterface
+from litex.soc.interconnect import stream
 from litex.soc.interconnect.stream import SyncFIFO, Endpoint
 from migen import *
 from litex.gen import *
@@ -38,9 +39,6 @@ class FX3(LiteXModule):
         # FX3 data throughput is bottlenecked by 32 bit interface
         # no need to support other widths for now
         # rely on external modules to adapt the data width, if needed
-        assert EP01_0_rwidth == 32, "EP01_0_rwidth values other than 32 bits are not supported yet"
-        assert EP01_1_rwidth == 32, "EP01_1_rwidth values other than 32 bits are not supported yet"
-        assert EP81_wwidth == 32, "EP81_wwidth values other than 32 bits are not supported yet"
         assert EP0F_rwidth == 32, "EP0F_rwidth values other than 32 bits are not supported yet"
         assert EP8F_wwidth == 32, "EP8F_wwidth values other than 32 bits are not supported yet"
 
@@ -68,11 +66,11 @@ class FX3(LiteXModule):
         ])
 
         #internal variables
-        ep01_0_rdusedw_width = fifo_words_to_nbits(EP01_size//(EP01_0_rwidth//8), add_msb=True)
-        # ep01_1_rdusedw_width = fifo_words_to_nbits(EP01_size//(EP01_1_rwidth//8), add_msb=True)
-        ep81_wrusedw_width   = fifo_words_to_nbits(EP81_size//(EP81_wwidth//8), add_msb=True)
-        ep0f_rdusedw_width   = fifo_words_to_nbits(EP0F_size//(EP0F_rwidth//8), add_msb=True)
-        ep8f_wrusedw_width   = fifo_words_to_nbits(EP8F_size//(EP8F_wwidth//8), add_msb=True)
+        ep01_0_rdusedw_width = fifo_words_to_nbits(EP01_size//4, add_msb=True)
+        # ep01_1_rdusedw_width = fifo_words_to_nbits(EP01_size//4, add_msb=True)
+        ep81_wrusedw_width   = fifo_words_to_nbits(EP81_size//4, add_msb=True)
+        ep0f_rdusedw_width   = fifo_words_to_nbits(EP0F_size//4, add_msb=True)
+        ep8f_wrusedw_width   = fifo_words_to_nbits(EP8F_size//4, add_msb=True)
 
         #internal signals
         self._faddr     = Signal(5)
@@ -89,26 +87,26 @@ class FX3(LiteXModule):
         # # Host -> FPGA data FIFOs
         self.source_data_fifo_0 = ResetInserter()(SyncFIFO(
             layout=[("data", 32)],
-            depth=EP01_size//(EP01_0_rwidth//8),
+            depth=EP01_size//4,
             buffered=True))
         self.source_data_fifo_1 = ResetInserter()(SyncFIFO(
             layout=[("data", 32)],
-            depth=EP01_size//(EP01_1_rwidth//8),
+            depth=EP01_size//4,
             buffered=True))
         # # FPGA -> Host data FIFO
         self.sink_data_fifo = ResetInserter()(SyncFIFO(
             layout=[("data", 32)],
-            depth=EP81_size//(EP81_wwidth//8),
+            depth=EP81_size//4,
             buffered=True))
         # # Host -> FPGA control FIFO
         self.source_ctrl_fifo = ResetInserter()(SyncFIFO(
             layout=[("data", 32)],
-            depth=EP0F_size//(EP0F_rwidth//8),
+            depth=EP0F_size//4,
             buffered=True))
         # # FPGA -> Host control FIFO
         self.sink_ctrl_fifo = ResetInserter()(SyncFIFO(
             layout=[("data", 32)],
-            depth=EP8F_size//(EP8F_wwidth//8),
+            depth=EP8F_size//4,
             buffered=True))
 
         # Host -> FPGA data fifo muxing
@@ -129,11 +127,29 @@ class FX3(LiteXModule):
         ]
 
         # Connect fifos to sinks/sources
-        self.comb += [
-            self.data_sink.connect(self.sink_data_fifo.sink,omit=["keep","id","dest","user"]),
-            self.source_data_fifo_0.source.connect(self.data_source,omit=["keep","id","dest","user"]),
-            self.source_data_fifo_1.source.connect(self.data_source_1,omit=["keep","id","dest","user"]),
-        ]
+        # Source 0
+        if EP01_0_rwidth != 32:
+            self.source_0_conv = stream.Converter(32, EP01_0_rwidth)
+            self.comb += self.source_data_fifo_0.source.connect(self.source_0_conv.sink, omit=["keep", "id", "dest", "user"])
+            self.comb += self.source_0_conv.source.connect(self.data_source, omit=["keep", "id", "dest", "user"])
+        else:
+            self.comb += self.source_data_fifo_0.source.connect(self.data_source, omit=["keep", "id", "dest", "user"])
+
+        # Source 1
+        if EP01_1_rwidth != 32:
+            self.source_1_conv = stream.Converter(32, EP01_1_rwidth)
+            self.comb += self.source_data_fifo_1.source.connect(self.source_1_conv.sink, omit=["keep", "id", "dest", "user"])
+            self.comb += self.source_1_conv.source.connect(self.data_source_1, omit=["keep", "id", "dest", "user"])
+        else:
+            self.comb += self.source_data_fifo_1.source.connect(self.data_source_1, omit=["keep", "id", "dest", "user"])
+
+        # Sink
+        if EP81_wwidth != 32:
+            self.sink_conv = stream.Converter(EP81_wwidth, 32)
+            self.comb += self.data_sink.connect(self.sink_conv.sink, omit=["keep", "id", "dest", "user"])
+            self.comb += self.sink_conv.source.connect(self.sink_data_fifo.sink, omit=["keep", "id", "dest", "user"])
+        else:
+            self.comb += self.data_sink.connect(self.sink_data_fifo.sink, omit=["keep", "id", "dest", "user"])
 
         # FIFO clear signals
         self.comb += [
