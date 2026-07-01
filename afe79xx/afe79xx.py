@@ -472,7 +472,7 @@ class afe79xx(LiteXModule):
                 raise ValueError(
                     f"resampling_stages must be 0 for this xilinx int/dec configuration (got {resampling_stages})"
                 )
-            self.comb += self.Resampler_max_value.status.eq(4)  # Temp workaround end
+            self.comb += self.Resampler_max_value.status.eq(3)  # Temp workaround end
 
             from gateware.LimeDFB.dsp.tx_dsp_4ch.tx_dsp_4ch import TxDsp4Ch
             self.tx_dsp = tx_dsp = TxDsp4Ch(platform, sys_clk_freq=sys_clk_freq, clk_domain=afe_dsp_cd)
