@@ -129,7 +129,8 @@ class FX3(LiteXModule):
         # Connect fifos to sinks/sources
         # Source 0
         if EP01_0_rwidth != 32:
-            self.source_0_conv = stream.Converter(32, EP01_0_rwidth)
+            self.source_0_conv = ResetInserter()(stream.Converter(32, EP01_0_rwidth))
+            self.comb += self.source_0_conv.reset.eq(self.data_source0_clr)
             self.comb += self.source_data_fifo_0.source.connect(self.source_0_conv.sink, omit=["keep", "id", "dest", "user"])
             self.comb += self.source_0_conv.source.connect(self.data_source, omit=["keep", "id", "dest", "user"])
         else:
@@ -137,7 +138,8 @@ class FX3(LiteXModule):
 
         # Source 1
         if EP01_1_rwidth != 32:
-            self.source_1_conv = stream.Converter(32, EP01_1_rwidth)
+            self.source_1_conv = ResetInserter()(stream.Converter(32, EP01_1_rwidth))
+            self.comb += self.source_1_conv.reset.eq(self.data_source1_clr)
             self.comb += self.source_data_fifo_1.source.connect(self.source_1_conv.sink, omit=["keep", "id", "dest", "user"])
             self.comb += self.source_1_conv.source.connect(self.data_source_1, omit=["keep", "id", "dest", "user"])
         else:
@@ -145,7 +147,8 @@ class FX3(LiteXModule):
 
         # Sink
         if EP81_wwidth != 32:
-            self.sink_conv = stream.Converter(EP81_wwidth, 32)
+            self.sink_conv = ResetInserter()(stream.Converter(EP81_wwidth, 32))
+            self.comb += self.sink_conv.reset.eq(self.data_sink_clr)
             self.comb += self.data_sink.connect(self.sink_conv.sink, omit=["keep", "id", "dest", "user"])
             self.comb += self.sink_conv.source.connect(self.sink_data_fifo.sink, omit=["keep", "id", "dest", "user"])
         else:
@@ -157,7 +160,7 @@ class FX3(LiteXModule):
             self.source_data_fifo_1.reset.eq(self.data_source1_clr),
             self.sink_data_fifo.reset.eq(self.data_sink_clr),
             self.sink_ctrl_fifo.reset.eq(self.ctrl_sink_clr | self._fifo_control.fields.reset),
-            self.source_ctrl_fifo.reset.eq(self._fifo_control.fields.reset),
+            self.source_ctrl_fifo.reset.eq(ResetSignal("sys")),
         ]
 
         # Control Interface logic
@@ -214,7 +217,7 @@ class FX3(LiteXModule):
             o_EPSWITCH             = Open(),
 
             # Socket 0 (PC -> FPGA Data)
-            i_socket0_fifo_reset_n = ~ResetSignal("sys"),
+            i_socket0_fifo_reset_n = ~(self.data_source0_clr | self.data_source1_clr),
             o_socket0_fifo_data    = self._socket0_fifo_data,
             i_socket0_fifo_q       = Constant(0,32),
             i_socket0_fifo_wrusedw = self._socket0_fifo_usedw,

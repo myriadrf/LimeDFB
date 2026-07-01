@@ -338,12 +338,12 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
                 self.cycloneiv_pll.c3_cnt.eq            (self.CLK_CTRL.C3_Div_CNT.storage),
                 self.cycloneiv_pll.c4_cnt.eq            (self.CLK_CTRL.C4_Div_CNT.storage),
                 self.cycloneiv_pll.auto_phcfg_smpls.eq  (self.CLK_CTRL.Auto_PHcfg_smpls.storage),
-                self.cycloneiv_pll.auto_phcfg_step.eq   (self.CLK_CTRL.Auto_PHcfg_step.storage), # unused
+                self.cycloneiv_pll.auto_phcfg_step.eq   (self.CLK_CTRL.Auto_PHcfg_step.storage),
             ]
             # Other ports
             self.comb += [
                 # smpl_cmp signals
-                self.smpl_cmp_en.eq(self.cycloneiv_pll.smpl_cmp_cnt),
+                self.smpl_cmp_en.eq(self.cycloneiv_pll.smpl_cmp_en),
                 self.cycloneiv_pll.smpl_cmp_done.eq(self.smpl_cmp_done),
                 self.cycloneiv_pll.smpl_cmp_error.eq(self.smpl_cmp_error),
                 self.smpl_cmp_cnt.eq(self.cycloneiv_pll.smpl_cmp_cnt),
