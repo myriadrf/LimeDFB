@@ -118,8 +118,8 @@ class Interpolate4ch(LiteXModule):
         # ---------------------------------------------------------------------
         # Input adapter: 128-bit int16 -> 192-bit lane packing
         #
-        # FIR input is 18-bit signed Q1.15.
-        # We sign-extend 16->18 and place into lane24[0:18], clear lane24[18:24].
+        # FIR input is 18-bit signed Q1.15. The bypass path is later unpacked
+        # as a 19-bit value, so preserve bit 18 as a valid sign bit.
         # ---------------------------------------------------------------------
         self.comb += [
             self.boundaries[0].valid.eq(self.sink.valid),
@@ -135,7 +135,8 @@ class Interpolate4ch(LiteXModule):
 
             self.comb += [
                 lane24[0:18].eq(x18),
-                lane24[18:24].eq(0),
+                lane24[18].eq(x16[15]),
+                lane24[19:24].eq(0),
             ]
 
         # ---------------------------------------------------------------------
