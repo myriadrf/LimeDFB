@@ -468,11 +468,15 @@ class afe79xx(LiteXModule):
 
             # Register after IQ mux and connect to rx_cdc
             self.sync.fpga_1pps += [
-                # AFE -> CDC FIFO -> 256 to 128 conv -> source_demux0
-                # CDC
                 rx_cdc.sink.valid.eq(afe_source.valid),
-                rx_cdc.sink.data[:128].eq(data_s1),
-                rx_cdc.sink.data[128:256].eq(data_s0),
+
+                # Lower 128 bits are emitted first by stream.Converter(256, 128)
+                # Therefore sample time n must be here.
+                rx_cdc.sink.data[0:128].eq(data_s0),
+
+                # Upper 128 bits are emitted second.
+                # Therefore sample time n+1 must be here.
+                rx_cdc.sink.data[128:256].eq(data_s1),
             ]
 
 
