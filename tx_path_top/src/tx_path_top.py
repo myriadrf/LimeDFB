@@ -49,6 +49,7 @@ from gateware.common import *
 
 class TXPathTop(LiteXModule):
     def __init__(self, platform, fpgacfg_manager=None,
+        tx_stream_en=None,
         # TX parameters
         IQ_WIDTH          = 12,
         PCT_MAX_SIZE      = 4096,
@@ -65,6 +66,7 @@ class TXPathTop(LiteXModule):
         assert input_buff_size >= (128*4), "TXPathTop input_buff_size must be greater than or equal to 4 cycles of 128bit"
 
         assert fpgacfg_manager is not None
+        tx_stream_en = fpgacfg_manager.rx_en if tx_stream_en is None else tx_stream_en
 
         self.platform          = platform
 
@@ -309,8 +311,8 @@ class TXPathTop(LiteXModule):
             ]
 
         self.specials += [
-            MultiReg(fpgacfg_manager.rx_en, s_reset_n, odomain=s_clk_domain),
-            MultiReg(fpgacfg_manager.rx_en, m_reset_n, odomain=m_clk_domain),
+            MultiReg(tx_stream_en, s_reset_n, odomain=s_clk_domain),
+            MultiReg(tx_stream_en, m_reset_n, odomain=m_clk_domain),
         ]
 
         self.specials += [

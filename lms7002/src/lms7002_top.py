@@ -30,6 +30,8 @@ from gateware.LimeDFB.lms7002.src.lms7002_clk   import LMS7002CLK
 class LMS7002Top(LiteXModule):
     def __init__(self, platform, vendor, pads=None, add_csr=True,
         fpgacfg_manager      = None,
+        rx_stream_en         = None,
+        tx_stream_en         = None,
         pllcfg_manager       = None,
         diq_width            = 12,
         invert_input_clock   = False,
@@ -43,6 +45,9 @@ class LMS7002Top(LiteXModule):
 
         assert pads            is not None
         assert fpgacfg_manager is not None
+
+        rx_stream_en = fpgacfg_manager.rx_en if rx_stream_en is None else rx_stream_en
+        tx_stream_en = fpgacfg_manager.rx_en if tx_stream_en is None else tx_stream_en
 
         self.source            = AXIStreamInterface(64, clock_domain=m_clk_domain)
         self.sink              = AXIStreamInterface(64, clock_domain=s_clk_domain)
@@ -226,7 +231,7 @@ class LMS7002Top(LiteXModule):
 
         self.txiq_tst_ptrn = Instance("txiq_tst_ptrn", **txiq_tst_ptrn_params)
 
-        self.specials += MultiReg(fpgacfg_manager.rx_en, tx_reset_n, odomain="lms_tx")
+        self.specials += MultiReg(tx_stream_en, tx_reset_n, odomain="lms_tx")
 
         self.specials += [
             MultiReg(fpgacfg_manager.tx_ptrn_en,      tx_ptrn_en,      odomain="lms_tx"),
@@ -337,7 +342,7 @@ class LMS7002Top(LiteXModule):
             o_m_axis_tlast        = self.rx_cdc.sink.last
         )
 
-        self.specials += MultiReg(fpgacfg_manager.rx_en, self.rx_reset_n, odomain="lms_rx"),
+        self.specials += MultiReg(rx_stream_en, self.rx_reset_n, odomain="lms_rx"),
 
         self.specials += [
             MultiReg(fpgacfg_manager.rx_ptrn_en,      rx_ptrn_en,      odomain="lms_rx"),
