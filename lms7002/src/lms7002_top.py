@@ -50,12 +50,9 @@ class LMS7002Top(LiteXModule):
             self.wfm_sink_l = Signal(13)
             self.wfm_sink_h = Signal(13)
 
-            self.test_data_en = CSRStorage(size=1, description="Enable txiqmux test data")
             self.txiq_mux_sel = CSRStorage(size=1, description="TXIQ MUX selection, 0 - TX, 1 - WFM")
-            test_data_en_sync = Signal(1)
-            txiq_mux_sel_sync = Signal(1)
-            MultiReg(self.test_data_en.storage,      test_data_en_sync,      odomain="lms_tx")
-            MultiReg(self.txiq_mux_sel.storage,      txiq_mux_sel_sync,      odomain="lms_tx")
+            self.txiq_mux_sel_sync = txiq_mux_sel_sync = Signal(1)
+            self.specials += MultiReg(self.txiq_mux_sel.storage,      txiq_mux_sel_sync,      odomain="lms_tx")
 
         self.platform          = platform
 
@@ -432,12 +429,12 @@ class LMS7002Top(LiteXModule):
                 )
             ]
         else:
-            mux0_reg_l = Signal(13)
-            mux0_reg_h = Signal(13)
-            mux1_reg_l = Signal(13)
-            mux1_reg_h = Signal(13)
-            mux2_reg_l = Signal(13)
-            mux2_reg_h = Signal(13)
+            self.mux0_reg_l = mux0_reg_l = Signal(13)
+            self.mux0_reg_h = mux0_reg_h = Signal(13)
+            self.mux1_reg_l = mux1_reg_l = Signal(13)
+            self.mux1_reg_h = mux1_reg_h = Signal(13)
+            self.mux2_reg_l = mux2_reg_l = Signal(13)
+            self.mux2_reg_h = mux2_reg_h = Signal(13)
             sync_s_clk_domain = getattr(self.sync, s_clk_domain)
 
             sync_s_clk_domain += [
@@ -457,7 +454,7 @@ class LMS7002Top(LiteXModule):
                     mux1_reg_h.eq(mux0_reg_h)
                 ]),
 
-                If(test_data_en_sync,[
+                If(tx_tst_data_en,[
                     mux2_reg_l.eq(tx_test_data_l),
                     mux2_reg_h.eq(tx_test_data_h)
                 ]).Else([
