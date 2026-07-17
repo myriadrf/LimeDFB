@@ -36,23 +36,32 @@ class FX3(LiteXModule):
         self.pads = pads
         self.platform = platform
 
-        # FX3 data throughput is bottlenecked by 32 bit interface
-        # no need to support other widths for now
-        # rely on external modules to adapt the data width, if needed
+        # Some data widths are locked, remove/modify these asserts with care, only if absolutely necessary
         assert EP0F_rwidth == 32, "EP0F_rwidth values other than 32 bits are not supported yet"
         assert EP8F_wwidth == 32, "EP8F_wwidth values other than 32 bits are not supported yet"
+        assert EP01_1_rwidth == 32, "EP01_1_rwidth values other than 32 bits are not supported yet"
 
-        self.usb_speed   = Signal(reset=1) # 0 - USB2, 1 - USB3
-        self.busy_out    = Signal()
-        self.data_source_sel  = Signal()
-        self.data_source0_clr = Signal()
-        self.data_source1_clr = Signal()
-        self.data_sink_clr    = Signal()
-        self.ctrl_sink_clr    = Signal()
+        #internal variables
+        self.ep01_0_rdusedw_width  = ep01_0_rdusedw_width = fifo_words_to_nbits(EP01_size//4, add_msb=True)
+        self.ep81_wrusedw_width    = ep81_wrusedw_width   = fifo_words_to_nbits(EP81_size//4, add_msb=True)
+        self.ep0f_rdusedw_width    = ep0f_rdusedw_width   = fifo_words_to_nbits(EP0F_size//4, add_msb=True)
+        self.ep8f_wrusedw_width    = ep8f_wrusedw_width   = fifo_words_to_nbits(EP8F_size//4, add_msb=True)
+
+        self.usb_speed             = Signal(reset=1) # 0 - USB2, 1 - USB3
+        self.busy_out              = Signal()
+        self.data_source_sel       = Signal()
+        self.data_source0_clr      = Signal()
+        self.data_source1_clr      = Signal()
+        self.data_source0_clr_reg  = Signal()
+        self.data_source1_clr_reg  = Signal()
+        self.data_sink_clr         = Signal()
+        self.ctrl_sink_clr         = Signal()
+        self._socket0_fifo_reset_n = Signal()
 
         self.data_sink = AXIStreamInterface(EP81_wwidth)
         self.data_source = AXIStreamInterface(EP01_0_rwidth)
         self.data_source_1 = AXIStreamInterface(EP01_1_rwidth)
+        self.data_source_1_level = Signal(ep01_0_rdusedw_width)
 
         # Control Interface
         self._fifo_wdata = CSRStorage(32, description="FIFO Write Register.")
@@ -65,13 +74,6 @@ class FX3(LiteXModule):
             CSRField("reset", size=1, offset=0, description="Reset Control (Active High)."),
         ])
 
-        #internal variables
-        ep01_0_rdusedw_width = fifo_words_to_nbits(EP01_size//4, add_msb=True)
-        # ep01_1_rdusedw_width = fifo_words_to_nbits(EP01_size//4, add_msb=True)
-        ep81_wrusedw_width   = fifo_words_to_nbits(EP81_size//4, add_msb=True)
-        ep0f_rdusedw_width   = fifo_words_to_nbits(EP0F_size//4, add_msb=True)
-        ep8f_wrusedw_width   = fifo_words_to_nbits(EP8F_size//4, add_msb=True)
-
         #internal signals
         self._faddr     = Signal(5)
         self._GPIF_busy = Signal()
@@ -82,6 +84,8 @@ class FX3(LiteXModule):
         self._payload_extract_sink_valid   = Signal()
         self._payload_extract_source_data  = Signal(32)
         self._payload_extract_source_valid = Signal()
+
+
 
         # FIFO's
         # # Host -> FPGA data FIFOs
@@ -126,6 +130,22 @@ class FX3(LiteXModule):
             ])
         ]
 
+        # register clear signals
+        self.sync += [
+            self.data_source0_clr_reg.eq(self.data_source0_clr),
+            self.data_source1_clr_reg.eq(self.data_source1_clr),
+        ]
+        # generate a common reset for data source
+        self.comb += [
+            If((self.data_source0_clr == 1) & (self.data_source0_clr_reg == 0),[
+                self._socket0_fifo_reset_n.eq(0)
+            ]).Elif((self.data_source1_clr == 1) & (self.data_source1_clr_reg == 0),[
+                self._socket0_fifo_reset_n.eq(0)
+            ]).Else([
+                self._socket0_fifo_reset_n.eq(1)
+            ])
+        ]
+
         # Connect fifos to sinks/sources
         # Source 0
         if EP01_0_rwidth != 32:
@@ -144,6 +164,7 @@ class FX3(LiteXModule):
             self.comb += self.source_1_conv.source.connect(self.data_source_1, omit=["keep", "id", "dest", "user"])
         else:
             self.comb += self.source_data_fifo_1.source.connect(self.data_source_1, omit=["keep", "id", "dest", "user"])
+            self.comb += self.data_source_1_level.eq(self.source_data_fifo_1.level)
 
         # Sink
         if EP81_wwidth != 32:
@@ -217,7 +238,7 @@ class FX3(LiteXModule):
             o_EPSWITCH             = Open(),
 
             # Socket 0 (PC -> FPGA Data)
-            i_socket0_fifo_reset_n = ~(self.data_source0_clr | self.data_source1_clr),
+            i_socket0_fifo_reset_n = self._socket0_fifo_reset_n,
             o_socket0_fifo_data    = self._socket0_fifo_data,
             i_socket0_fifo_q       = Constant(0,32),
             i_socket0_fifo_wrusedw = self._socket0_fifo_usedw,
