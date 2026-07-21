@@ -85,9 +85,9 @@ class Interpolate4ch(LiteXModule):
         self.stage_count = CSRStorage(3, reset=0, description="Number of active interpolator stages (0..4).")
 
         # Keep register space compatibility
-        self.blank0 = CSRStorage(1, reset=0, description="Blank")
-        self.blank1 = CSRStorage(1, reset=0, description="Blank")
-        self.blank2 = CSRStorage(1, reset=0, description="Blank")
+        self.blank0 = CSRStorage(3, reset=0, description="Blank")
+        self.blank1 = CSRStorage(3, reset=0, description="Blank")
+        self.blank2 = CSRStorage(3, reset=0, description="Blank")
 
         # FIR IP now configured per your screenshot:
         #   Input:  18 bits, frac 15

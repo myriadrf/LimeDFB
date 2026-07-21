@@ -97,9 +97,9 @@ class Decimate4ch(LiteXModule):
         self.stage_count = CSRStorage(3, reset=0, description="Number of active decimator stages (0..4).")
 
         # Dumb workaround to have same register space as previuos implementation
-        self.blank0 = CSRStorage(1, reset=0, description="Blank")
-        self.blank1 = CSRStorage(1, reset=0, description="Blank")
-        self.blank2 = CSRStorage(1, reset=0, description="Blank")
+        self.blank0 = CSRStorage(3, reset=0, description="Blank")
+        self.blank1 = CSRStorage(3, reset=0, description="Blank")
+        self.blank2 = CSRStorage(3, reset=0, description="Blank")
 
         xci_path = os.path.abspath("./gateware/LimeDFB/dsp/decimate_4ch/ip/fir_compiler_decimate.xci")
         platform.toolchain.project_commands.append(f"import_ip {xci_path}")

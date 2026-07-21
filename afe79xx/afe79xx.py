@@ -718,6 +718,13 @@ class afe79xx(LiteXModule):
                 self.tx_cdc.source.ready.eq(afe_sink.ready | ~self.tx_en)
             ]
 
+        self.interface_rate = CSRStatus(32, reset=491520000,
+                                   description="FPGA supported AFE79xx sample rate at the JESD interface level"
+                                   )
+        self.shadow_reg0 = CSRStorage(32, reset=0,
+                                   description="Host configured AFE79xx sample rate storage"
+                                   )
+
         # Signal lists for debugging
         self.flow_control_signals = SimpleNamespace()
         self.flow_control_signals.m_clk = [
