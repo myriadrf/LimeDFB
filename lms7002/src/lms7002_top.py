@@ -61,9 +61,6 @@ class LMS7002Top(LiteXModule):
         self.smpl_cnt_en      = Signal() # To rx_path
 
         # CSR --------------------------------------------------------------------------------------
-        # LMS Ctrl GPIO
-        self._lms_ctr_gpio = CSRStorage(size=4, description="LMS Control GPIOs.")
-
         # fpgacfg
         self.lms1              = CSRStorage(fields=[         # 19
             CSRField("ss",             size=1, offset=0, reset=1),
