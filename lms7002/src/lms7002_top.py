@@ -28,7 +28,7 @@ from gateware.LimeDFB.lms7002.src.lms7002_clk   import LMS7002CLK
 # LMS7002 Top --------------------------------------------------------------------------------------
 
 class LMS7002Top(LiteXModule):
-    def __init__(self, platform, vendor, pads=None, add_csr=True,
+    def __init__(self, platform, vendor, family, pads=None,
         fpgacfg_manager      = None,
         rx_stream_en         = None,
         tx_stream_en         = None,
@@ -39,8 +39,8 @@ class LMS7002Top(LiteXModule):
         s_axis_tx_fifo_words = 8,
         m_clk_domain         = "lms_rx",
         m_axis_rx_fifo_words = 16,
-        with_max10_pll       = False,
-        one_chnl             = False,
+        one_chnl            = False,
+        with_txiq_mux       = False,
         ):
 
         assert pads            is not None
@@ -52,21 +52,21 @@ class LMS7002Top(LiteXModule):
         self.source            = AXIStreamInterface(64, clock_domain=m_clk_domain)
         self.sink              = AXIStreamInterface(64, clock_domain=s_clk_domain)
 
+        if with_txiq_mux:
+            self.wfm_sink_l = Signal(13)
+            self.wfm_sink_h = Signal(13)
+
+            self.txiq_mux_sel = CSRStorage(size=1, description="TXIQ MUX selection, 0 - TX, 1 - WFM")
+            self.txiq_mux_sel_sync = txiq_mux_sel_sync = Signal(1)
+            self.specials += MultiReg(self.txiq_mux_sel.storage,      txiq_mux_sel_sync,      odomain="lms_tx")
+
         self.platform          = platform
 
         self.pads                = pads
-        self.periph_output_val_1 = Signal(16)
-
-        self.from_tstcfg_test_en      = Signal(6)
-        self.from_tstcfg_tx_tst_i     = Signal(16)
-        self.from_tstcfg_tx_tst_q     = Signal(16)
 
         self.smpl_cnt_en      = Signal() # To rx_path
 
         # CSR --------------------------------------------------------------------------------------
-        # LMS Ctrl GPIO
-        self._lms_ctr_gpio = CSRStorage(size=4, description="LMS Control GPIOs.")
-
         # fpgacfg
         self.lms1              = CSRStorage(fields=[         # 19
             CSRField("ss",             size=1, offset=0, reset=1),
@@ -136,7 +136,7 @@ class LMS7002Top(LiteXModule):
 
         # Clocks.
         # -------
-        self.lms7002_clk = LMS7002CLK(platform, vendor, pads, with_max10_pll=with_max10_pll)
+        self.lms7002_clk = LMS7002CLK(platform, vendor, family, pads)
         self.comb += [
             self.cd_lms_tx.clk.eq(self.lms7002_clk.tx_clk),
             self.cd_lms_rx.clk.eq(self.lms7002_clk.rx_clk),
@@ -206,7 +206,7 @@ class LMS7002Top(LiteXModule):
             i_reset_n   = ~ResetSignal("lms_tx"),
             # Mode Settings.
             i_fr_start  = Constant(0, 1), # External Frame ID mode. Frame start at fsync = 0, when 0. Frame start at fsync = 1, when 1.
-            i_mimo_en   = tx_mimo_en,     # SISO: 1; MIMO: 0
+            i_mimo_en   = Constant(1,1),
 
             # Output.
             o_data_h    = tx_test_data_h,
@@ -421,15 +421,56 @@ class LMS7002Top(LiteXModule):
             )
         ]
 
-        self.comb += [
-            If(tx_ptrn_en,
-                self.lms7002_ddout.tx_diq1_h.eq(tx_tst_ptrn_h),
-                self.lms7002_ddout.tx_diq1_l.eq(tx_tst_ptrn_l),
-            ).Else(
-                self.lms7002_ddout.tx_diq1_h.eq(tx_diq_h),
-                self.lms7002_ddout.tx_diq1_l.eq(tx_diq_l),
-            )
-        ]
+        if with_txiq_mux == False:
+            self.comb += [
+                If(tx_ptrn_en,
+                    self.lms7002_ddout.tx_diq1_h.eq(tx_tst_ptrn_h),
+                    self.lms7002_ddout.tx_diq1_l.eq(tx_tst_ptrn_l),
+                ).Else(
+                    self.lms7002_ddout.tx_diq1_h.eq(tx_diq_h),
+                    self.lms7002_ddout.tx_diq1_l.eq(tx_diq_l),
+                )
+            ]
+        else:
+            self.mux0_reg_l = mux0_reg_l = Signal(13)
+            self.mux0_reg_h = mux0_reg_h = Signal(13)
+            self.mux1_reg_l = mux1_reg_l = Signal(13)
+            self.mux1_reg_h = mux1_reg_h = Signal(13)
+            self.mux2_reg_l = mux2_reg_l = Signal(13)
+            self.mux2_reg_h = mux2_reg_h = Signal(13)
+            sync_s_clk_domain = getattr(self.sync, s_clk_domain)
+
+            sync_s_clk_domain += [
+                If(txiq_mux_sel_sync,[
+                    mux0_reg_l.eq(self.wfm_sink_l),
+                    mux0_reg_h.eq(self.wfm_sink_h)
+                ]).Else([
+                    mux0_reg_l.eq(tx_diq_l),
+                    mux0_reg_h.eq(tx_diq_h)
+                ]),
+
+                If(tx_ptrn_en,[
+                    mux1_reg_l.eq(tx_tst_ptrn_l),
+                    mux1_reg_h.eq(tx_tst_ptrn_h)
+                ]).Else([
+                    mux1_reg_l.eq(mux0_reg_l),
+                    mux1_reg_h.eq(mux0_reg_h)
+                ]),
+
+                If(tx_tst_data_en,[
+                    mux2_reg_l.eq(tx_test_data_l),
+                    mux2_reg_h.eq(tx_test_data_h)
+                ]).Else([
+                    mux2_reg_l.eq(mux1_reg_l),
+                    mux2_reg_h.eq(mux1_reg_h)
+                ])
+            ]
+
+            self.comb += [
+                    self.lms7002_ddout.tx_diq1_h.eq(mux2_reg_h),
+                    self.lms7002_ddout.tx_diq1_l.eq(mux2_reg_l)
+            ]
+
 
 
         # LMS Controls.

@@ -48,7 +48,7 @@ architecture ARCH of GPIO_TOP is
 begin
 
    -- Mux to determine if override is used
-   MUX : process (GPIO_DIR, GPIO_OUT_VAL, GPIO_OVERRIDE, GPIO_OVERRIDE_VAL, GPIO_I, internal_gpio_out) is
+   MUX : process (GPIO_DIR, GPIO_OUT_VAL, GPIO_OVERRIDE,GPIO_OVERRIDE_DIR, GPIO_OVERRIDE_VAL, GPIO_I, internal_gpio_out) is
    begin
 
       gpio_internal_assign : for i in 0 to G_GPIO_WIDTH - 1 loop
@@ -68,8 +68,11 @@ begin
 
       gpio_in_assign : for i in 0 to G_GPIO_WIDTH - 1 loop
 
-         GPIO_IN_VAL(i) <= GPIO_I(i) when GPIO_DIR(i) = '1' else
-                           internal_gpio_out(i);
+         if (GPIO_DIR(i) = '1') then
+            GPIO_IN_VAL(i) <= GPIO_I(i);
+         else
+            GPIO_IN_VAL(i) <= internal_gpio_out(i);
+         end if;
 
       end loop gpio_in_assign;
 

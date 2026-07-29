@@ -51,9 +51,7 @@ class TXPathTop(LiteXModule):
     def __init__(self, platform, fpgacfg_manager=None,
         tx_stream_en=None,
         # TX parameters
-        IQ_WIDTH          = 12,
         PCT_MAX_SIZE      = 4096,
-        PCT_HDR_SIZE      = 16,
         BUFF_COUNT        = 4,
         sink_width        = 128,
         rx_clk_domain     = "lms_rx",
@@ -184,6 +182,12 @@ class TXPathTop(LiteXModule):
         self.pct_valid = pct_valid
         self.pct_header = pct_header
 
+        self.txpct_fifo_debug_packets_avail = Signal(math.ceil(math.log2(BUFF_COUNT))+1)
+        self.txpct_fifo_debug_packets_reserved = Signal(math.ceil(math.log2(BUFF_COUNT))+1)
+        self.txpct_fifo_debug_store_state = Signal(3)
+        self.txpct_fifo_debug_read_state = Signal(2)
+        self.txpct_fifo_debug_payload_used = Signal(math.ceil(math.log2(PCT_MAX_SIZE//16))+1)
+        self.txpct_fifo_debug_payload_will_fit = Signal()
 
         self.lime_txpct_fifo = Instance("lime_txpct_fifo",
             # Parameters.
@@ -204,6 +208,13 @@ class TXPathTop(LiteXModule):
             i_pct_clr           = pct_clear,
             o_pct_valid         = pct_valid,
             o_pct_header        = pct_header,
+
+            o_debug_packets_avail = self.txpct_fifo_debug_packets_avail,
+            o_debug_packets_reserved = self.txpct_fifo_debug_packets_reserved,
+            o_debug_store_state      = self.txpct_fifo_debug_store_state,
+            o_debug_read_state       = self.txpct_fifo_debug_read_state,
+            o_debug_payload_used     = self.txpct_fifo_debug_payload_used,
+            o_debug_payload_will_fit = self.txpct_fifo_debug_payload_will_fit
         )
 
         self.lime_txpct_fifo_conv = add_vhd2v_converter(self.platform,
@@ -358,6 +369,9 @@ class TXPathTop(LiteXModule):
             self.source.valid,
             self.source.ready,
             self.source.last,
+            pct_rd,
+            pct_valid,
+            pct_clear,
             data_pad_tvalid,
             data_pad_tready,
             data_pad_tlast,
@@ -378,6 +392,10 @@ class TXPathTop(LiteXModule):
             smpl_nr_fifo.source.valid,
             smpl_nr_fifo.source.ready,
             p2d_wr_sink_ready,
+            self.txpct_fifo_debug_store_state,
+            self.txpct_fifo_debug_read_state,
+            self.txpct_fifo_debug_payload_used,
+            self.txpct_fifo_debug_payload_will_fit,
         ]
 
         self.flow_control_signals.s_clk = [

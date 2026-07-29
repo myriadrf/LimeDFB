@@ -13,6 +13,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+use ieee.math_real.all;
 
 -- ----------------------------------------------------------------------------
 -- Entity declaration
@@ -51,7 +52,18 @@ entity lime_txpct_fifo is
       -- Pulse high for one clk cycle to discard the current packet.
       pct_clr     : in  std_logic;
       pct_valid   : out std_logic;
-      pct_header  : out std_logic_vector(127 downto 0)
+      pct_header  : out std_logic_vector(127 downto 0);
+
+      ----------------------------------------------------------------------------
+      -- Debug outputs exposing internal signals
+      ----------------------------------------------------------------------------
+      debug_packets_avail : out std_logic_vector(natural(ceil(log2((real(g_MAX_PACKETS))))) downto 0);
+      debug_packets_reserved : out std_logic_vector(natural(ceil(log2((real(g_MAX_PACKETS))))) downto 0);
+
+      debug_store_state      : out std_logic_vector(2 downto 0);
+      debug_read_state       : out std_logic_vector(1 downto 0);
+      debug_payload_used     : out std_logic_vector(natural(ceil(log2((real(g_MAX_FIFO_WORDS))))) downto 0);
+      debug_payload_will_fit : out std_logic
 
     );
 end entity;
@@ -68,15 +80,8 @@ architecture rtl of lime_txpct_fifo is
 
    --  The following function calculates the address width based on specified RAM depth
    function clogb2(depth : natural) return integer is
-      variable v       : natural := depth - 1;
-      variable ret_val : integer := 0;
    begin
-      while v > 0 loop
-         ret_val := ret_val + 1;
-         v       := v / 2;
-      end loop;
-   
-      return ret_val;
+      return natural(ceil(log2((real(depth)))));
    end function;
 
 
@@ -842,5 +847,24 @@ begin
    m_axis_tdata  <= m_axis_tdata_int;
    m_axis_tvalid <= m_axis_tvalid_int;
 
+   debug_packets_avail    <= std_logic_vector(meta_mem_used_count);
+   debug_packets_reserved <= std_logic_vector(meta_mem_reserved_count);
+
+   with current_store_state select
+      debug_store_state <= "000" when ST_IDLE,
+                           "001" when ST_WAIT_HEADER,
+                           "010" when ST_CHECK_PAYLOAD_LENGTH,
+                           "011" when ST_STORE_PAYLOAD,
+                           "100" when ST_STORE_META,
+                           "111" when others;
+
+   with current_read_state select
+      debug_read_state  <= "00" when RD_IDLE,
+                           "01" when RD_META_CHECK,
+                           "10" when RD_READ_PAYLOAD,
+                           "11" when RD_DONE;
+
+   debug_payload_used     <= std_logic_vector(payload_mem_used_count);
+   debug_payload_will_fit <= store_pckt_payload_will_fit;
    
 end architecture rtl;
