@@ -223,6 +223,15 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
         # Clocking control registers
         self.CLK_CTRL = ClkCfgRegs(use_status_regs=True)
 
+        self.comb += [
+            self.drct_clk_en.eq(Cat(
+                self.CLK_CTRL.DRCT_TXCLK_EN.storage,
+                self.CLK_CTRL.DRCT_TXCLK_EN.storage,
+                self.CLK_CTRL.DRCT_RXCLK_EN.storage,
+                self.CLK_CTRL.DRCT_RXCLK_EN.storage
+            ))
+        ]
+
         if family == "max10":
 
             from gateware.max10_pll_top.max10_pll_top import MAX10PLLTop

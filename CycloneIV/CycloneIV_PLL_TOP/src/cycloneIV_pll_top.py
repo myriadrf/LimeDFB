@@ -96,7 +96,7 @@ class CycloneIVPLLTop(LiteXModule):
           i_txpll_reconfig_clk   = ClockSignal("sys"),
           i_txpll_logic_reset_n  = ~ResetSignal("sys"),
           i_txpll_clk_ena        = self.clk_ena[0:2],
-          i_txpll_drct_clk_en    = self.drct_clk_en[0],
+          i_txpll_drct_clk_en    = self.drct_clk_en[0:2],
           o_txpll_c0             = pads.FCLK1,
           o_txpll_c1             = self.tx_clk,
           o_txpll_locked         = Open(),# Already exposed via o_pll_lock[0], avoid duplicating
@@ -110,7 +110,7 @@ class CycloneIVPLLTop(LiteXModule):
           i_rxpll_reconfig_clk   = ClockSignal("sys"),
           i_rxpll_logic_reset_n  = ~ResetSignal("sys"),
           i_rxpll_clk_ena        = self.clk_ena[2:4],
-          i_rxpll_drct_clk_en    = self.drct_clk_en[1],
+          i_rxpll_drct_clk_en    = self.drct_clk_en[2:4],
           o_rxpll_c0             = pads.FCLK2,
           o_rxpll_c1             = self.rx_clk,
           o_rxpll_locked         = Open(),# Already exposed via o_pll_lock[1], avoid duplicating

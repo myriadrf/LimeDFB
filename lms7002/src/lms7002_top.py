@@ -145,7 +145,6 @@ class LMS7002Top(LiteXModule):
             self.lms7002_clk.direction.eq(Constant(0, 1)),
             # mini v1
             self.lms7002_clk.clk_ena.eq(    fpgacfg_manager.clk_ena),
-            self.lms7002_clk.drct_clk_en.eq(Replicate(fpgacfg_manager.drct_clk_en[0], 4)),
         ]
 
         # TX Path (DIQ1).
