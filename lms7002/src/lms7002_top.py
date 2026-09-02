@@ -130,8 +130,8 @@ class LMS7002Top(LiteXModule):
         self.smpl_cmp_en    = smpl_cmp_en         = Signal()
         self.smpl_cmp_done  = smpl_cmp_done       = Signal()
         self.smpl_cmp_error = smpl_cmp_error      = Signal()
-        smpl_cmp_cnt        = Signal(16)
-        rx_smpl_cmp_length  = Signal(16)
+        self.smpl_cmp_cnt   = smpl_cmp_cnt        = Signal(16)
+
 
 
         # Clocks.
@@ -270,7 +270,7 @@ class LMS7002Top(LiteXModule):
 
             # Control signals
             i_cmp_start     = smpl_cmp_en,
-            i_cmp_length    = rx_smpl_cmp_length,
+            i_cmp_length    = smpl_cmp_cnt,
             o_cmp_done      = smpl_cmp_done,
             o_cmp_error     = smpl_cmp_error,
             i_cmp_AI        = Constant(0xAAA, diq_width),
@@ -278,19 +278,39 @@ class LMS7002Top(LiteXModule):
             i_cmp_BI        = Constant(0xAAA, diq_width),
             i_cmp_BQ        = Constant(0x555, diq_width),
         )
-        # Debug Signals
-        self.DEBUG_IQ_ERR = Signal()
-        self.DEBUG_AI_ERR = Signal()
-        self.DEBUG_AQ_ERR = Signal()
-        self.DEBUG_BI_ERR = Signal()
-        self.DEBUG_BQ_ERR = Signal()
+        # Sample Compare Debug Signals
+        self.DEBUG_SMPL_CMP_IQ_ERR       = Signal()                 # Error flag indicating IQ select framing mismatch between DIQ high and low buses
+        self.DEBUG_SMPL_CMP_AI_ERR       = Signal()                 # Error flag for Channel A I-sample mismatch against expected cmp_AI pattern
+        self.DEBUG_SMPL_CMP_AQ_ERR       = Signal()                 # Error flag for Channel A Q-sample mismatch against expected cmp_AQ pattern
+        self.DEBUG_SMPL_CMP_BI_ERR       = Signal()                 # Error flag for Channel B I-sample mismatch against expected cmp_BI pattern
+        self.DEBUG_SMPL_CMP_BQ_ERR       = Signal()                 # Error flag for Channel B Q-sample mismatch against expected cmp_BQ pattern
+        self.DEBUG_SMPL_CMP_STATE        = Signal(2)                # Current FSM state: 00=idle, 01=wait_cyc, 10=compare, 11=compare_done
+        self.DEBUG_SMPL_CMP_SMPL_ERR     = Signal()                 # Real-time unlatched composite sample error flag (OR combination of all error flags)
+        self.DEBUG_SMPL_CMP_SMPL_ERR_CNT = Signal(16)               # Running error count of mismatched samples during active comparison
+        self.DEBUG_SMPL_CMP_COMPARE_CNT  = Signal(16)               # Counter tracking number of evaluated samples against configured cmp_length
+        self.DEBUG_SMPL_CMP_WAIT_CNT     = Signal(4)                # Settle delay cycle counter in wait_cyc state before comparison starts
+        self.DEBUG_SMPL_CMP_COMPARE_STOP = Signal()                 # Trigger flag asserted when compare_cnt reaches or exceeds cmp_length
+        self.DEBUG_SMPL_CMP_STOP_EVENT   = Signal()                 # Stop event indicator asserted on compare completion or immediate sample error
+        self.DEBUG_SMPL_CMP_DIQ_H_REG    = Signal(diq_width + 1)    # Registered upper DIQ bus input containing sample bits and IQ select framing bit
+        self.DEBUG_SMPL_CMP_DIQ_L_REG    = Signal(diq_width + 1)    # Registered lower DIQ bus input containing sample bits and IQ select framing bit
+        self.DEBUG_SMPL_CMP_ERROR_CNT    = Signal(16)               # Latched sample comparison error count at compare completion (o_cmp_error_cnt)
 
         smpl_cmp_params.update(
-            o_DEBUG_IQ_ERR = self.DEBUG_IQ_ERR,
-            o_DEBUG_AI_ERR = self.DEBUG_AI_ERR,
-            o_DEBUG_AQ_ERR = self.DEBUG_AQ_ERR,
-            o_DEBUG_BI_ERR = self.DEBUG_BI_ERR,
-            o_DEBUG_BQ_ERR = self.DEBUG_BQ_ERR,
+            o_cmp_error_cnt      = self.DEBUG_SMPL_CMP_ERROR_CNT,
+            o_DEBUG_IQ_ERR       = self.DEBUG_SMPL_CMP_IQ_ERR,
+            o_DEBUG_AI_ERR       = self.DEBUG_SMPL_CMP_AI_ERR,
+            o_DEBUG_AQ_ERR       = self.DEBUG_SMPL_CMP_AQ_ERR,
+            o_DEBUG_BI_ERR       = self.DEBUG_SMPL_CMP_BI_ERR,
+            o_DEBUG_BQ_ERR       = self.DEBUG_SMPL_CMP_BQ_ERR,
+            o_DEBUG_STATE        = self.DEBUG_SMPL_CMP_STATE,
+            o_DEBUG_SMPL_ERR     = self.DEBUG_SMPL_CMP_SMPL_ERR,
+            o_DEBUG_SMPL_ERR_CNT = self.DEBUG_SMPL_CMP_SMPL_ERR_CNT,
+            o_DEBUG_COMPARE_CNT  = self.DEBUG_SMPL_CMP_COMPARE_CNT,
+            o_DEBUG_WAIT_CNT     = self.DEBUG_SMPL_CMP_WAIT_CNT,
+            o_DEBUG_COMPARE_STOP = self.DEBUG_SMPL_CMP_COMPARE_STOP,
+            o_DEBUG_STOP_EVENT   = self.DEBUG_SMPL_CMP_STOP_EVENT,
+            o_DEBUG_DIQ_H_REG    = self.DEBUG_SMPL_CMP_DIQ_H_REG,
+            o_DEBUG_DIQ_L_REG    = self.DEBUG_SMPL_CMP_DIQ_L_REG,
         )
 
         self.smpl_cmp = Instance("smpl_cmp", **smpl_cmp_params)
@@ -351,7 +371,6 @@ class LMS7002Top(LiteXModule):
             MultiReg(fpgacfg_manager.mimo_int_en,     rx_mimo_en,      odomain="lms_rx"),
             MultiReg(fpgacfg_manager.ch_en,           rx_ch_en,        odomain="lms_rx"),
         ]
-        self.comb += rx_smpl_cmp_length.eq(smpl_cmp_cnt)
 
         # Delay control module.
         # ---------------------
