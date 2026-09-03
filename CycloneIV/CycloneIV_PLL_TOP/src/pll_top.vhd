@@ -177,10 +177,6 @@ signal inst2_pllcfg_data      : std_logic_vector(143 downto 0);
 signal inst2_auto_phcfg_smpls : std_logic_vector(15 downto 0);
 signal inst2_auto_phcfg_step  : std_logic_vector(15 downto 0);
 
-signal internal_pllcfg_busy            : std_logic;
-signal internal_pllcfg_done            : std_logic;
-
-  
 begin
 
 -- ----------------------------------------------------------------------------
@@ -306,26 +302,22 @@ rx_pll_top_inst0 : entity work.rx_pll_top
    );
 
   
-   internal_pllcfg_busy <= inst1_busy OR inst0_busy;
-   internal_pllcfg_done <= not internal_pllcfg_busy;
-   
-   
 -- ----------------------------------------------------------------------------
 -- pllcfg_top instance
 -- ----------------------------------------------------------------------------
-   process(internal_pllcfg_busy)
-      begin 
-         inst2_pllcfg_busy <= (others=>'0');
-         inst2_pllcfg_busy(0) <= internal_pllcfg_busy;
-   end process;
+   inst2_pllcfg_busy(0) <= inst0_busy;
+   inst2_pllcfg_busy(1) <= inst1_busy;
+   gen_busy: if N_PLL > 2 generate
+      inst2_pllcfg_busy(N_PLL-1 downto 2) <= (others => '0');
+   end generate gen_busy;
+
+   inst2_pllcfg_done(0) <= not inst0_busy;
+   inst2_pllcfg_done(1) <= not inst1_busy;
+   gen_done: if N_PLL > 2 generate
+      inst2_pllcfg_done(N_PLL-1 downto 2) <= (others => '1');
+   end generate gen_done;
    
-   process(pllcfg_done) 
-      begin 
-         inst2_pllcfg_done <= (others=>'1');
-         inst2_pllcfg_done(0) <= pllcfg_done;
-   end process;
-   
-   inst2_pll_lock          <= inst1_pll_locked     & inst0_pll_locked;   
+   inst2_pll_lock          <= inst1_pll_locked     & inst0_pll_locked;
    inst2_auto_phcfg_done   <= inst1_dynps_done     & inst0_dynps_done; 
    inst2_auto_phcfg_err    <= inst1_dynps_status   & inst0_dynps_status;
 

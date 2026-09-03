@@ -17,6 +17,10 @@ use ieee.numeric_std.all;
 -- Entity declaration
 -- ----------------------------------------------------------------------------
 entity pll_ps_fsm is
+   generic (
+      g_TIMEOUT_LIMIT   : integer := 262143; -- ~262,143 cycles (~2.62 ms @ 100MHz)
+      g_RST_PLL_TIMEOUT : integer := 1023    -- ~1023 cycles (~10.23 us @ 100MHz)
+   );
    port (
 
       clk               : in std_logic;
@@ -84,6 +88,11 @@ signal ps_status_reg                   : std_logic;
 signal wait_after_ph_shift_cnt         : unsigned(7 downto 0);
 signal step_cnt_max_reg                : unsigned(9 downto 0);
 signal step_cnt_max_constant           : unsigned(9 downto 0);
+
+signal fsm_timer                       : unsigned(19 downto 0);
+signal timeout_err                     : std_logic;
+constant FSM_TIMEOUT_LIMIT             : unsigned(19 downto 0) := to_unsigned(g_TIMEOUT_LIMIT, 20);
+constant RST_PLL_TIMEOUT               : unsigned(19 downto 0) := to_unsigned(g_RST_PLL_TIMEOUT, 20);
 
 
 
@@ -197,7 +206,7 @@ end process;
 fsm : process(current_state, ps_en, ps_mode, ps_reset_at_start, pll_locked, 
                smpl_cmp_done, smpl_cmp_error, find_min, find_max, 
                ps_ctrl_busy, ps_ctrl_busy_reg, ps_en_reg, step_cnt, 
-               prep_phase_cnt, wait_after_ph_shift_cnt, step_cnt_max_reg) begin
+               prep_phase_cnt, wait_after_ph_shift_cnt, step_cnt_max_reg, fsm_timer) begin
    next_state <= current_state;
    case current_state is
    
@@ -214,7 +223,7 @@ fsm : process(current_state, ps_en, ps_mode, ps_reset_at_start, pll_locked,
          end if;
          
       when rst_pll =>                  -- reset pll
-         if pll_locked = '0' then 
+         if pll_locked = '0' or fsm_timer > RST_PLL_TIMEOUT then 
             next_state <= wait_pll_lock;
          else 
             next_state <= rst_pll;
@@ -228,6 +237,8 @@ fsm : process(current_state, ps_en, ps_mode, ps_reset_at_start, pll_locked,
             else 
                next_state <= ph_shift;
             end if;
+         elsif fsm_timer > FSM_TIMEOUT_LIMIT then 
+            next_state <= end_srch;
          else 
             next_state <= wait_pll_lock;
          end if;
@@ -235,6 +246,8 @@ fsm : process(current_state, ps_en, ps_mode, ps_reset_at_start, pll_locked,
       when check_cmp_status => 
          if smpl_cmp_done = '0' then 
             next_state <= cmp_smpls;
+         elsif fsm_timer > FSM_TIMEOUT_LIMIT then 
+            next_state <= end_srch;
          else 
             next_state <= check_cmp_status;
          end if;
@@ -259,6 +272,8 @@ fsm : process(current_state, ps_en, ps_mode, ps_reset_at_start, pll_locked,
             else  
                next_state <= end_srch;
             end if;
+         elsif fsm_timer > FSM_TIMEOUT_LIMIT then 
+            next_state <= end_srch;
          else 
             next_state <= cmp_smpls;
          end if;
@@ -283,6 +298,8 @@ fsm : process(current_state, ps_en, ps_mode, ps_reset_at_start, pll_locked,
       when ph_shift =>
          if ps_ctrl_busy = '0' AND ps_ctrl_busy_reg = '1' then  --falling edge 
             next_state <= wait_after_ph_shift;              
+         elsif fsm_timer > FSM_TIMEOUT_LIMIT then 
+            next_state <= end_srch;
          else 
             next_state <= ph_shift;
          end if;
@@ -387,6 +404,33 @@ begin
    end if;
 end process;
 
+-- ----------------------------------------------------------------------------
+-- FSM watchdog timer
+-- ----------------------------------------------------------------------------
+process(clk, reset_n)
+begin
+   if reset_n = '0' then 
+      fsm_timer   <= (others => '0');
+      timeout_err <= '0';
+   elsif (clk'event AND clk='1') then 
+      if current_state = idle then 
+         fsm_timer   <= (others => '0');
+         timeout_err <= '0';
+      elsif current_state /= next_state then 
+         fsm_timer   <= (others => '0');
+      else 
+         if fsm_timer /= unsigned'(x"FFFFF") then 
+            fsm_timer <= fsm_timer + 1;
+         end if;
+         if (current_state = wait_pll_lock or current_state = check_cmp_status or 
+             current_state = cmp_smpls or current_state = ph_shift) and 
+            (fsm_timer > FSM_TIMEOUT_LIMIT) then 
+            timeout_err <= '1';
+         end if;
+      end if;
+   end if;
+end process;
+
 
 -- ----------------------------------------------------------------------------
 -- output registers
@@ -453,7 +497,11 @@ begin
       if ps_en = '0' then
          ps_status_reg <= '0';
       elsif current_state = end_srch then
-         ps_status_reg <= smpl_cmp_error;
+         if timeout_err = '1' or find_min = '1' then
+            ps_status_reg <= '1';
+         else
+            ps_status_reg <= smpl_cmp_error;
+         end if;
       else 
          ps_status_reg <= ps_status_reg;
       end if;
