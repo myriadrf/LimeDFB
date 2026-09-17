@@ -254,7 +254,7 @@ class TXPathTop(LiteXModule):
                 self.pct_loss_flg.eq(0),
             ).Elif(pct_loss_flg_clr,
                 self.pct_loss_flg.eq(0),
-            ).Elif(pct_valid & (rx_sample_nr_sync > pct_header[64:128]),
+            ).Elif(pct_valid & ~pct_rd & (rx_sample_nr_sync > pct_header[64:128]),
                 self.pct_loss_flg.eq(1),
             )
         ]
