@@ -838,7 +838,9 @@ begin
 
    -- pct_valid is not asserted when sync_dis is set in the packet header;
    -- the packet is automatically read in this case.
-   pct_valid <= '1' when current_read_state = RD_META_CHECK and
+   -- Since rd_meta_valid becomes in RD_IDLE state it is also checked with RD_META_CHECK 
+   -- to allow issue pct_read when timestamps are equal instead of waiting on next cycle
+   pct_valid <= '1' when (current_read_state = RD_META_CHECK OR current_read_state = RD_IDLE) and
                       rd_meta_valid = '1' and
                       rd_meta.sync_dis = '0'
              else '0';
