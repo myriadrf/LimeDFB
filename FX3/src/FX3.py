@@ -32,7 +32,8 @@ class FX3(LiteXModule):
                  EP0F_size    = 1024,  # Control PC->FPGA, FIFO size in bytes
                  EP0F_rwidth  = 32,    # Control PC->FPGA, rd width
                  EP8F_size    = 1024,  # Control FPGA->PC, FIFO size in bytes
-                 EP8F_wwidth  = 32,):  # Control FPGA->PC, wr width
+                 EP8F_wwidth  = 32,    # Control FPGA->PC, wr width
+                 cd_source_1_rd = "sys"): # Read clock domain for source 1 FIFO
         self.pads = pads
         self.platform = platform
 
@@ -60,7 +61,7 @@ class FX3(LiteXModule):
 
         self.data_sink = AXIStreamInterface(EP81_wwidth)
         self.data_source = AXIStreamInterface(EP01_0_rwidth)
-        self.data_source_1 = AXIStreamInterface(EP01_1_rwidth)
+        self.data_source_1 = AXIStreamInterface(EP01_1_rwidth, clock_domain=cd_source_1_rd)
         self.data_source_1_level = Signal(ep01_0_rdusedw_width)
 
         # Control Interface
@@ -93,10 +94,21 @@ class FX3(LiteXModule):
             layout=[("data", 32)],
             depth=EP01_size//4,
             buffered=True))
-        self.source_data_fifo_1 = ResetInserter()(SyncFIFO(
-            layout=[("data", 32)],
-            depth=EP01_size//4,
-            buffered=True))
+        if cd_source_1_rd == "sys":
+            self.source_data_fifo_1 = ResetInserter()(SyncFIFO(
+                layout=[("data", 32)],
+                depth=EP01_size//4,
+                buffered=True))
+        else:
+            try:
+                from gateware.LimeDFB.lime_fifo import LimeStreamAsyncFIFO
+            except ImportError:
+                from lime_fifo import LimeStreamAsyncFIFO
+            self.source_data_fifo_1 = ClockDomainsRenamer({"write": "sys", "read": cd_source_1_rd})(
+                LimeStreamAsyncFIFO(
+                    layout=[("data", 32)],
+                    depth=EP01_size//4,
+                    buffered=True))
         # # FPGA -> Host data FIFO
         self.sink_data_fifo = ResetInserter()(SyncFIFO(
             layout=[("data", 32)],
@@ -114,6 +126,8 @@ class FX3(LiteXModule):
             buffered=True))
 
         # Host -> FPGA data fifo muxing
+        source_1_level_w = self.source_data_fifo_1.level_w if cd_source_1_rd != "sys" else self.source_data_fifo_1.level
+        source_1_level_r = self.source_data_fifo_1.level_r if cd_source_1_rd != "sys" else self.source_data_fifo_1.level
         self.comb +=[
             self.source_data_fifo_0.sink.data.eq(self._socket0_fifo_data),
             self._payload_extract_sink_data.eq(self._socket0_fifo_data),
@@ -126,7 +140,7 @@ class FX3(LiteXModule):
             ]).Else([
                 self.source_data_fifo_0.sink.valid.eq(0),
                 self._payload_extract_sink_valid.eq(self._socket0_fifo_wr),
-                self._socket0_fifo_usedw.eq(self.source_data_fifo_1.level),
+                self._socket0_fifo_usedw.eq(source_1_level_w),
             ])
         ]
 
@@ -164,7 +178,7 @@ class FX3(LiteXModule):
             self.comb += self.source_1_conv.source.connect(self.data_source_1, omit=["keep", "id", "dest", "user"])
         else:
             self.comb += self.source_data_fifo_1.source.connect(self.data_source_1, omit=["keep", "id", "dest", "user"])
-            self.comb += self.data_source_1_level.eq(self.source_data_fifo_1.level)
+            self.comb += self.data_source_1_level.eq(source_1_level_r)
 
         # Sink
         if EP81_wwidth != 32:
