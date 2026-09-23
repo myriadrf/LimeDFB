@@ -100,10 +100,7 @@ class FX3(LiteXModule):
                 depth=EP01_size//4,
                 buffered=True))
         else:
-            try:
-                from gateware.LimeDFB.lime_fifo import LimeStreamAsyncFIFO
-            except ImportError:
-                from lime_fifo import LimeStreamAsyncFIFO
+            from gateware.LimeDFB.lime_fifo.src.lime_fifo import LimeStreamAsyncFIFO
             self.source_data_fifo_1 = ClockDomainsRenamer({"write": "sys", "read": cd_source_1_rd})(
                 LimeStreamAsyncFIFO(
                     layout=[("data", 32)],
