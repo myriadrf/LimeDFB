@@ -18,13 +18,13 @@ from migen.genlib.cdc import MultiReg
 
 # LMS7002 CLK --------------------------------------------------------------------------------------
 
-def LMS7002CLK(platform, vendor, family, pads=None, **kwargs):
+def LMS7002CLK(platform, vendor, family, pads=None, unified_csr=False, **kwargs):
     if vendor == "lattice":
-        return LMS7002CLK_Lattice(platform, pads,  **kwargs)
+        return LMS7002CLK_Lattice(platform, pads, unified_csr=unified_csr, **kwargs)
     elif vendor == "altera":
-        return LMS7002CLK_Altera(platform, family, pads,  **kwargs)
+        return LMS7002CLK_Altera(platform, family, pads, unified_csr=unified_csr, **kwargs)
     elif vendor == "xilinx":
-        return LMS7002CLK_Xilinx(platform, pads,  **kwargs)
+        return LMS7002CLK_Xilinx(platform, pads, unified_csr=unified_csr, **kwargs)
     else:
         raise ValueError(f"Unsupported vendor: {vendor}")
 
@@ -54,12 +54,13 @@ class LMS7002CLKBase(LiteXModule):
 
 
 class LMS7002CLK_Lattice(LMS7002CLKBase):
-    def __init__(self, platform, pads=None, **kwargs):
+    def __init__(self, platform, pads=None,
+                 unified_csr=False, **kwargs):
         super().__init__(platform, pads, **kwargs)
 
         from gateware.lms7002_clk import ClkCfgRegs
         # Clocking control registers
-        self.CLK_CTRL = ClkCfgRegs(use_status_regs=True)
+        self.CLK_CTRL = ClkCfgRegs(use_status_regs=True, unified_csr=unified_csr)
 
         inst1_q = Signal()
         inst2_q = Signal()
@@ -216,12 +217,13 @@ class LMS7002CLK_Lattice(LMS7002CLKBase):
 
 class LMS7002CLK_Altera(LMS7002CLKBase):
     def __init__(self, platform, family, pads=None,
+        unified_csr=False,
         **kwargs):
         super().__init__(platform, pads, **kwargs)
 
         from gateware.lms7002_clk import ClkCfgRegs
         # Clocking control registers
-        self.CLK_CTRL = ClkCfgRegs(use_status_regs=True)
+        self.CLK_CTRL = ClkCfgRegs(use_status_regs=True, unified_csr=unified_csr)
 
         self.comb += [
             self.drct_clk_en.eq(Cat(
@@ -372,14 +374,15 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
             )
 
 class LMS7002CLK_Xilinx(LMS7002CLKBase):
-    def __init__(self, platform, pads=None, **kwargs):
+    def __init__(self, platform, pads=None,
+                 unified_csr=False, **kwargs):
         super().__init__(platform, pads, **kwargs)
         from gateware.lms7002_clk import XilinxLmsMMCM
         from gateware.lms7002_clk import ClkMux
         from gateware.lms7002_clk import ClkDlyFxd
         from gateware.lms7002_clk import ClkCfgRegs
         # Clocking control registers
-        self.CLK_CTRL = ClkCfgRegs(use_status_regs=False)
+        self.CLK_CTRL = ClkCfgRegs(use_status_regs=False, unified_csr=unified_csr)
 
         self.cmp_start = CSRStorage(1, reset=0,
             description="Start sample compare: 0: idle, 1 transition: start configuration"
