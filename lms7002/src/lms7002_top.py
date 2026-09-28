@@ -28,8 +28,10 @@ from gateware.LimeDFB.lms7002.src.lms7002_clk   import LMS7002CLK
 # LMS7002 Top --------------------------------------------------------------------------------------
 
 class LMS7002Top(LiteXModule):
-    def __init__(self, platform, vendor, pads=None, add_csr=True,
+    def __init__(self, platform, vendor, family, pads=None,
         fpgacfg_manager      = None,
+        rx_stream_en         = None,
+        tx_stream_en         = None,
         pllcfg_manager       = None,
         diq_width            = 12,
         invert_input_clock   = False,
@@ -37,31 +39,34 @@ class LMS7002Top(LiteXModule):
         s_axis_tx_fifo_words = 8,
         m_clk_domain         = "lms_rx",
         m_axis_rx_fifo_words = 16,
-        with_max10_pll       = False,
-        one_chnl             = False,
+        one_chnl            = False,
+        with_txiq_mux       = False,
         ):
 
         assert pads            is not None
         assert fpgacfg_manager is not None
 
+        rx_stream_en = fpgacfg_manager.rx_en if rx_stream_en is None else rx_stream_en
+        tx_stream_en = fpgacfg_manager.rx_en if tx_stream_en is None else tx_stream_en
+
         self.source            = AXIStreamInterface(64, clock_domain=m_clk_domain)
         self.sink              = AXIStreamInterface(64, clock_domain=s_clk_domain)
+
+        if with_txiq_mux:
+            self.wfm_sink_l = Signal(13)
+            self.wfm_sink_h = Signal(13)
+
+            self.txiq_mux_sel = CSRStorage(size=1, description="TXIQ MUX selection, 0 - TX, 1 - WFM")
+            self.txiq_mux_sel_sync = txiq_mux_sel_sync = Signal(1)
+            self.specials += MultiReg(self.txiq_mux_sel.storage,      txiq_mux_sel_sync,      odomain="lms_tx")
 
         self.platform          = platform
 
         self.pads                = pads
-        self.periph_output_val_1 = Signal(16)
-
-        self.from_tstcfg_test_en      = Signal(6)
-        self.from_tstcfg_tx_tst_i     = Signal(16)
-        self.from_tstcfg_tx_tst_q     = Signal(16)
 
         self.smpl_cnt_en      = Signal() # To rx_path
 
         # CSR --------------------------------------------------------------------------------------
-        # LMS Ctrl GPIO
-        self._lms_ctr_gpio = CSRStorage(size=4, description="LMS Control GPIOs.")
-
         # fpgacfg
         self.lms1              = CSRStorage(fields=[         # 19
             CSRField("ss",             size=1, offset=0, reset=1),
@@ -125,13 +130,13 @@ class LMS7002Top(LiteXModule):
         self.smpl_cmp_en    = smpl_cmp_en         = Signal()
         self.smpl_cmp_done  = smpl_cmp_done       = Signal()
         self.smpl_cmp_error = smpl_cmp_error      = Signal()
-        smpl_cmp_cnt        = Signal(16)
-        rx_smpl_cmp_length  = Signal(16)
+        self.smpl_cmp_cnt   = smpl_cmp_cnt        = Signal(16)
+
 
 
         # Clocks.
         # -------
-        self.lms7002_clk = LMS7002CLK(platform, vendor, pads, with_max10_pll=with_max10_pll)
+        self.lms7002_clk = LMS7002CLK(platform, vendor, family, pads)
         self.comb += [
             self.cd_lms_tx.clk.eq(self.lms7002_clk.tx_clk),
             self.cd_lms_rx.clk.eq(self.lms7002_clk.rx_clk),
@@ -140,7 +145,6 @@ class LMS7002Top(LiteXModule):
             self.lms7002_clk.direction.eq(Constant(0, 1)),
             # mini v1
             self.lms7002_clk.clk_ena.eq(    fpgacfg_manager.clk_ena),
-            self.lms7002_clk.drct_clk_en.eq(Replicate(fpgacfg_manager.drct_clk_en[0], 4)),
         ]
 
         # TX Path (DIQ1).
@@ -201,7 +205,7 @@ class LMS7002Top(LiteXModule):
             i_reset_n   = ~ResetSignal("lms_tx"),
             # Mode Settings.
             i_fr_start  = Constant(0, 1), # External Frame ID mode. Frame start at fsync = 0, when 0. Frame start at fsync = 1, when 1.
-            i_mimo_en   = tx_mimo_en,     # SISO: 1; MIMO: 0
+            i_mimo_en   = Constant(1,1),
 
             # Output.
             o_data_h    = tx_test_data_h,
@@ -226,7 +230,7 @@ class LMS7002Top(LiteXModule):
 
         self.txiq_tst_ptrn = Instance("txiq_tst_ptrn", **txiq_tst_ptrn_params)
 
-        self.specials += MultiReg(fpgacfg_manager.rx_en, tx_reset_n, odomain="lms_tx")
+        self.specials += MultiReg(tx_stream_en, tx_reset_n, odomain="lms_tx")
 
         self.specials += [
             MultiReg(fpgacfg_manager.tx_ptrn_en,      tx_ptrn_en,      odomain="lms_tx"),
@@ -266,7 +270,7 @@ class LMS7002Top(LiteXModule):
 
             # Control signals
             i_cmp_start     = smpl_cmp_en,
-            i_cmp_length    = rx_smpl_cmp_length,
+            i_cmp_length    = smpl_cmp_cnt,
             o_cmp_done      = smpl_cmp_done,
             o_cmp_error     = smpl_cmp_error,
             i_cmp_AI        = Constant(0xAAA, diq_width),
@@ -274,19 +278,39 @@ class LMS7002Top(LiteXModule):
             i_cmp_BI        = Constant(0xAAA, diq_width),
             i_cmp_BQ        = Constant(0x555, diq_width),
         )
-        # Debug Signals
-        self.DEBUG_IQ_ERR = Signal()
-        self.DEBUG_AI_ERR = Signal()
-        self.DEBUG_AQ_ERR = Signal()
-        self.DEBUG_BI_ERR = Signal()
-        self.DEBUG_BQ_ERR = Signal()
+        # Sample Compare Debug Signals
+        self.DEBUG_SMPL_CMP_IQ_ERR       = Signal()                 # Error flag indicating IQ select framing mismatch between DIQ high and low buses
+        self.DEBUG_SMPL_CMP_AI_ERR       = Signal()                 # Error flag for Channel A I-sample mismatch against expected cmp_AI pattern
+        self.DEBUG_SMPL_CMP_AQ_ERR       = Signal()                 # Error flag for Channel A Q-sample mismatch against expected cmp_AQ pattern
+        self.DEBUG_SMPL_CMP_BI_ERR       = Signal()                 # Error flag for Channel B I-sample mismatch against expected cmp_BI pattern
+        self.DEBUG_SMPL_CMP_BQ_ERR       = Signal()                 # Error flag for Channel B Q-sample mismatch against expected cmp_BQ pattern
+        self.DEBUG_SMPL_CMP_STATE        = Signal(2)                # Current FSM state: 00=idle, 01=wait_cyc, 10=compare, 11=compare_done
+        self.DEBUG_SMPL_CMP_SMPL_ERR     = Signal()                 # Real-time unlatched composite sample error flag (OR combination of all error flags)
+        self.DEBUG_SMPL_CMP_SMPL_ERR_CNT = Signal(16)               # Running error count of mismatched samples during active comparison
+        self.DEBUG_SMPL_CMP_COMPARE_CNT  = Signal(16)               # Counter tracking number of evaluated samples against configured cmp_length
+        self.DEBUG_SMPL_CMP_WAIT_CNT     = Signal(4)                # Settle delay cycle counter in wait_cyc state before comparison starts
+        self.DEBUG_SMPL_CMP_COMPARE_STOP = Signal()                 # Trigger flag asserted when compare_cnt reaches or exceeds cmp_length
+        self.DEBUG_SMPL_CMP_STOP_EVENT   = Signal()                 # Stop event indicator asserted on compare completion or immediate sample error
+        self.DEBUG_SMPL_CMP_DIQ_H_REG    = Signal(diq_width + 1)    # Registered upper DIQ bus input containing sample bits and IQ select framing bit
+        self.DEBUG_SMPL_CMP_DIQ_L_REG    = Signal(diq_width + 1)    # Registered lower DIQ bus input containing sample bits and IQ select framing bit
+        self.DEBUG_SMPL_CMP_ERROR_CNT    = Signal(16)               # Latched sample comparison error count at compare completion (o_cmp_error_cnt)
 
         smpl_cmp_params.update(
-            o_DEBUG_IQ_ERR = self.DEBUG_IQ_ERR,
-            o_DEBUG_AI_ERR = self.DEBUG_AI_ERR,
-            o_DEBUG_AQ_ERR = self.DEBUG_AQ_ERR,
-            o_DEBUG_BI_ERR = self.DEBUG_BI_ERR,
-            o_DEBUG_BQ_ERR = self.DEBUG_BQ_ERR,
+            o_cmp_error_cnt      = self.DEBUG_SMPL_CMP_ERROR_CNT,
+            o_DEBUG_IQ_ERR       = self.DEBUG_SMPL_CMP_IQ_ERR,
+            o_DEBUG_AI_ERR       = self.DEBUG_SMPL_CMP_AI_ERR,
+            o_DEBUG_AQ_ERR       = self.DEBUG_SMPL_CMP_AQ_ERR,
+            o_DEBUG_BI_ERR       = self.DEBUG_SMPL_CMP_BI_ERR,
+            o_DEBUG_BQ_ERR       = self.DEBUG_SMPL_CMP_BQ_ERR,
+            o_DEBUG_STATE        = self.DEBUG_SMPL_CMP_STATE,
+            o_DEBUG_SMPL_ERR     = self.DEBUG_SMPL_CMP_SMPL_ERR,
+            o_DEBUG_SMPL_ERR_CNT = self.DEBUG_SMPL_CMP_SMPL_ERR_CNT,
+            o_DEBUG_COMPARE_CNT  = self.DEBUG_SMPL_CMP_COMPARE_CNT,
+            o_DEBUG_WAIT_CNT     = self.DEBUG_SMPL_CMP_WAIT_CNT,
+            o_DEBUG_COMPARE_STOP = self.DEBUG_SMPL_CMP_COMPARE_STOP,
+            o_DEBUG_STOP_EVENT   = self.DEBUG_SMPL_CMP_STOP_EVENT,
+            o_DEBUG_DIQ_H_REG    = self.DEBUG_SMPL_CMP_DIQ_H_REG,
+            o_DEBUG_DIQ_L_REG    = self.DEBUG_SMPL_CMP_DIQ_L_REG,
         )
 
         self.smpl_cmp = Instance("smpl_cmp", **smpl_cmp_params)
@@ -337,7 +361,7 @@ class LMS7002Top(LiteXModule):
             o_m_axis_tlast        = self.rx_cdc.sink.last
         )
 
-        self.specials += MultiReg(fpgacfg_manager.rx_en, self.rx_reset_n, odomain="lms_rx"),
+        self.specials += MultiReg(rx_stream_en, self.rx_reset_n, odomain="lms_rx"),
 
         self.specials += [
             MultiReg(fpgacfg_manager.rx_ptrn_en,      rx_ptrn_en,      odomain="lms_rx"),
@@ -347,7 +371,6 @@ class LMS7002Top(LiteXModule):
             MultiReg(fpgacfg_manager.mimo_int_en,     rx_mimo_en,      odomain="lms_rx"),
             MultiReg(fpgacfg_manager.ch_en,           rx_ch_en,        odomain="lms_rx"),
         ]
-        self.comb += rx_smpl_cmp_length.eq(smpl_cmp_cnt)
 
         # Delay control module.
         # ---------------------
@@ -416,15 +439,56 @@ class LMS7002Top(LiteXModule):
             )
         ]
 
-        self.comb += [
-            If(tx_ptrn_en,
-                self.lms7002_ddout.tx_diq1_h.eq(tx_tst_ptrn_h),
-                self.lms7002_ddout.tx_diq1_l.eq(tx_tst_ptrn_l),
-            ).Else(
-                self.lms7002_ddout.tx_diq1_h.eq(tx_diq_h),
-                self.lms7002_ddout.tx_diq1_l.eq(tx_diq_l),
-            )
-        ]
+        if with_txiq_mux == False:
+            self.comb += [
+                If(tx_ptrn_en,
+                    self.lms7002_ddout.tx_diq1_h.eq(tx_tst_ptrn_h),
+                    self.lms7002_ddout.tx_diq1_l.eq(tx_tst_ptrn_l),
+                ).Else(
+                    self.lms7002_ddout.tx_diq1_h.eq(tx_diq_h),
+                    self.lms7002_ddout.tx_diq1_l.eq(tx_diq_l),
+                )
+            ]
+        else:
+            self.mux0_reg_l = mux0_reg_l = Signal(13)
+            self.mux0_reg_h = mux0_reg_h = Signal(13)
+            self.mux1_reg_l = mux1_reg_l = Signal(13)
+            self.mux1_reg_h = mux1_reg_h = Signal(13)
+            self.mux2_reg_l = mux2_reg_l = Signal(13)
+            self.mux2_reg_h = mux2_reg_h = Signal(13)
+            sync_s_clk_domain = getattr(self.sync, s_clk_domain)
+
+            sync_s_clk_domain += [
+                If(txiq_mux_sel_sync,[
+                    mux0_reg_l.eq(self.wfm_sink_l),
+                    mux0_reg_h.eq(self.wfm_sink_h)
+                ]).Else([
+                    mux0_reg_l.eq(tx_diq_l),
+                    mux0_reg_h.eq(tx_diq_h)
+                ]),
+
+                If(tx_ptrn_en,[
+                    mux1_reg_l.eq(tx_tst_ptrn_l),
+                    mux1_reg_h.eq(tx_tst_ptrn_h)
+                ]).Else([
+                    mux1_reg_l.eq(mux0_reg_l),
+                    mux1_reg_h.eq(mux0_reg_h)
+                ]),
+
+                If(tx_tst_data_en,[
+                    mux2_reg_l.eq(tx_test_data_l),
+                    mux2_reg_h.eq(tx_test_data_h)
+                ]).Else([
+                    mux2_reg_l.eq(mux1_reg_l),
+                    mux2_reg_h.eq(mux1_reg_h)
+                ])
+            ]
+
+            self.comb += [
+                    self.lms7002_ddout.tx_diq1_h.eq(mux2_reg_h),
+                    self.lms7002_ddout.tx_diq1_l.eq(mux2_reg_l)
+            ]
+
 
 
         # LMS Controls.

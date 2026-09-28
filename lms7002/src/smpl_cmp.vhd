@@ -40,6 +40,21 @@ entity smpl_cmp is
       cmp_done       : out std_logic;     -- '1' - indicates when sample compare is done
       cmp_error      : out std_logic;     -- '0' - no errors, '1' - captured error
       cmp_error_cnt  : out std_logic_vector(15 downto 0);
+      -- debug
+      DEBUG_AI_ERR       : out std_logic;
+      DEBUG_AQ_ERR       : out std_logic;
+      DEBUG_BI_ERR       : out std_logic;
+      DEBUG_BQ_ERR       : out std_logic;
+      DEBUG_IQ_ERR       : out std_logic;
+      DEBUG_STATE        : out std_logic_vector(1 downto 0);
+      DEBUG_SMPL_ERR     : out std_logic;
+      DEBUG_SMPL_ERR_CNT : out std_logic_vector(15 downto 0);
+      DEBUG_COMPARE_CNT  : out std_logic_vector(15 downto 0);
+      DEBUG_WAIT_CNT     : out std_logic_vector(3 downto 0);
+      DEBUG_COMPARE_STOP : out std_logic;
+      DEBUG_STOP_EVENT   : out std_logic;
+      DEBUG_DIQ_H_REG    : out std_logic_vector(smpl_width downto 0);
+      DEBUG_DIQ_L_REG    : out std_logic_vector(smpl_width downto 0);
       --DIQ bus
       diq_h          : in std_logic_vector(smpl_width downto 0);
       diq_l          : in std_logic_vector(smpl_width downto 0)  
@@ -71,6 +86,7 @@ signal smpl_err_cnt     : unsigned(15 downto 0);
 signal compare_cnt      : unsigned(15 downto 0);
 signal wait_cnt         : unsigned(3 downto 0);
 signal compare_stop     : std_logic;
+signal stop_event       : std_logic;
 
 type state_type is (idle, wait_cyc, compare, compare_done);
 signal current_state, next_state : state_type;
@@ -78,6 +94,29 @@ signal current_state, next_state : state_type;
 
   
 begin
+-- ----------------------------------------------------------------------------
+-- DEBUG
+-- ----------------------------------------------------------------------------
+DEBUG_IQ_ERR       <= IQ_SEL_err;
+DEBUG_AI_ERR       <= AI_err;
+DEBUG_AQ_ERR       <= AQ_err;
+DEBUG_BI_ERR       <= BI_err;
+DEBUG_BQ_ERR       <= BQ_err;
+DEBUG_SMPL_ERR     <= smpl_err;
+DEBUG_SMPL_ERR_CNT <= std_logic_vector(smpl_err_cnt);
+DEBUG_COMPARE_CNT  <= std_logic_vector(compare_cnt);
+DEBUG_WAIT_CNT     <= std_logic_vector(wait_cnt);
+DEBUG_COMPARE_STOP <= compare_stop;
+DEBUG_STOP_EVENT   <= stop_event;
+DEBUG_DIQ_H_REG    <= diq_h_reg;
+DEBUG_DIQ_L_REG    <= diq_l_reg;
+
+with current_state select
+   DEBUG_STATE <= "00" when idle,
+                  "01" when wait_cyc,
+                  "10" when compare,
+                  "11" when compare_done,
+                  "00" when others;
 -- ----------------------------------------------------------------------------
 -- Input registers
 -- ----------------------------------------------------------------------------  
@@ -273,6 +312,8 @@ fsm : process(current_state, cmp_start, cmp_start_reg, compare_stop, smpl_err, w
 			next_state <= idle;
 	end case;
 end process;
+
+stop_event <= compare_stop OR smpl_err;
 
 -- ----------------------------------------------------------------------------
 -- Output registers

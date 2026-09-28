@@ -23,22 +23,20 @@ from gateware.common import *
 
 class RXPathTop(LiteXModule):
     def __init__(self, platform, fpgacfg_manager=None,
+        rx_stream_en=None,
         # RX parameters
-        RX_IQ_WIDTH                  = 12,
-        S_AXIS_IQSMPLS_BUFFER_WORDS  = 16,
-        M_AXIS_IQPACKET_BUFFER_WORDS = 512,
         int_clk_domain               = "lms_rx",
         m_clk_domain                 = "lms_rx",
         s_clk_domain                 = "lms_rx",
         soc_has_timesource           = False,
         sink_width                   = 128,
         source_width                 = 64,
-        use_channel_combiner         = True,
         bypass_packets               = False,
         fixed_packet_size            = False,
         ):
 
         assert fpgacfg_manager is not None
+        rx_stream_en = fpgacfg_manager.rx_en if rx_stream_en is None else rx_stream_en
         assert sink_width in [64, 128], f"Invalid sink_width: {sink_width}. Must be 64 (two channels) or 128 (four channels)."
 
         self.platform              = platform
@@ -313,7 +311,7 @@ class RXPathTop(LiteXModule):
 
         reset_n = Signal()
         # if platform.name.startswith("limesdr_mini"):
-        reset_n = fpgacfg_manager.rx_en
+        reset_n = rx_stream_en
         # else:
         #     reset_n = fpgacfg_manager.tx_en
 
