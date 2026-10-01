@@ -41,6 +41,8 @@ entity tx_dsp is
 
     -- monitoring path capture
     --moni, monq : in  std_logic_vector(15 downto 0);
+    sel_buffer_source : out std_logic_vector(1 downto 0);
+    sel_moni_source   : out std_logic_vector(1 downto 0);
 
     adpd_ctrl_reg     : out STD_LOGIC_VECTOR(15 downto 0);
     adpd_data_reg     : out STD_LOGIC_VECTOR(15 downto 0);
@@ -200,7 +202,8 @@ architecture tx_dsparch of tx_dsp is
       mem_start_write   : out std_logic;                    -- start active high
       mem_full          : in  std_logic;
       sel_buffer_source : out std_logic_vector(1 downto 0);
-      hb1_delay : out std_logic
+      hb1_delay : out std_logic;
+      sel_moni_source   : out std_logic_vector(1 downto 0)
     );
   end component;
 
@@ -255,7 +258,7 @@ architecture tx_dsparch of tx_dsp is
   --signal mem_start_write : std_logic;
   --signal mem_full        : std_logic;
 
-  signal sel_buffer_source : std_logic_vector(1 downto 0);
+  --signal sel_buffer_source : std_logic_vector(1 downto 0);
   signal hb1_delay : std_logic;
 
   signal cfr_sample_sleep : std_logic;
@@ -296,7 +299,8 @@ begin
       mem_start_write   => mem_start_write,
       mem_full          => mem_full,
       sel_buffer_source => sel_buffer_source,
-      hb1_delay => hb1_delay 
+      hb1_delay => hb1_delay,
+      sel_moni_source => sel_moni_source
     );
 
   xi1 <= xi;

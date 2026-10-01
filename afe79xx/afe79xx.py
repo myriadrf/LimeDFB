@@ -576,9 +576,18 @@ class afe79xx(LiteXModule):
             # qadpd_a_data[16:32] = A Q after DPD
             tx_a_after_dpd = qadpd_a_data
 
-            # RX Channel A from AFE receive path.
-            # rx_conv_ch_mux_data[0:32] is logical Channel A after AFE channel remap.
-            rx_a_from_afe = rx_conv_ch_mux_data[0:32]
+            # Select logical RX channel after AFE remap: 0=A, 1=B, 2=C, 3=D.
+            # Set the SPI configuration before starting a capture.
+            capture_channel = Signal(2)
+            self.specials += MultiReg(
+                i=self.tx_dsp.txdsp1ch.sel_moni_source,
+                o=capture_channel,
+                odomain=afe_sys_2x_cd,
+            )
+            rx_from_afe = Signal(32)
+            self.comb += rx_from_afe.eq(Array([
+                rx_conv_ch_mux_data[32*ch:32*(ch + 1)] for ch in range(4)
+            ])[capture_channel])
 
 
             self.comb += [
@@ -594,9 +603,9 @@ class afe79xx(LiteXModule):
                 self.dpd_capture_buffer.ypi.eq(tx_a_after_dpd[0:16]),
                 self.dpd_capture_buffer.ypq.eq(tx_a_after_dpd[16:32]),
 
-                # xi/xq = RX feedback Channel A from AFE receive
-                self.dpd_capture_buffer.xi.eq(rx_a_from_afe[0:16]),
-                self.dpd_capture_buffer.xq.eq(rx_a_from_afe[16:32]),
+                # xi/xq = selected RX feedback channel from AFE receive
+                self.dpd_capture_buffer.xi.eq(rx_from_afe[0:16]),
+                self.dpd_capture_buffer.xq.eq(rx_from_afe[16:32]),
             ]
 
             tx_conv = stream.Converter(nbits_from=128, nbits_to=256)

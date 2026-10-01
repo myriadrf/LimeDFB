@@ -47,7 +47,8 @@ entity txchaincfg is
     mem_start_write  : out std_logic;                    -- mem(0)(1);                -- start active high
     mem_full         : in  std_logic;                     -- mem(1)(0);
     sel_buffer_source : out std_logic_vector(1 downto 0);
-    hb1_delay : out std_logic
+    hb1_delay : out std_logic;
+    sel_moni_source  : out std_logic_vector(1 downto 0)
   );
 end entity;
 
@@ -159,7 +160,7 @@ architecture txchaincfg_arch of txchaincfg is
       -- Defaults
       if mreset = '0' then
         --Read only registers
-        mem(0) <= "0000000000011101"; -- hb1_delay, sel_buffer_source, mem_start_write, mem_reset_n,
+        mem(0) <= "0000000001111101"; -- sel_moni_source, hb1_delay, sel_buffer_source, mem_start_write, mem_reset_n,
         mem(1) <= "0000000000000000"; -- 15 free, mem_full
         mem(2) <= "0000000000000010"; -- cfr_odd, cfr_bypass, cfr_sleep, 
         mem(3) <= "1111111111111111"; -- cfr_threshold,
@@ -203,6 +204,8 @@ architecture txchaincfg_arch of txchaincfg is
     sel_buffer_source <= mem(0)(3 downto 2);  -- default 3
 
     hb1_delay <= mem(0)(4); -- default 1 (workarround)
+    
+    sel_moni_source <= mem(0)(6 downto 5); -- default 3 
 
     cfr_sleep <= mem(2)(0); -- default 0
     cfr_bypass <= mem(2)(1); -- default 1

@@ -13,6 +13,8 @@ from gateware.common import *
 from litex.soc.cores.spi import SPIMaster
 from litex.soc.interconnect.axi.axi_lite import axi_lite_to_simple
 
+import math
+
 
 class DspMmap128ToAXILite32(LiteXModule):
     """
@@ -250,11 +252,12 @@ class TxDsp4Ch(LiteXModule):
 
         # Board SPI (used in DPD)
         # SPI master used to configure tx_dsp over its internal SPI port.
+        spimaster_board_spi_clk_freq = 10e6
         self.spimaster_board_spi = spi = SPIMaster(
             pads=None,
             data_width=32,
             sys_clk_freq=sys_clk_freq,
-            spi_clk_freq=10e6,
+            spi_clk_freq=spimaster_board_spi_clk_freq,
             with_csr=True,
         )
 
@@ -267,6 +270,18 @@ class TxDsp4Ch(LiteXModule):
             self.sdin.eq(spi.pads.mosi),
             spi.pads.miso.eq(self.sdout),
         ]
+
+        # Add timing constraint for generated clock
+        self.platform.add_generated_clock_from_divider_reg(
+            name="tx_dsp_spi_clk",
+            reg_basename="afe_tx_dsp_pads_clk_reg",
+            divide_by=math.ceil(sys_clk_freq / spimaster_board_spi_clk_freq),
+        )
+        # Configuration must settle before processing starts in other domains.
+        self.platform.add_platform_command(
+            "set_clock_groups -name tx_dsp_spi_async -asynchronous "
+            "-group [get_clocks tx_dsp_spi_clk]"
+        )
 
         # ---------------------------------------------------------------------
         # 1-channel TX DSP instance for channel 0
@@ -404,6 +419,8 @@ class TxDsp1Ch(LiteXModule):
         # ---------------------------------------------------------------------
         # DPD control signals
         # ---------------------------------------------------------------------
+        self.sel_buffer_source = Signal(2)
+        self.sel_moni_source   = Signal(2)
         self.adpd_ctrl_reg = Signal(16)
         self.adpd_data_reg = Signal(16)
 
@@ -439,6 +456,9 @@ class TxDsp1Ch(LiteXModule):
             i_sclk    = self.sclk,
             i_sen     = self.sen,
             o_sdout   = self.sdout,
+
+            o_sel_buffer_source = self.sel_buffer_source,
+            o_sel_moni_source = self.sel_moni_source,
 
             # DPD control signals
             o_adpd_ctrl_reg = self.adpd_ctrl_reg,
