@@ -41,6 +41,7 @@ class LMS7002Top(LiteXModule):
         m_axis_rx_fifo_words = 16,
         one_chnl            = False,
         with_txiq_mux       = False,
+        unified_clk_csr     = False,
         ):
 
         assert pads            is not None
@@ -136,7 +137,7 @@ class LMS7002Top(LiteXModule):
 
         # Clocks.
         # -------
-        self.lms7002_clk = LMS7002CLK(platform, vendor, family, pads)
+        self.lms7002_clk = LMS7002CLK(platform, vendor, family, pads, unified_csr=unified_clk_csr)
         self.comb += [
             self.cd_lms_tx.clk.eq(self.lms7002_clk.tx_clk),
             self.cd_lms_rx.clk.eq(self.lms7002_clk.rx_clk),

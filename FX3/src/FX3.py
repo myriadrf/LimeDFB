@@ -23,7 +23,7 @@ def fifo_words_to_nbits(n_words: int, add_msb: bool) -> int:
 # other appropriate CDC measures.
 
 class FX3(LiteXModule):
-    def __init__(self, platform, pads, vendor="altera",
+    def __init__(self, platform, pads,
                  EP01_size    = 4096,  # Stream PC->FPGA, FIFO size in bytes, same size for FX3_EP01_0 and FX3_EP01_1
                  EP01_0_rwidth= 32,   # Stream PC->FPGA, FIFO rd width, FIFO number - 0
                  EP01_1_rwidth= 32,    # Stream PC->FPGA, FIFO rd width, FIFO number - 1
@@ -321,60 +321,4 @@ class FX3(LiteXModule):
         )
         # Removed Instance to avoid multiple definition
         self._fragment.specials.remove(self.slaveFIFO5b)
-
-
-        # Constraints
-        if vendor == "altera":
-            # 1. Timing Parameters
-            fx3_period = 10.0
-            fx3_tDS = 2.0
-            fx3_tDH = 0.50
-            fx3_tSU = 2.0
-            fx3_tH = 0.5
-
-            fx3_tCO_max = 8.0
-            fx3_tCO_min = 1.0
-            fx3_tCFLG_max = 8.0
-            fx3_tCFLG_min = 1.0
-
-            # 2. Calculated Delays
-            fx3_d_in_max_dly   = fx3_tCO_max
-            fx3_d_in_min_dly   = fx3_tCO_min
-            fx3_ctl_in_max_dly = fx3_tCFLG_max
-            fx3_ctl_in_min_dly = fx3_tCFLG_min
-
-            fx3_d_out_max_dly   = fx3_tDS
-            fx3_d_out_min_dly   = -fx3_tDH
-            fx3_ctl_out_max_dly = fx3_tSU
-            fx3_ctl_out_min_dly = -fx3_tH
-
-            # 3. Construct SDC Commands
-            sdc_commands = [
-                # # Clocks
-                # f"create_clock -period 1000.000 -name BRDG_SPI_SCLK [get_ports {{FX3_spi_clk}}]",
-                # f"create_clock -period {fx3_period:.3f} -name FX3_PCLK [get_ports {{FX3_pclk}}]",
-                f"create_clock -name FX3_PCLK_VIRT -period {fx3_period:.3f}",
-                f"create_clock -name FX3_PCLK_VIRT_OUT -period {fx3_period:.3f}",
-
-                # Input Constraints
-                f"set_input_delay -clock [get_clocks FX3_PCLK_VIRT] -max {fx3_ctl_in_max_dly:.3f} [get_ports {{FX3_ctl4 FX3_ctl5 FX3_ctl8}}]",
-                f"set_input_delay -clock [get_clocks FX3_PCLK_VIRT] -min {fx3_ctl_in_min_dly:.3f} [get_ports {{FX3_ctl4 FX3_ctl5 FX3_ctl8}}]",
-                f"set_input_delay -clock [get_clocks FX3_PCLK_VIRT] -max {fx3_d_in_max_dly:.3f} [get_ports {{FX3_dq[*]}}]",
-                f"set_input_delay -clock [get_clocks FX3_PCLK_VIRT] -min {fx3_d_in_min_dly:.3f} [get_ports {{FX3_dq[*]}}]",
-
-                # Output Constraints
-                f"set_output_delay -clock [get_clocks FX3_PCLK_VIRT_OUT] -max {fx3_ctl_out_max_dly:.3f} [get_ports {{FX3_ctl0 FX3_ctl1 FX3_ctl2 FX3_ctl3 FX3_ctl7 FX3_ctl11 FX3_ctl12}}]",
-                f"set_output_delay -clock [get_clocks FX3_PCLK_VIRT_OUT] -min {fx3_ctl_out_min_dly:.3f} [get_ports {{FX3_ctl0 FX3_ctl1 FX3_ctl2 FX3_ctl3 FX3_ctl7 FX3_ctl11 FX3_ctl12}}]",
-                f"set_output_delay -clock [get_clocks FX3_PCLK_VIRT_OUT] -max {fx3_d_out_max_dly:.3f} [get_ports {{FX3_dq[*]}}]",
-                f"set_output_delay -clock [get_clocks FX3_PCLK_VIRT_OUT] -min {fx3_d_out_min_dly:.3f} [get_ports {{FX3_dq[*]}}]",
-
-                # Exceptions
-                f"set_false_path -to [get_ports {{FX3_ctl2}}]"
-            ]
-
-            # 4. Inject into the SDC generation flow
-            for cmd in sdc_commands:
-                platform.toolchain.additional_sdc_commands.append(cmd)
-        else:
-            raise ValueError("FX3: Unsupported FPGA vendor: {}. Constraints for this vendor not defined".format(vendor))
 

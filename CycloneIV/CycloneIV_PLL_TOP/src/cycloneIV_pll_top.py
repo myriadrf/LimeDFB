@@ -83,10 +83,6 @@ class CycloneIVPLLTop(LiteXModule):
         self.auto_phcfg_smpls = Signal(16)
         self.auto_phcfg_step  = Signal(16)
 
-        # Signals.
-        # --------
-        platform.add_period_constraint(pads.MCLK1, 1e9/122.88e6)
-        platform.add_period_constraint(pads.MCLK2, 1e9/122.88e6)
 
         # pll_top instance.
         # -----------------
