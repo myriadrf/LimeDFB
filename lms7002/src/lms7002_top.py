@@ -395,9 +395,10 @@ class LMS7002Top(LiteXModule):
                self.rx_cdc.sink.valid.eq(0),
             ),
             # Pads.
-            self.pads.CORE_LDO_EN.eq(self.lms1.fields.core_ldo_en),
             self.pads.TXNRX1.eq(     self.lms1.fields.txnrx1),
         ]
+        if hasattr(self.pads, "CORE_LDO_EN"):
+            self.comb += self.pads.CORE_LDO_EN.eq(self.lms1.fields.core_ldo_en)
 
         # Lattice does not do direct clock control, but instead delays input/output signals
         # The logic needs access to both clk control signals AND ddio, so it lives here
