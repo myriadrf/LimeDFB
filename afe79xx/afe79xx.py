@@ -12,6 +12,7 @@ from migen.genlib.cdc import MultiReg
 from gateware.LimeDFB.Resampler.Resampler import Resampler
 
 from gateware.common import *
+from gateware.LimeDFB.afe79xx.afe79xx_phy import AFE79xxPHY
 
 
 # -----------------------------
@@ -54,243 +55,45 @@ class afe79xx(LiteXModule):
             self.source = AXIStreamInterface(128, clock_domain=demux_clk_domain)
             self.sink   = AXIStreamInterface(128, clock_domain=demux_clk_domain)
 
-        self.afe_source = afe_source = AXIStreamInterface(256, clock_domain=afe_sys_cd)
-        self.afe_sink   = afe_sink   = AXIStreamInterface(256, clock_domain=afe_sys_cd)
-        self.rx_en      = Signal()
-
-        # Add sources
-        self._add_platform_sources()
-
-        # Timing Constraints -----------------------------------------------------------------------
-        self._add_timing_constraints()
-
-
-        # Clock Domains.
-        # --------------
-        self.xcvr_rx_clock = ClockDomain()
-        self.xcvr_tx_clock = ClockDomain()
-
-        # create misc signals
-        self.fpga_gt_aferef_n                               = Signal()  # GT CLOCK 245.76 MHZ
-        self.fpga_gt_aferef_p                               = Signal()  # GT CLOCK 245.76 MHZ
-        self.tiafe_jesd_plls_locked                         = Signal(2)
-        self.fpga_grx_n                                     = Signal()  # input
-        self.fpga_grx_p                                     = Signal()  # input
-        self.fpga_gtx_n                                     = Signal()  # output
-        self.fpga_gtx_p                                     = Signal()  # output
-        self.tiafe_master_reset_n                           = Signal()  # GPO / Asynchronous master reset
-        self.clk_wiz_clk_out1                               = Signal()  # / CLOCK 100.00
-        self.afe7900_jesd_ip_top_0_xcvr_rx_clock            = Signal()
-        self.fpga_sysclk_clk                                = Signal()  # / SYSCLK CLOCK 245.76
-        self.tiafe_rx_sync_reset                            = Signal()  # GPO
-        self.tiafe_cfg_rx_lane_enabled                      = Signal(4)  # GPO
-        self.tiafe_cfg_rx_lane_polarity                     = Signal(4)  # GPO
-        self.tiafe_cfg_rx_lane_map                          = Signal(16)  # GPO
-        self.tiafe_rx_samples                               = Signal(256)  # # # # # # # # # # # # # # # # # # # # # # # # # # # # / SAMPLES
-        self.tiafe_rx_samples_valid                         = Signal()
-        self.tiafe_rx_samples_start_of_multiframe           = Signal()  # Start of Extended MultiBlock marker for first sample
-        self.tiafe_jesd_rx_lane_buffer_overflow             = Signal(4)  # Elastic buffer overflow status Rx IP
-        self.fpga_sysref_clk                                = Signal()  # / SYSREF   CLOCK 3.84
-        self.tiafe_jesd_rx_sysref_realign_count             = Signal(4)  # / Rx SYSREF realignment counter
-        self.tiafe_rx_clr_sysref_realign_count              = Signal()  # / input: Control to clear Rx SYSREF realignment counter
-        self.tiafe_cfg_rx_buffer_release_delay              = Signal(10)  # input 10 bit: Lane buffer release delay control
-        self.rx_lane_start_of_mblock                        = Signal(4)  # out[3:0] Start of multiblock sideband signals per lane = 64 b / 66b only)
-        self.rx_lane_start_of_emblock                       = Signal(4)  # out[3:0] Start of extended multiblock sideband signals per lane(64 b / 66bonly)
-        self.rx_lane_crc_error                              = Signal(4)  # out[3:0] CRC error sideband signal per lane(64b / 66bonly)
-        self.tijesd_core_err                                = Signal(64)
-        self.rx_lemc_pulse                                  = Signal()  # out        Rx IP Extended Multi-Block boundary pulse (64b / 66b only)
-        self.afe7900_jesd_ip_top_0_xcvr_tx_clock            = Signal()  # Transceiver interface Tx IP clock
-        self.tiafe_tx_sync_reset                            = Signal()  # GPO Application interface reset for Tx IP
-        self.tiafe_cfg_tx_lane_enabled                      = Signal(4)  # GPO Lane enable control for Tx IP
-        self.tiafe_cfg_tx_lane_polarity                     = Signal(4)  # GPO Lane polarity control for Tx IP
-        self.tiafe_cfg_tx_lane_map                          = Signal(16)  # GPO Lane map control for Tx IP
-        self.ControlLogic1_0_data_out                       = Signal(256)  # # # # # # # # # # # # # # # # # # # # # # # # # # # # / SAMPLES
-        self.ControlLogic1_0_data_out_ready                 = Signal()  # # # # # # # # # # # # # # # # # # # # # # # # # # # # / SAMPLES
-        self.tx_samples_start_of_emblock                    = Signal()  # out: Start of Extended MultiBlock marker for first sample
-        self.tiafe_jesd_tx_sysref_realign_count             = Signal(4)  # Tx SYSREF realignment counter
-        self.tiafe_tx_clr_sysref_realign_count              = Signal()  # GPO Control to clear Tx SYSREF realignment counter
-        self.tx_lemc_pulse                                  = Signal()  # out: Tx IP Extended Multi - Block boundary pulse(64 b / 66bonly)
-        self.tiafe_jesd_rx_lmfc_to_buffer_release_delay     = Signal(10)  # out 10 bit: Lane buffer release delay for 64b / 66b mode
-        self.debug_nfo                                      = Signal(16)
-        self.jesd_freerun_clk                               = Signal()
-
-        self.rx_swap_iq                                     = Signal(4)
-        self.tx_swap_iq                                     = Signal(4)
-
-        self.DAC_SYNC = Signal(2)
-        self.ADC_SYNC = Signal(2)
-
-        self.comb += [
-            self.xcvr_rx_clock.clk.eq(self.afe7900_jesd_ip_top_0_xcvr_rx_clock),
-            self.xcvr_tx_clock.clk.eq(self.afe7900_jesd_ip_top_0_xcvr_tx_clock),
-            pads.AFE_RESET.eq(self.reg00.fields.afe_reset),
-            pads.AFE_TRST.eq(self.reg00.fields.afe_trst),
-            pads.AFE_SLEEP.eq(self.reg00.fields.afe_sleep),
-
-            #self.tiafe_master_reset_n.eq(self.core_ctrl.fields.afe_core_rst_n),
-
-            #self.tiafe_rx_sync_reset.eq(self.rx_ctrl.fields.tiafe_rx_sync_reset),
-            #self.tiafe_cfg_rx_lane_enabled.eq(self.rx_cfg0.fields.tiafe_cfg_rx_lane_enabled),
-            #self.tiafe_cfg_rx_lane_polarity.eq(self.rx_cfg0.fields.tiafe_cfg_rx_lane_polarity),
-            #self.tiafe_cfg_rx_lane_map.eq(self.rx_cfg1.fields.tiafe_cfg_rx_lane_map),
-            #self.tiafe_cfg_rx_buffer_release_delay.eq(self.rx_cfg2.fields.tiafe_cfg_rx_buffer_release_delay),
-            #self.tiafe_rx_clr_sysref_realign_count.eq(self.rx_ctrl.fields.rx_clr_sysref_realign_count),
-
-            #self.tiafe_tx_sync_reset.eq(self.tx_ctrl.fields.tiafe_tx_sync_reset),
-            #self.tiafe_cfg_tx_lane_enabled.eq(self.tx_cfg0.fields.tiafe_cfg_tx_lane_enabled),
-            #self.tiafe_cfg_tx_lane_polarity.eq(self.tx_cfg0.fields.tiafe_cfg_tx_lane_polarity),
-            #self.tiafe_cfg_tx_lane_map.eq(self.tx_cfg1.fields.tiafe_cfg_tx_lane_map),
-            #self.tiafe_tx_clr_sysref_realign_count.eq(self.tx_ctrl.fields.tx_clr_sysref_realign_count),
-
-            self.rx_status0.fields.jesd_rx_sysref_realign_count.eq(self.tiafe_jesd_rx_sysref_realign_count),
-            self.tx_status0.fields.jesd_tx_sysref_realign_count.eq(self.tiafe_jesd_tx_sysref_realign_count),
-
-            self.core_status0.fields.xcvr_plls_locked.eq(self.tiafe_jesd_plls_locked[1]),
-            self.core_status0.fields.rx_all_lanes_locked.eq(self.tiafe_jesd_plls_locked[0]),
-
-
-            self.ADC_SYNC.eq(0x0)
-
-
-        ]
-
-
-        self.specials += MultiReg(self.core_ctrl.fields.afe_core_rst_n, self.tiafe_master_reset_n, afe_sys_cd, 2,0)
-
-        self.specials += MultiReg(self.rx_ctrl.fields.tiafe_rx_sync_reset, self.tiafe_rx_sync_reset, afe_sys_cd, 2,1)
-        self.specials += MultiReg(self.rx_ctrl.fields.rx_clr_sysref_realign_count, self.tiafe_rx_clr_sysref_realign_count, afe_sys_cd, 2,0)
-
-        self.specials += MultiReg(self.rx_cfg0.fields.tiafe_cfg_rx_lane_enabled, self.tiafe_cfg_rx_lane_enabled,afe_sys_cd, 2,0)
-        self.specials += MultiReg(self.rx_cfg0.fields.tiafe_cfg_rx_lane_polarity, self.tiafe_cfg_rx_lane_polarity, afe_sys_cd, 2,0)
-        self.specials += MultiReg(self.rx_cfg1.fields.tiafe_cfg_rx_lane_map, self.tiafe_cfg_rx_lane_map, afe_sys_cd, 2,0)
-        self.specials += MultiReg(self.rx_cfg2.fields.tiafe_cfg_rx_buffer_release_delay, self.tiafe_cfg_rx_buffer_release_delay, afe_sys_cd, 2,0)
-        self.specials += MultiReg(self.rx_cfg3.fields.swap_iq,self.rx_swap_iq, afe_sys_cd, 2, 0)
-
-        self.specials += MultiReg(self.tx_ctrl.fields.tiafe_tx_sync_reset, self.tiafe_tx_sync_reset, afe_sys_cd, 2, 1)
-        self.specials += MultiReg(self.tx_cfg0.fields.tiafe_cfg_tx_lane_enabled, self.tiafe_cfg_tx_lane_enabled, afe_sys_cd, 2, 0)
-        self.specials += MultiReg(self.tx_cfg0.fields.tiafe_cfg_tx_lane_polarity, self.tiafe_cfg_tx_lane_polarity, afe_sys_cd, 2, 0)
-        self.specials += MultiReg(self.tx_cfg1.fields.tiafe_cfg_tx_lane_map, self.tiafe_cfg_tx_lane_map, afe_sys_cd, 2, 0)
-        self.specials += MultiReg(self.tx_ctrl.fields.tx_clr_sysref_realign_count, self.tiafe_tx_clr_sysref_realign_count, afe_sys_cd, 2, 0)
-        self.specials += MultiReg(self.tx_cfg3.fields.swap_iq, self.tx_swap_iq, afe_sys_cd, 2, 0)
-
-
-
-        self.specials += [Instance("IBUFDS",
-            p_IOSTANDARD = "LVDS",
-            i_I   = pads.DAC_SYNC_p[0],
-            i_IB  = pads.DAC_SYNC_n[0],
-            o_O   = self.DAC_SYNC[0],
-        )]
-
-        self.specials += [Instance("IBUFDS",
-            p_IOSTANDARD = "LVDS",
-            i_I   = pads.DAC_SYNC_p[1],
-            i_IB  = pads.DAC_SYNC_n[1],
-            o_O   = self.DAC_SYNC[1],
-        )]
-
-        self.specials += [Instance("OBUFDS",
-            p_IOSTANDARD = "LVDS",
-            o_O   = pads.ADC_SYNC_p[0],
-            o_OB  = pads.ADC_SYNC_n[0],
-            i_I   = self.ADC_SYNC[0],
-        )]
-
-        self.specials += [Instance("OBUFDS",
-            p_IOSTANDARD = "LVDS",
-            o_O   = pads.ADC_SYNC_p[1],
-            o_OB  = pads.ADC_SYNC_n[1],
-            i_I   = self.ADC_SYNC[1],
-        )]
-
-
-        ## Create streams
-        #s_axis_datawidth = 64
-        #s_axis_layout = [("data", max(1, s_axis_datawidth))]
-        #s_axis_layout += [("keep", max(1, s_axis_datawidth//8))]
-        ## adding reset along with data, assuming resets are not global
-        #s_axis_layout += [("areset_n", 1)]
-#
-        #self.s_axis_iqsmpls = AXIStreamInterface(s_axis_datawidth, layout=s_axis_layout, clock_domain=s_clk_domain)
-#
-        #m_axis_datawidth = 64
-        #m_axis_layout = [("data", max(1, m_axis_datawidth))]
-        #m_axis_layout += [("keep", max(1, m_axis_datawidth//8))]
-        ## adding reset along with data, assuming resets are not global
-        #m_axis_layout += [("areset_n", 1)]
-        #self.m_axis_iqpacket = AXIStreamInterface(m_axis_datawidth, layout=m_axis_layout, clock_domain=m_clk_domain)
-
-        # Create params
-        self.params_ios = dict()
-
-        # Assign generics
-        #self.params_ios.update(
-        #)
-
-        # Assign ports
-        self.params_ios.update(
-            i_xcvr_refclk_n                         = pads.fpga_gt_aferef_n, # GT CLOCK 245.76 MHZ
-            i_xcvr_refclk_p                         = pads.fpga_gt_aferef_p, # GT CLOCK 245.76 MHZ
-            o_xcvr_plls_locked                      = self.tiafe_jesd_plls_locked[1],
-            i_xcvr_rx_n                             = pads.fpga_grx_n, # input
-            i_xcvr_rx_p                             = pads.fpga_grx_p, # input
-            o_xcvr_tx_n                             = pads.fpga_gtx_n, # output
-            o_xcvr_tx_p                             = pads.fpga_gtx_p, # output
-            i_master_reset_n                        = self.tiafe_master_reset_n, # GPO / Asynchronous master reset
-            i_xcvr_freerun_clock                    = self.jesd_freerun_clk, # / CLOCK 100.00
-            o_xcvr_rx_clock                         = self.afe7900_jesd_ip_top_0_xcvr_rx_clock,
-            i_rx_sys_clock                          = ClockSignal(afe_sys_cd), # / SYSCLK CLOCK 245.76
-            i_rx_sync_reset                         = self.tiafe_rx_sync_reset, # GPO
-            i_cfg_rx_lane_enable                    = self.tiafe_cfg_rx_lane_enabled, # GPO
-            i_cfg_rx_lane_polarity                  = self.tiafe_cfg_rx_lane_polarity, # GPO
-            i_cfg_rx_lane_map                       = self.tiafe_cfg_rx_lane_map, # GPO
-            o_rx_all_lanes_locked                   = self.tiafe_jesd_plls_locked[0], # ????
-            o_rx_samples                            = afe_source.data, # # # # # # # # # # # # # # # # # # # # # # # # # # # # / SAMPLES
-            o_rx_samples_valid                      = afe_source.valid,
-            o_rx_samples_start_of_emblock           = self.tiafe_rx_samples_start_of_multiframe, # Start of Extended MultiBlock marker for first sample
-            o_rx_lane_buffer_overflow               = self.tiafe_jesd_rx_lane_buffer_overflow,        # Elastic buffer overflow status Rx IP
-            i_rx_sysref                             = ClockSignal("fpga_sysref"), # / SYSREF   CLOCK 3.84
-            o_rx_sysref_realign_count               = self.tiafe_jesd_rx_sysref_realign_count, # / Rx SYSREF realignment counter
-            i_rx_clr_sysref_realign_count           = self.tiafe_rx_clr_sysref_realign_count, # / input: Control to clear Rx SYSREF realignment counter
-            i_cfg_rx_buffer_release_delay           = self.tiafe_cfg_rx_buffer_release_delay, # input 10 bit: Lane buffer release delay control
-            # RX extra signals
-            o_rx_lane_start_of_mblock               = self.rx_lane_start_of_mblock, # out[3:0] Start of multiblock sideband signals per lane = 64 b / 66b only)
-            o_rx_lane_start_of_emblock              = self.rx_lane_start_of_emblock, # out[3:0] Start of extended multiblock sideband signals per lane(64 b / 66bonly)
-            o_rx_lane_crc_error                     = self.rx_lane_crc_error, # out[3:0] CRC error sideband signal per lane(64b / 66bonly)
-            o_rx_lane_invalid_header_err_count      = self.tijesd_core_err[0:16], # out[15:0] Count value for Block Header errors (per lane)
-            o_rx_lane_invalid_eomb_err_count        = self.tijesd_core_err[16:32], # out[15:0] Count value for End of Multi-Block errors (per lane)
-            o_rx_lane_invalid_eoemb_err_count       = self.tijesd_core_err[32:48], # out[15:0] Count value for End of Extended Multi-Block errors (per lane)
-            o_rx_lane_crc_mismatch_err_count        = self.tijesd_core_err[48:64], # out[15:0] Count value for CRC mismatch errors (per lane)
-            o_rx_lemc_pulse                         = self.rx_lemc_pulse, # out        Rx IP Extended Multi-Block boundary pulse (64b / 66b only)
-            i_rx_clr_all_err_count                  = Constant(0, 4),    # input    Control signal to clear all error counters
-            i_rx_lane_clr_invalid_header_err_count  = Constant(0, 4),    # input    Control signal to clear Block Header error count
-            i_rx_lane_clr_invalid_eomb_err_count    = Constant(0, 4),    # input    Control signal to clear End of Multi-Block error count
-            i_rx_lane_clr_invalid_eoemb_err_count   = Constant(0, 4),    # input    Control signal to clear End of Extended Multi-Block error count
-            i_rx_lane_clr_crc_mismatch_err_count    = Constant(0, 4),    # input    Control signal to clear CRC mismatch error count
-
-            # TX signals
-            o_xcvr_tx_clock                         = self.afe7900_jesd_ip_top_0_xcvr_tx_clock, # Transceiver interface Tx IP clock
-            i_tx_sys_clock                          = ClockSignal(afe_sys_cd), # / SYSCLK   CLOCK 245.76
-            i_tx_sync_reset                         = self.tiafe_tx_sync_reset, # GPO Application interface reset for Tx IP
-            i_cfg_tx_lane_enable                    = self.tiafe_cfg_tx_lane_enabled, # GPO Lane enable control for Tx IP
-            i_cfg_tx_lane_polarity                  = self.tiafe_cfg_tx_lane_polarity, # GPO Lane polarity control for Tx IP
-            i_cfg_tx_lane_map                       = self.tiafe_cfg_tx_lane_map, # GPO Lane map control for Tx IP
-            i_tx_samples                            = afe_sink.data, # # # # # # # # # # # # # # # # # # # # # # # # # # # # / SAMPLES
-            o_tx_samples_ready                      = afe_sink.ready, # # # # # # # # # # # # # # # # # # # # # # # # # # # # / SAMPLES
-            o_tx_samples_start_of_emblock           = self.tx_samples_start_of_emblock, # out: Start of Extended MultiBlock marker for first sample
-            i_tx_sysref                             = ClockSignal("fpga_sysref"),                                         # / SYSREF   CLOCK 3.84
-            o_tx_sysref_realign_count               = self.tiafe_jesd_tx_sysref_realign_count, # Tx SYSREF realignment counter
-            i_tx_clr_sysref_realign_count           = self.tiafe_tx_clr_sysref_realign_count, # GPO Control to clear Tx SYSREF realignment counter
-
-            # TX EXTRA SIGNALS!!!!
-            o_tx_lemc_pulse                         = self.tx_lemc_pulse, # out: Tx IP Extended Multi - Block boundary pulse(64 b / 66bonly)
-            o_rx_lemc_to_buffer_release_delay       = self.tiafe_jesd_rx_lmfc_to_buffer_release_delay, # out 10 bit: Lane buffer release delay for 64b / 66b mode
-
-            o_debug_nfo                             = self.debug_nfo,
+        # ---------------------------------------------------------------------
+        # AFE/JESD PHY
+        # ---------------------------------------------------------------------
+        self.phy = AFE79xxPHY(
+            platform       = platform,
+            pads           = pads,
+            afe_sys_cd     = afe_sys_cd,
+            reg00          = self.reg00,
+            core_ctrl      = self.core_ctrl,
+            rx_ctrl        = self.rx_ctrl,
+            rx_cfg0        = self.rx_cfg0,
+            rx_cfg1        = self.rx_cfg1,
+            rx_cfg2        = self.rx_cfg2,
+            rx_status0     = self.rx_status0,
+            tx_ctrl        = self.tx_ctrl,
+            tx_cfg0        = self.tx_cfg0,
+            tx_cfg1        = self.tx_cfg1,
+            tx_status0     = self.tx_status0,
+            core_status0   = self.core_status0,
         )
 
-        # Create instance and assign params
-        self.specials += Instance("afe79xx_jesd_ip_top", **self.params_ios)
+        # Native AFE streams. RX/TX formatting and DSP stay in this wrapper for
+        # now and will be split in a later refactor.
+        self.afe_source = afe_source = self.phy.source
+        self.afe_sink   = afe_sink   = self.phy.sink
+        self.rx_en      = Signal()
+
+        # IQ swap belongs to sample formatting, not to the PHY.
+        self.rx_swap_iq = Signal(4)
+        self.tx_swap_iq = Signal(4)
+        self.specials += MultiReg(self.rx_cfg3.fields.swap_iq, self.rx_swap_iq, afe_sys_cd, 2, 0)
+        self.specials += MultiReg(self.tx_cfg3.fields.swap_iq, self.tx_swap_iq, afe_sys_cd, 2, 0)
+
+        # Compatibility aliases for signals that may be referenced by board-level
+        # integration/debug code. New code should prefer self.phy.<signal>.
+        self.xcvr_rx_clock = self.phy.xcvr_rx_clock
+        self.xcvr_tx_clock = self.phy.xcvr_tx_clock
+        self.jesd_freerun_clk = self.phy.jesd_freerun_clk
+        self.tiafe_jesd_plls_locked = self.phy.tiafe_jesd_plls_locked
 
         # LiteScope example.
         # ------------------
