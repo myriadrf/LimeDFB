@@ -13,6 +13,7 @@ from gateware.LimeDFB.Resampler.Resampler import Resampler
 
 from gateware.common import *
 from gateware.LimeDFB.afe79xx.afe79xx_phy import AFE79xxPHY
+from gateware.LimeDFB.afe79xx.afe79xx_rx import AFE79xxRX
 from gateware.LimeDFB.afe79xx.afe79xx_rx_formatter import AFE79xxRXFormatter
 
 
@@ -120,16 +121,16 @@ class afe79xx(LiteXModule):
             self.rx_formatter.swap_iq.eq(self.rx_swap_iq),
         ]
 
-        from gateware.LimeDFB.dsp.decimate_4ch.decimate4ch import Decimate4ch
-        self.decimate = Decimate4ch(platform, clk_domain=afe_sys_2x_cd, num_stages=3)
+        self.rx = AFE79xxRX(platform, clk_domain=afe_sys_2x_cd)
 
-        # rx_conv -> decimate
+        # Preserve decimator CSR names without registering the module twice.
+        self.autocsr_exclude = {"rx"}
+        object.__setattr__(self, "decimate", self.rx.decimate)
+
+        # rx_formatter -> rx
         self.comb += [
-            self.decimate.aresetn.eq(self.rx_en),
-            self.decimate.sink.data.eq(self.rx_formatter.source.data),
-            self.decimate.sink.valid.eq(self.rx_formatter.source.valid),
-            self.rx_formatter.source.ready.eq(self.decimate.sink.ready),
-
+            self.rx.enable.eq(self.rx_en),
+            self.rx_formatter.source.connect(self.rx.sink),
         ]
 
         self.source_cdc = stream.ClockDomainCrossing(
@@ -140,19 +141,15 @@ class afe79xx(LiteXModule):
             depth          =32
         )
 
-        # decimate -> source_cdc
+        # rx -> source_cdc
         self.comb += [
-            self.source_cdc.sink.valid.eq(self.decimate.source.valid),
-            self.source_cdc.sink.data.eq(self.decimate.source.data),
-            self.decimate.source.ready.eq(self.source_cdc.sink.ready),
+            self.source_cdc.sink.valid.eq(self.rx.source.valid),
+            self.source_cdc.sink.data.eq(self.rx.source.data),
+            self.rx.source.ready.eq(self.source_cdc.sink.ready),
         ]
 
         # source_cdc -> source
-        self.comb += [
-            self.source.valid.eq(self.source_cdc.source.valid),
-            self.source.data.eq(self.source_cdc.source.data),
-            self.source_cdc.source.ready.eq(self.source.ready),
-        ]
+        self.comb += self.source_cdc.source.connect(self.source)
 
 
         # -----------------------------------------
