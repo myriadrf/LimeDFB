@@ -13,6 +13,7 @@ from gateware.LimeDFB.Resampler.Resampler import Resampler
 
 from gateware.common import *
 from gateware.LimeDFB.afe79xx.afe79xx_phy import AFE79xxPHY
+from gateware.LimeDFB.afe79xx.afe79xx_rx_formatter import AFE79xxRXFormatter
 
 
 # -----------------------------
@@ -28,15 +29,13 @@ def swap_iq(x):
 
 class afe79xx(LiteXModule):
     def __init__(self, soc, platform, pads,
-                 s_clk_domain = "sys",
-                 m_clk_domain = "sys",
+                 s_clk_domain = "sys500",
+                 m_clk_domain = "sys500",
                  sys_clk_freq = 300e6,
                  afe_sys_cd = "fpga_1pps",
                  afe_sys_2x_cd = "fpga_1pps_2x",
                  afe_dsp_cd = "fpga_1pps_dsp",
-                 demux_clk_domain = "sys500",
                  with_debug = False,
-                 demux = True,
                  resampling_stages = 2,
                  with_dpd = False):
 
@@ -46,14 +45,9 @@ class afe79xx(LiteXModule):
         # Add CSRs
         self._add_csrs()
 
-        # Conditional sources/sinks based on demux parameter
-        if not demux:
-            # Direct sources/sinks (only when demux=False)
-            self.source = AXIStreamInterface(256, clock_domain=afe_sys_cd)
-            self.sink   = AXIStreamInterface(256, clock_domain=afe_sys_cd)
-        else:
-            self.source = AXIStreamInterface(128, clock_domain=demux_clk_domain)
-            self.sink   = AXIStreamInterface(128, clock_domain=demux_clk_domain)
+        # Sources/Sinks
+        self.source = AXIStreamInterface(128, clock_domain=m_clk_domain)
+        self.sink   = AXIStreamInterface(128, clock_domain=s_clk_domain)
 
         # ---------------------------------------------------------------------
         # AFE/JESD PHY
@@ -109,372 +103,280 @@ class afe79xx(LiteXModule):
                 csr_csv      = "afe79xx_analyzer.csv"
             )
 
-        # Handle data signals
-        # if demux == false, assign source and sink directly to afe
-        if not demux:
+        # -----------------------------------------
+        # RX data path
+        self.rx_formatter = AFE79xxRXFormatter(
+            afe_sys_cd    = afe_sys_cd,
+            afe_sys_2x_cd = afe_sys_2x_cd,
+        )
+
+        self.comb += [
+            # AFE PHY -> RX formatter
+            self.rx_formatter.sink.data.eq(afe_source.data),
+            self.rx_formatter.sink.valid.eq(afe_source.valid),
+
+            # Formatter control
+            self.rx_formatter.enable.eq(self.rx_en),
+            self.rx_formatter.swap_iq.eq(self.rx_swap_iq),
+        ]
+
+        from gateware.LimeDFB.dsp.decimate_4ch.decimate4ch import Decimate4ch
+        self.decimate = Decimate4ch(platform, clk_domain=afe_sys_2x_cd, num_stages=3)
+
+        # rx_conv -> decimate
+        self.comb += [
+            self.decimate.aresetn.eq(self.rx_en),
+            self.decimate.sink.data.eq(self.rx_formatter.source.data),
+            self.decimate.sink.valid.eq(self.rx_formatter.source.valid),
+            self.rx_formatter.source.ready.eq(self.decimate.sink.ready),
+
+        ]
+
+        self.source_cdc = stream.ClockDomainCrossing(
+            layout         =[("data", 128)],
+            cd_from        =afe_sys_2x_cd,
+            cd_to          =m_clk_domain,
+            buffered       =True,
+            depth          =32
+        )
+
+        # decimate -> source_cdc
+        self.comb += [
+            self.source_cdc.sink.valid.eq(self.decimate.source.valid),
+            self.source_cdc.sink.data.eq(self.decimate.source.data),
+            self.decimate.source.ready.eq(self.source_cdc.sink.ready),
+        ]
+
+        # source_cdc -> source
+        self.comb += [
+            self.source.valid.eq(self.source_cdc.source.valid),
+            self.source.data.eq(self.source_cdc.source.data),
+            self.source_cdc.source.ready.eq(self.source.ready),
+        ]
+
+
+        # -----------------------------------------
+        # TX data path
+        self.tx_en     = Signal()
+
+        self.sink_cdc = stream.ClockDomainCrossing(
+            layout         =[("data", 128)],
+            cd_from        =s_clk_domain,
+            cd_to          =afe_dsp_cd if with_dpd else afe_sys_2x_cd,
+            buffered       =True,
+            depth          =32
+        )
+
+        # sink -> sink_cdc
+        self.comb += [
+            self.sink_cdc.sink.data.eq(self.sink.data),
+            self.sink_cdc.sink.valid.eq(self.sink.valid),
+            self.sink.ready.eq(self.sink_cdc.sink.ready),
+        ]
+
+        from gateware.LimeDFB.dsp.interpolate_4ch.interpolate_4ch import Interpolate4ch
+        self.interpolate = Interpolate4ch(platform, clk_domain=afe_sys_2x_cd, num_stages=3)
+
+        self.Resampler_max_value = CSRStatus(size=4, description="Maximum divider value for resampling")
+        # Temp workaround begin
+        #self.comb += self.Resampler_max_value.status.eq(resampling_stages)
+        if resampling_stages != 0:
+            raise ValueError(
+                f"resampling_stages must be 0 for this xilinx int/dec configuration (got {resampling_stages})"
+            )
+        self.comb += self.Resampler_max_value.status.eq(3)  # Temp workaround end
+
+        interpolate_source = self.sink_cdc.source
+        if with_dpd:
+            from gateware.LimeDFB.dsp.tx_dsp_4ch.tx_dsp_4ch import TxDsp4Ch
+            self.tx_dsp = tx_dsp = TxDsp4Ch(platform, sys_clk_freq=sys_clk_freq, clk_domain=afe_dsp_cd)
+
+            self.comb += [self.tx_dsp.reset_n.eq(~ResetSignal(afe_dsp_cd)),
+                          ]
+
+            # sink_cdc -> tx_dsp
             self.comb += [
-                self.source.data.eq(afe_source.data),
-                self.source.valid.eq(afe_source.valid),
-                afe_sink.data.eq(self.sink.data),
-                afe_sink.valid.eq(self.sink.valid),
+                self.tx_dsp.sink.data.eq(self.sink_cdc.source.data),
+                self.tx_dsp.sink.valid.eq(self.sink_cdc.source.valid),
+                self.sink_cdc.source.ready.eq(self.tx_dsp.sink.ready),
             ]
-        else:
-            # -----------------------------------------
-            # RX data path
-            # Create async FIFOs for clock domain crossing (must be buffered=True to improve timing)
-            rx_cdc = stream.AsyncFIFO([("data", 256)], 32, buffered=True)
-            rx_cdc = ClockDomainsRenamer({"write": afe_sys_cd, "read":afe_sys_2x_cd})(rx_cdc)
-            self.rx_cdc = rx_cdc
 
-            # Stream converter 256b to 128b
-            rx_conv = ResetInserter()(
-                ClockDomainsRenamer(afe_sys_2x_cd)(stream.Converter(256, 128)))
-            rx_conv = stream.BufferizeEndpoints({"source": stream.DIR_SOURCE})(rx_conv)
-            self.rx_conv = rx_conv
+            self.dsp_cdc = stream.ClockDomainCrossing(
+                layout         =[("data", 128)],
+                cd_from        =afe_dsp_cd,
+                cd_to          =afe_sys_2x_cd,
+                buffered       =True,
+                depth          =32
+            )
 
-            # Rearange AFE RX data
-            data_s0_raw = Signal(128)
-            data_s1_raw = Signal(128)
+            # tx_dsp -> dsp_cdc
+            self.comb += [
+                self.dsp_cdc.sink.data.eq(self.tx_dsp.source.data),
+                self.dsp_cdc.sink.valid.eq(self.tx_dsp.source.valid),
+                self.tx_dsp.source.ready.eq(self.dsp_cdc.sink.ready),
+            ]
+            interpolate_source = self.dsp_cdc.source
 
-            data_s0 = Signal(128)
-            data_s1 = Signal(128)
+        self.comb += [
+            self.interpolate.aresetn.eq(self.tx_en),
+            self.interpolate.sink.data.eq(interpolate_source.data),
+            self.interpolate.sink.valid.eq(interpolate_source.valid),
+            interpolate_source.ready.eq(self.interpolate.sink.ready),
+        ]
 
-            for j in range(4 * 2):
-                # lower 16 bits
-                self.comb += data_s0_raw[16*j:16*j+16].eq(afe_source.data[32*j:32*j+16])
-                # upper 16 bits
-                self.comb += data_s1_raw[16*j:16*j+16].eq(afe_source.data[32*j+16:32*j+32])
-#
+        tx_a_data = self.interpolate.source.data[0:32]
+        if with_dpd:
+            # ------------------------------------------------------------
+            # QADPD on TX Channel A only, after interpolate
+            # ------------------------------------------------------------
+            from gateware.LimeDFB.dsp.DPD.src.adpd.qadpd import QADPD
+            self.submodules.qadpd_a = QADPD(
+                platform,
+                n=4,
+                m=2,
+                mul_n=18,
+                clk_domain=afe_sys_2x_cd,
+            )
+
+            # Channel A from interpolate:
+            # bits [0:16]  = I
+            # bits [16:32] = Q
+            #
+            # QADPD input is 14-bit, while interpolate output is 16-bit.
+            # Use [2:16] to keep the signed MSBs and drop 2 LSBs.
+            self.comb += [
+                self.qadpd_a.reset_n.eq(self.tx_en),
+                self.qadpd_a.reset_mem_n.eq(self.tx_en),
+
+                # If QADPD config SPI is unused for now, tie these off.
+                self.qadpd_a.sclk.eq(self.tx_dsp.sclk),
+                self.qadpd_a.spi_ctrl.eq(self.tx_dsp.adpd_ctrl_reg),
+                self.qadpd_a.spi_data.eq(self.tx_dsp.adpd_data_reg),
+
+                self.qadpd_a.xpi.eq(self.interpolate.source.data[2:16]),
+                self.qadpd_a.xpq.eq(self.interpolate.source.data[18:32]),
+            ]
+
+            # QADPD output is 18-bit. Convert back to 16-bit for TX stream.
+            # Use [2:18] to keep signed MSBs and drop 2 LSBs.
+            tx_a_data = Signal(32)
+            self.comb += [
+                tx_a_data[0:16].eq(self.qadpd_a.ypi[2:18]),
+                tx_a_data[16:32].eq(self.qadpd_a.ypq[2:18]),
+            ]
+
 
             # ------------------------------------------------------------
-            # IQ Swap Mux (Per-channel control)
+            # QADPD Capture
             # ------------------------------------------------------------
-            # Define your custom mapping: index 'i' maps to this bit of rx_swap_iq
-            # i=0 -> bit 3, i=1 -> bit 2, i=2 -> bit 0, i=3 -> bit 1
-            # AFE channels are mapped CH4 -> A, CH3 -> B, CH1-> C, CH2->D
-            swap_map = [2, 3, 1, 0]
-            # Iterate over 4 channels (128 bits total / 32 bits per channel)
-            for i in range(4):
-                # Calculate slice indices
-                lo = 32 * i
-                hi = 32 * (i + 1)
-
-                # Select the correct control bit using the lookup list
-                swap_enable = self.rx_swap_iq[swap_map[i]]
-
-                # --- Stream 0 ---
-                # Extract the 32-bit I/Q pair
-                ch_s0 = data_s0_raw[lo:hi]
-
-                # Mux based on the specific bit 'i' of the control signal
-                self.comb += data_s0[lo:hi].eq(Mux(swap_enable, swap_iq(ch_s0), ch_s0))
-
-                # --- Stream 1 ---
-                # Extract the 32-bit I/Q pair
-                ch_s1 = data_s1_raw[lo:hi]
-
-                # Mux based on the specific bit 'i' of the control signal
-                self.comb += data_s1[lo:hi].eq(Mux(swap_enable, swap_iq(ch_s1), ch_s1))
-
-            # Register after IQ mux and connect to rx_cdc
-            afe_sys_clock_domain = getattr(self.sync, afe_sys_cd)
-
-            afe_sys_clock_domain += [
-                # AFE -> CDC FIFO -> 256 to 128 conv -> source_demux0
-                # CDC
-                rx_cdc.sink.valid.eq(afe_source.valid),
-
-                # Lower 128 bits are emitted first by stream.Converter(256, 128)
-                # Therefore sample time n must be here.
-                rx_cdc.sink.data[0:128].eq(data_s0),
-
-                # Upper 128 bits are emitted second.
-                # Therefore sample time n+1 must be here.
-                rx_cdc.sink.data[128:256].eq(data_s1),
-            ]
+            from gateware.LimeDFB.dsp.DPD.src.txchain.dpd_capture_buffer import DPDCaptureBuffer
+            self.dpd_capture_buffer = DPDCaptureBuffer(platform, 0x20000, "sys", afe_sys_2x_cd, 128, 13)
 
 
-            # Connect RX streams
-            self.comb += [
-                ## AFE -> CDC FIFO -> 256 to 128 conv -> source_demux0
-                ##CDC
-                #rx_cdc.sink.valid.eq(afe_source.valid),
-                #rx_cdc.sink.data[:128].eq(data_s1),
-                #rx_cdc.sink.data[128:256].eq(data_s0),
+            # TX Channel A before DPD.
+            # interpolate.source.data[0:16]  = A I before DPD
+            # interpolate.source.data[16:32] = A Q before DPD
+            tx_a_before_dpd = self.interpolate.source.data[0:32]
 
-                # Stream converter 256b to 128
-                rx_conv.reset.eq(~self.rx_en),
-                rx_conv.sink.valid.eq(rx_cdc.source.valid),
-                rx_conv.sink.data.eq(rx_cdc.source.data),
-                rx_cdc.source.ready.eq(rx_conv.sink.ready),
-            ]
-            # AFE bindings do not correspond to ABCD channels, channels need to be muxed to fit
-            rx_conv_ch_mux_data = Signal(128)
-            self.rx_conv_ch_mux_data = rx_conv_ch_mux_data
-            self.comb += [
-                rx_conv_ch_mux_data[64: 96].eq(rx_conv.source.data[0 : 32]), #CH 1 of AFE is CH C
-                rx_conv_ch_mux_data[96:128].eq(rx_conv.source.data[32: 64]), #CH 2 of AFE is CH D
-                rx_conv_ch_mux_data[32: 64].eq(rx_conv.source.data[64: 96]), #CH 3 of AFE is CH B
-                rx_conv_ch_mux_data[0 : 32].eq(rx_conv.source.data[96:128]), #CH 4 of AFE is CH A
-            ]
+            # TX Channel A after DPD.
+            # tx_a_data[0:16]  = A I after DPD
+            # tx_a_data[16:32] = A Q after DPD
+            tx_a_after_dpd = tx_a_data
 
-            from gateware.LimeDFB.dsp.decimate_4ch.decimate4ch import Decimate4ch
-            self.decimate = Decimate4ch(platform, clk_domain=afe_sys_2x_cd, num_stages=3)
-
-            # rx_conv -> decimate
-            self.comb += [
-                self.decimate.aresetn.eq(self.rx_en),
-                self.decimate.sink.data.eq(rx_conv_ch_mux_data),
-                self.decimate.sink.valid.eq(rx_conv.source.valid),
-                rx_conv.source.ready.eq(self.decimate.sink.ready),
-
-            ]
-
-            self.source_cdc = stream.ClockDomainCrossing(
-                layout         =[("data", 128)],
-                cd_from        =afe_sys_2x_cd,
-                cd_to          =demux_clk_domain,
-                buffered       =True,
-                depth          =32
+            # Select logical RX channel after AFE remap: 0=A, 1=B, 2=C, 3=D.
+            # Set the SPI configuration before starting a capture.
+            capture_channel = Signal(2)
+            self.specials += MultiReg(
+                i=self.tx_dsp.txdsp1ch.sel_moni_source,
+                o=capture_channel,
+                odomain=afe_sys_2x_cd,
             )
-
-            # decimate -> source_cdc
-            self.comb += [
-                self.source_cdc.sink.valid.eq(self.decimate.source.valid),
-                self.source_cdc.sink.data.eq(self.decimate.source.data),
-                self.decimate.source.ready.eq(self.source_cdc.sink.ready),
-            ]
-
-            # source_cdc -> source
-            self.comb += [
-                self.source.valid.eq(self.source_cdc.source.valid),
-                self.source.data.eq(self.source_cdc.source.data),
-                self.source_cdc.source.ready.eq(self.source.ready),
-            ]
-
-
-            # -----------------------------------------
-            # TX data path
-            self.tx_en     = Signal()
-
-            self.sink_cdc = stream.ClockDomainCrossing(
-                layout         =[("data", 128)],
-                cd_from        =demux_clk_domain,
-                cd_to          =afe_dsp_cd if with_dpd else afe_sys_2x_cd,
-                buffered       =True,
-                depth          =32
-            )
-
-            # sink -> sink_cdc
-            self.comb += [
-                self.sink_cdc.sink.data.eq(self.sink.data),
-                self.sink_cdc.sink.valid.eq(self.sink.valid),
-                self.sink.ready.eq(self.sink_cdc.sink.ready),
-            ]
-
-            from gateware.LimeDFB.dsp.interpolate_4ch.interpolate_4ch import Interpolate4ch
-            self.interpolate = Interpolate4ch(platform, clk_domain=afe_sys_2x_cd, num_stages=3)
-
-            self.Resampler_max_value = CSRStatus(size=4, description="Maximum divider value for resampling")
-            # Temp workaround begin
-            #self.comb += self.Resampler_max_value.status.eq(resampling_stages)
-            if resampling_stages != 0:
-                raise ValueError(
-                    f"resampling_stages must be 0 for this xilinx int/dec configuration (got {resampling_stages})"
-                )
-            self.comb += self.Resampler_max_value.status.eq(3)  # Temp workaround end
-
-            interpolate_source = self.sink_cdc.source
-            if with_dpd:
-                from gateware.LimeDFB.dsp.tx_dsp_4ch.tx_dsp_4ch import TxDsp4Ch
-                self.tx_dsp = tx_dsp = TxDsp4Ch(platform, sys_clk_freq=sys_clk_freq, clk_domain=afe_dsp_cd)
-
-                self.comb += [self.tx_dsp.reset_n.eq(~ResetSignal(afe_dsp_cd)),
-                              ]
-
-                # sink_cdc -> tx_dsp
-                self.comb += [
-                    self.tx_dsp.sink.data.eq(self.sink_cdc.source.data),
-                    self.tx_dsp.sink.valid.eq(self.sink_cdc.source.valid),
-                    self.sink_cdc.source.ready.eq(self.tx_dsp.sink.ready),
-                ]
-
-                self.dsp_cdc = stream.ClockDomainCrossing(
-                    layout         =[("data", 128)],
-                    cd_from        =afe_dsp_cd,
-                    cd_to          =afe_sys_2x_cd,
-                    buffered       =True,
-                    depth          =32
-                )
-
-                # tx_dsp -> dsp_cdc
-                self.comb += [
-                    self.dsp_cdc.sink.data.eq(self.tx_dsp.source.data),
-                    self.dsp_cdc.sink.valid.eq(self.tx_dsp.source.valid),
-                    self.tx_dsp.source.ready.eq(self.dsp_cdc.sink.ready),
-                ]
-                interpolate_source = self.dsp_cdc.source
-
-            self.comb += [
-                self.interpolate.aresetn.eq(self.tx_en),
-                self.interpolate.sink.data.eq(interpolate_source.data),
-                self.interpolate.sink.valid.eq(interpolate_source.valid),
-                interpolate_source.ready.eq(self.interpolate.sink.ready),
-            ]
-
-            tx_a_data = self.interpolate.source.data[0:32]
-            if with_dpd:
-                # ------------------------------------------------------------
-                # QADPD on TX Channel A only, after interpolate
-                # ------------------------------------------------------------
-                from gateware.LimeDFB.dsp.DPD.src.adpd.qadpd import QADPD
-                self.submodules.qadpd_a = QADPD(
-                    platform,
-                    n=4,
-                    m=2,
-                    mul_n=18,
-                    clk_domain=afe_sys_2x_cd,
-                )
-
-                # Channel A from interpolate:
-                # bits [0:16]  = I
-                # bits [16:32] = Q
-                #
-                # QADPD input is 14-bit, while interpolate output is 16-bit.
-                # Use [2:16] to keep the signed MSBs and drop 2 LSBs.
-                self.comb += [
-                    self.qadpd_a.reset_n.eq(self.tx_en),
-                    self.qadpd_a.reset_mem_n.eq(self.tx_en),
-
-                    # If QADPD config SPI is unused for now, tie these off.
-                    self.qadpd_a.sclk.eq(self.tx_dsp.sclk),
-                    self.qadpd_a.spi_ctrl.eq(self.tx_dsp.adpd_ctrl_reg),
-                    self.qadpd_a.spi_data.eq(self.tx_dsp.adpd_data_reg),
-
-                    self.qadpd_a.xpi.eq(self.interpolate.source.data[2:16]),
-                    self.qadpd_a.xpq.eq(self.interpolate.source.data[18:32]),
-                ]
-
-                # QADPD output is 18-bit. Convert back to 16-bit for TX stream.
-                # Use [2:18] to keep signed MSBs and drop 2 LSBs.
-                tx_a_data = Signal(32)
-                self.comb += [
-                    tx_a_data[0:16].eq(self.qadpd_a.ypi[2:18]),
-                    tx_a_data[16:32].eq(self.qadpd_a.ypq[2:18]),
-                ]
-
-
-                # ------------------------------------------------------------
-                # QADPD Capture
-                # ------------------------------------------------------------
-                from gateware.LimeDFB.dsp.DPD.src.txchain.dpd_capture_buffer import DPDCaptureBuffer
-                self.dpd_capture_buffer = DPDCaptureBuffer(platform, 0x20000, "sys", afe_sys_2x_cd, 128, 13)
-
-
-                # TX Channel A before DPD.
-                # interpolate.source.data[0:16]  = A I before DPD
-                # interpolate.source.data[16:32] = A Q before DPD
-                tx_a_before_dpd = self.interpolate.source.data[0:32]
-
-                # TX Channel A after DPD.
-                # tx_a_data[0:16]  = A I after DPD
-                # tx_a_data[16:32] = A Q after DPD
-                tx_a_after_dpd = tx_a_data
-
-                # Select logical RX channel after AFE remap: 0=A, 1=B, 2=C, 3=D.
-                # Set the SPI configuration before starting a capture.
-                capture_channel = Signal(2)
-                self.specials += MultiReg(
-                    i=self.tx_dsp.txdsp1ch.sel_moni_source,
-                    o=capture_channel,
-                    odomain=afe_sys_2x_cd,
-                )
-                rx_from_afe = Signal(32)
-                self.comb += rx_from_afe.eq(Array([
-                    rx_conv_ch_mux_data[32*ch:32*(ch + 1)] for ch in range(4)
-                ])[capture_channel])
-
-
-                self.comb += [
-                    self.dpd_capture_buffer.reset_n.eq(~ResetSignal("sys")),
-                    self.dpd_capture_buffer.start_write.eq(self.tx_dsp.txdsp1ch.mem_start_write),
-                    self.tx_dsp.txdsp1ch.mem_full.eq(self.dpd_capture_buffer.full),
-
-                    # x = TX Channel A before DPD
-                    self.dpd_capture_buffer.xpi.eq(tx_a_before_dpd[0:16]),
-                    self.dpd_capture_buffer.xpq.eq(tx_a_before_dpd[16:32]),
-
-                    # y = TX Channel A after DPD
-                    self.dpd_capture_buffer.ypi.eq(tx_a_after_dpd[0:16]),
-                    self.dpd_capture_buffer.ypq.eq(tx_a_after_dpd[16:32]),
-
-                    # xi/xq = selected RX feedback channel from AFE receive
-                    self.dpd_capture_buffer.xi.eq(rx_from_afe[0:16]),
-                    self.dpd_capture_buffer.xq.eq(rx_from_afe[16:32]),
-                ]
-
-            tx_conv = stream.Converter(nbits_from=128, nbits_to=256)
-            tx_conv = ClockDomainsRenamer(afe_sys_2x_cd)(tx_conv)
-            self.tx_conv = tx_conv
-
-
-            # Omit parts of Axi interface we don't use + data, because we handle that seperately
-            # AFE bindings do not correspond to ABCD channels, channels need to be muxed to fit
-            # IQ mux Logic: Mux(condition, swapped_data, normal_data)
-            self.comb += [
-                # -----------------------------------------------------------------
-                # Channel A -> AFE CH 4 (Bits 96-128) | Controlled by tx_swap_iq[0]
-                # -----------------------------------------------------------------
-                tx_conv.sink.data[96:128].eq(Mux(self.tx_swap_iq[0],swap_iq(tx_a_data),tx_a_data)),
-                # -----------------------------------------------------------------
-                # Channel B -> AFE CH 3 (Bits 64-96) | Controlled by tx_swap_iq[1]
-                # -----------------------------------------------------------------
-                tx_conv.sink.data[64:96].eq(Mux(self.tx_swap_iq[1],swap_iq(self.interpolate.source.data[32:64]),self.interpolate.source.data[32:64])),
-                # -----------------------------------------------------------------
-                # Channel C -> AFE CH 1 (Bits 0-32) | Controlled by tx_swap_iq[2]
-                # -----------------------------------------------------------------
-                tx_conv.sink.data[0:32].eq(Mux(self.tx_swap_iq[2],swap_iq(self.interpolate.source.data[64:96]),self.interpolate.source.data[64:96])),
-                # -----------------------------------------------------------------
-                # Channel D -> AFE CH 2 (Bits 32-64) | Controlled by tx_swap_iq[3]
-                # -----------------------------------------------------------------
-                tx_conv.sink.data[32:64].eq(Mux(self.tx_swap_iq[3],swap_iq(self.interpolate.source.data[96:128]),self.interpolate.source.data[96:128])),
-            ]
+            rx_from_afe = Signal(32)
+            self.comb += rx_from_afe.eq(Array([
+                self.rx_formatter.source.data[32*ch:32*(ch + 1)] for ch in range(4)
+            ])[capture_channel])
 
 
             self.comb += [
-                self.tx_conv.sink.valid.eq(self.interpolate.source.valid),
-                self.interpolate.source.ready.eq(tx_conv.sink.ready),
+                self.dpd_capture_buffer.reset_n.eq(~ResetSignal("sys")),
+                self.dpd_capture_buffer.start_write.eq(self.tx_dsp.txdsp1ch.mem_start_write),
+                self.tx_dsp.txdsp1ch.mem_full.eq(self.dpd_capture_buffer.full),
+
+                # x = TX Channel A before DPD
+                self.dpd_capture_buffer.xpi.eq(tx_a_before_dpd[0:16]),
+                self.dpd_capture_buffer.xpq.eq(tx_a_before_dpd[16:32]),
+
+                # y = TX Channel A after DPD
+                self.dpd_capture_buffer.ypi.eq(tx_a_after_dpd[0:16]),
+                self.dpd_capture_buffer.ypq.eq(tx_a_after_dpd[16:32]),
+
+                # xi/xq = selected RX feedback channel from AFE receive
+                self.dpd_capture_buffer.xi.eq(rx_from_afe[0:16]),
+                self.dpd_capture_buffer.xq.eq(rx_from_afe[16:32]),
             ]
 
+        tx_conv = stream.Converter(nbits_from=128, nbits_to=256)
+        tx_conv = ClockDomainsRenamer(afe_sys_2x_cd)(tx_conv)
+        self.tx_conv = tx_conv
 
-            self.tx_interleaved = Endpoint([("data", 256)])
-            # self.tx_conv.source.connect(self.tx_interleaved,omit={"data"})
-            self.comb += [
-                self.tx_interleaved.valid.eq(self.tx_conv.source.valid),
-                self.tx_conv.source.ready.eq(self.tx_interleaved.ready),
-            ]
-            # self.tx_conv.source.data[0:128] holds AI0, AQ0, BI0 ...
-            # self.tx_conv.source.data[128:256] holds AI1, AQ1, BI1 ...
-            # self.tx_interleaved.data should hold AI0, AI1, AQ0, AQ1, BI0, BI1 ...
-            for j in range(4 * 2):
-                # lower 16 bits from data_s0
-                self.comb += self.tx_interleaved.data[32*j:32*j+16].eq(self.tx_conv.source.data[16*j:16*j+16])
-                # upper 16 bits from data_s1
-                self.comb += self.tx_interleaved.data[32*j+16:32*j+32].eq(self.tx_conv.source.data[16*j+128:16*j+16+128])
 
-            self.tx_cdc = stream.ClockDomainCrossing(
-                layout         =[("data", 256)],
-                cd_from        =afe_sys_2x_cd,
-                cd_to          =afe_sys_cd,
-                buffered       =True,
-                depth          =32
-            )
-            self.comb += [
-                self.tx_interleaved.connect(self.tx_cdc.sink),
-                self.tx_cdc.source.connect(afe_sink,omit={"ready"}),
-                # If in reset, assert ready to 'clear out' everything
-                self.tx_cdc.source.ready.eq(afe_sink.ready | ~self.tx_en)
-            ]
+        # Omit parts of Axi interface we don't use + data, because we handle that seperately
+        # AFE bindings do not correspond to ABCD channels, channels need to be muxed to fit
+        # IQ mux Logic: Mux(condition, swapped_data, normal_data)
+        self.comb += [
+            # -----------------------------------------------------------------
+            # Channel A -> AFE CH 4 (Bits 96-128) | Controlled by tx_swap_iq[0]
+            # -----------------------------------------------------------------
+            tx_conv.sink.data[96:128].eq(Mux(self.tx_swap_iq[0],swap_iq(tx_a_data),tx_a_data)),
+            # -----------------------------------------------------------------
+            # Channel B -> AFE CH 3 (Bits 64-96) | Controlled by tx_swap_iq[1]
+            # -----------------------------------------------------------------
+            tx_conv.sink.data[64:96].eq(Mux(self.tx_swap_iq[1],swap_iq(self.interpolate.source.data[32:64]),self.interpolate.source.data[32:64])),
+            # -----------------------------------------------------------------
+            # Channel C -> AFE CH 1 (Bits 0-32) | Controlled by tx_swap_iq[2]
+            # -----------------------------------------------------------------
+            tx_conv.sink.data[0:32].eq(Mux(self.tx_swap_iq[2],swap_iq(self.interpolate.source.data[64:96]),self.interpolate.source.data[64:96])),
+            # -----------------------------------------------------------------
+            # Channel D -> AFE CH 2 (Bits 32-64) | Controlled by tx_swap_iq[3]
+            # -----------------------------------------------------------------
+            tx_conv.sink.data[32:64].eq(Mux(self.tx_swap_iq[3],swap_iq(self.interpolate.source.data[96:128]),self.interpolate.source.data[96:128])),
+        ]
+
+
+        self.comb += [
+            self.tx_conv.sink.valid.eq(self.interpolate.source.valid),
+            self.interpolate.source.ready.eq(tx_conv.sink.ready),
+        ]
+
+
+        self.tx_interleaved = Endpoint([("data", 256)])
+        # self.tx_conv.source.connect(self.tx_interleaved,omit={"data"})
+        self.comb += [
+            self.tx_interleaved.valid.eq(self.tx_conv.source.valid),
+            self.tx_conv.source.ready.eq(self.tx_interleaved.ready),
+        ]
+        # self.tx_conv.source.data[0:128] holds AI0, AQ0, BI0 ...
+        # self.tx_conv.source.data[128:256] holds AI1, AQ1, BI1 ...
+        # self.tx_interleaved.data should hold AI0, AI1, AQ0, AQ1, BI0, BI1 ...
+        for j in range(4 * 2):
+            # lower 16 bits from data_s0
+            self.comb += self.tx_interleaved.data[32*j:32*j+16].eq(self.tx_conv.source.data[16*j:16*j+16])
+            # upper 16 bits from data_s1
+            self.comb += self.tx_interleaved.data[32*j+16:32*j+32].eq(self.tx_conv.source.data[16*j+128:16*j+16+128])
+
+        self.tx_cdc = stream.ClockDomainCrossing(
+            layout         =[("data", 256)],
+            cd_from        =afe_sys_2x_cd,
+            cd_to          =afe_sys_cd,
+            buffered       =True,
+            depth          =32
+        )
+        self.comb += [
+            self.tx_interleaved.connect(self.tx_cdc.sink),
+            self.tx_cdc.source.connect(afe_sink,omit={"ready"}),
+            # If in reset, assert ready to 'clear out' everything
+            self.tx_cdc.source.ready.eq(afe_sink.ready | ~self.tx_en)
+        ]
 
         # Signal lists for debugging
         self.flow_control_signals = SimpleNamespace()
@@ -488,52 +390,35 @@ class afe79xx(LiteXModule):
             afe_sink.valid,
         ]
 
-        if demux:
-            self.flow_control_signals.m_clk += [
-                rx_cdc.sink.valid,
-                rx_cdc.sink.ready,
-            ]
-            self.flow_control_signals.s_clk += [
-                self.tx_cdc.source.valid,
-                self.flow_control_signals.s_clk[0], # afe_sink.ready
-            ]
-            self.flow_control_signals.demux_clk = [
-                rx_cdc.source.valid,
-                rx_cdc.source.ready,
-                rx_conv.sink.valid,
-                rx_conv.sink.ready,
-                rx_conv.source.valid,
-                rx_conv.source.ready,
-                self.source.valid,
-                self.source.ready,
-                self.sink.valid,
-                self.sink.ready,
-                self.tx_conv.sink.valid,
-                self.tx_conv.sink.ready,
-                self.tx_conv.source.valid,
-                self.tx_conv.source.ready,
-                self.tx_cdc.sink.valid,
-                self.tx_cdc.sink.ready,
-            ]
-            if resampling_stages > 0:
-                self.flow_control_signals.demux_clk += [
-                    self.RX_A_RESAMPLER.sink.valid,
-                    self.RX_A_RESAMPLER.sink.ready,
-                    self.RX_A_RESAMPLER.source.valid,
-                    self.RX_A_RESAMPLER.source.ready,
-                    self.TX_A_RESAMPLER.sink.valid,
-                    self.TX_A_RESAMPLER.sink.ready,
-                    self.TX_A_RESAMPLER.source.valid,
-                    self.TX_A_RESAMPLER.source.ready,
-                ]
-        else:
-            self.flow_control_signals.m_clk += [
-                self.source.valid,
-                self.source.ready,
-            ]
-            self.flow_control_signals.s_clk += [
-                self.sink.valid,
-                self.sink.ready,
+        self.flow_control_signals.m_clk += [
+
+        ]
+        self.flow_control_signals.s_clk += [
+            self.tx_cdc.source.valid,
+            self.flow_control_signals.s_clk[0], # afe_sink.ready
+        ]
+        self.flow_control_signals.demux_clk = [
+            self.source.valid,
+            self.source.ready,
+            self.sink.valid,
+            self.sink.ready,
+            self.tx_conv.sink.valid,
+            self.tx_conv.sink.ready,
+            self.tx_conv.source.valid,
+            self.tx_conv.source.ready,
+            self.tx_cdc.sink.valid,
+            self.tx_cdc.sink.ready,
+        ]
+        if resampling_stages > 0:
+            self.flow_control_signals.demux_clk += [
+                self.RX_A_RESAMPLER.sink.valid,
+                self.RX_A_RESAMPLER.sink.ready,
+                self.RX_A_RESAMPLER.source.valid,
+                self.RX_A_RESAMPLER.source.ready,
+                self.TX_A_RESAMPLER.sink.valid,
+                self.TX_A_RESAMPLER.sink.ready,
+                self.TX_A_RESAMPLER.source.valid,
+                self.TX_A_RESAMPLER.source.ready,
             ]
 
 
