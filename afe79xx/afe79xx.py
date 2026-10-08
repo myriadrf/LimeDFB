@@ -15,7 +15,8 @@ from gateware.common import *
 from gateware.LimeDFB.afe79xx.afe79xx_phy import AFE79xxPHY
 from gateware.LimeDFB.afe79xx.afe79xx_rx import AFE79xxRX
 from gateware.LimeDFB.afe79xx.afe79xx_rx_formatter import AFE79xxRXFormatter
-from gateware.LimeDFB.afe79xx.afe79xx_tx_formatter import AFE79xxTXFormatter, swap_iq
+from gateware.LimeDFB.afe79xx.afe79xx_tx_formatter import AFE79xxTXFormatter
+from gateware.LimeDFB.afe79xx.afe79xx_tx import AFE79xxTX
 
 
 class afe79xx(LiteXModule):
@@ -161,98 +162,40 @@ class afe79xx(LiteXModule):
             self.sink.ready.eq(self.sink_cdc.sink.ready),
         ]
 
-        from gateware.LimeDFB.dsp.interpolate_4ch.interpolate_4ch import Interpolate4ch
-        self.interpolate = Interpolate4ch(platform, clk_domain=afe_sys_2x_cd, num_stages=3)
 
+        self.tx = AFE79xxTX(
+            platform,
+            sys_clk_freq=sys_clk_freq,
+            afe_sys_2x_cd=afe_sys_2x_cd,
+            afe_dsp_cd=afe_dsp_cd,
+            with_dpd=with_dpd,
+        )
+
+        # Preserve CSR names without registering the modules twice.
+        self.autocsr_exclude.add("tx")
+        object.__setattr__(self, "interpolate", self.tx.interpolate)
+
+        if with_dpd:
+            object.__setattr__(self, "tx_dsp", self.tx.tx_dsp)
+            object.__setattr__(self, "qadpd_a", self.tx.qadpd_a)
+
+        # sink_cdc -> tx
+        self.comb += [
+            self.tx.tx_en.eq(self.tx_en),
+            self.tx.sink.data.eq(self.sink_cdc.source.data),
+            self.tx.sink.valid.eq(self.sink_cdc.source.valid),
+            self.sink_cdc.source.ready.eq(self.tx.sink.ready),
+        ]
+
+        # Temp workaround begin, to keep compatibility with host software
         self.Resampler_max_value = CSRStatus(size=4, description="Maximum divider value for resampling")
-        # Temp workaround begin
-        #self.comb += self.Resampler_max_value.status.eq(resampling_stages)
         if resampling_stages != 0:
             raise ValueError(
                 f"resampling_stages must be 0 for this xilinx int/dec configuration (got {resampling_stages})"
             )
         self.comb += self.Resampler_max_value.status.eq(3)  # Temp workaround end
 
-        interpolate_source = self.sink_cdc.source
         if with_dpd:
-            from gateware.LimeDFB.dsp.tx_dsp_4ch.tx_dsp_4ch import TxDsp4Ch
-            self.tx_dsp = tx_dsp = TxDsp4Ch(platform, sys_clk_freq=sys_clk_freq, clk_domain=afe_dsp_cd)
-
-            self.comb += [self.tx_dsp.reset_n.eq(~ResetSignal(afe_dsp_cd)),
-                          ]
-
-            # sink_cdc -> tx_dsp
-            self.comb += [
-                self.tx_dsp.sink.data.eq(self.sink_cdc.source.data),
-                self.tx_dsp.sink.valid.eq(self.sink_cdc.source.valid),
-                self.sink_cdc.source.ready.eq(self.tx_dsp.sink.ready),
-            ]
-
-            self.dsp_cdc = stream.ClockDomainCrossing(
-                layout         =[("data", 128)],
-                cd_from        =afe_dsp_cd,
-                cd_to          =afe_sys_2x_cd,
-                buffered       =True,
-                depth          =32
-            )
-
-            # tx_dsp -> dsp_cdc
-            self.comb += [
-                self.dsp_cdc.sink.data.eq(self.tx_dsp.source.data),
-                self.dsp_cdc.sink.valid.eq(self.tx_dsp.source.valid),
-                self.tx_dsp.source.ready.eq(self.dsp_cdc.sink.ready),
-            ]
-            interpolate_source = self.dsp_cdc.source
-
-        self.comb += [
-            self.interpolate.aresetn.eq(self.tx_en),
-            self.interpolate.sink.data.eq(interpolate_source.data),
-            self.interpolate.sink.valid.eq(interpolate_source.valid),
-            interpolate_source.ready.eq(self.interpolate.sink.ready),
-        ]
-
-        tx_a_data = self.interpolate.source.data[0:32]
-        if with_dpd:
-            # ------------------------------------------------------------
-            # QADPD on TX Channel A only, after interpolate
-            # ------------------------------------------------------------
-            from gateware.LimeDFB.dsp.DPD.src.adpd.qadpd import QADPD
-            self.submodules.qadpd_a = QADPD(
-                platform,
-                n=4,
-                m=2,
-                mul_n=18,
-                clk_domain=afe_sys_2x_cd,
-            )
-
-            # Channel A from interpolate:
-            # bits [0:16]  = I
-            # bits [16:32] = Q
-            #
-            # QADPD input is 14-bit, while interpolate output is 16-bit.
-            # Use [2:16] to keep the signed MSBs and drop 2 LSBs.
-            self.comb += [
-                self.qadpd_a.reset_n.eq(self.tx_en),
-                self.qadpd_a.reset_mem_n.eq(self.tx_en),
-
-                # If QADPD config SPI is unused for now, tie these off.
-                self.qadpd_a.sclk.eq(self.tx_dsp.sclk),
-                self.qadpd_a.spi_ctrl.eq(self.tx_dsp.adpd_ctrl_reg),
-                self.qadpd_a.spi_data.eq(self.tx_dsp.adpd_data_reg),
-
-                self.qadpd_a.xpi.eq(self.interpolate.source.data[2:16]),
-                self.qadpd_a.xpq.eq(self.interpolate.source.data[18:32]),
-            ]
-
-            # QADPD output is 18-bit. Convert back to 16-bit for TX stream.
-            # Use [2:18] to keep signed MSBs and drop 2 LSBs.
-            tx_a_data = Signal(32)
-            self.comb += [
-                tx_a_data[0:16].eq(self.qadpd_a.ypi[2:18]),
-                tx_a_data[16:32].eq(self.qadpd_a.ypq[2:18]),
-            ]
-
-
             # ------------------------------------------------------------
             # QADPD Capture
             # ------------------------------------------------------------
@@ -263,12 +206,12 @@ class afe79xx(LiteXModule):
             # TX Channel A before DPD.
             # interpolate.source.data[0:16]  = A I before DPD
             # interpolate.source.data[16:32] = A Q before DPD
-            tx_a_before_dpd = self.interpolate.source.data[0:32]
+            tx_a_before_dpd = self.tx.tx_a_before_dpd
 
             # TX Channel A after DPD.
             # tx_a_data[0:16]  = A I after DPD
             # tx_a_data[16:32] = A Q after DPD
-            tx_a_after_dpd = tx_a_data
+            tx_a_after_dpd = self.tx.tx_a_after_dpd
 
             # Select logical RX channel after AFE remap: 0=A, 1=B, 2=C, 3=D.
             # Set the SPI configuration before starting a capture.
@@ -312,11 +255,7 @@ class afe79xx(LiteXModule):
             self.tx_formatter.tx_en.eq(self.tx_en),
             self.tx_formatter.tx_swap_iq.eq(self.tx_swap_iq),
 
-            self.tx_formatter.sink.data[0:32].eq(tx_a_data),
-            self.tx_formatter.sink.data[32:128].eq(self.interpolate.source.data[32:128]),
-
-            self.tx_formatter.sink.valid.eq(self.interpolate.source.valid),
-            self.interpolate.source.ready.eq(self.tx_formatter.sink.ready),
+            self.tx.source.connect(self.tx_formatter.sink),
 
             afe_sink.data.eq(self.tx_formatter.source.data),
             afe_sink.valid.eq(self.tx_formatter.source.valid),
