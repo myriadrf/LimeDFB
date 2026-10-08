@@ -44,42 +44,21 @@ class afe79xx(LiteXModule):
         # ---------------------------------------------------------------------
         # AFE/JESD PHY
         # ---------------------------------------------------------------------
-        self.phy = AFE79xxPHY(
-            platform       = platform,
-            pads           = pads,
-            afe_sys_cd     = afe_sys_cd,
-            reg00          = self.reg00,
-            core_ctrl      = self.core_ctrl,
-            rx_ctrl        = self.rx_ctrl,
-            rx_cfg0        = self.rx_cfg0,
-            rx_cfg1        = self.rx_cfg1,
-            rx_cfg2        = self.rx_cfg2,
-            rx_status0     = self.rx_status0,
-            tx_ctrl        = self.tx_ctrl,
-            tx_cfg0        = self.tx_cfg0,
-            tx_cfg1        = self.tx_cfg1,
-            tx_status0     = self.tx_status0,
-            core_status0   = self.core_status0,
-        )
+        self._add_phy(platform,pads,afe_sys_cd)
 
-        # Native AFE streams. RX/TX formatting and DSP stay in this wrapper for
-        # now and will be split in a later refactor.
-        self.afe_source = afe_source = self.phy.source
-        self.afe_sink   = afe_sink   = self.phy.sink
-        self.rx_en      = Signal()
+
+        # ---------------------------------------------------------------------
+        # Control/Misc
+        # ---------------------------------------------------------------------
+        self.rx_en = Signal()
+        self.tx_en     = Signal()
 
         # IQ swap belongs to sample formatting, not to the PHY.
         self.rx_swap_iq = Signal(4)
         self.tx_swap_iq = Signal(4)
-        self.specials += MultiReg(self.rx_cfg3.fields.swap_iq, self.rx_swap_iq, afe_sys_cd, 2, 0)
-        self.specials += MultiReg(self.tx_cfg3.fields.swap_iq, self.tx_swap_iq, afe_sys_cd, 2, 0)
+        self.specials += MultiReg(self.rx_cfg3.fields.swap_iq, self.rx_swap_iq, afe_sys_cd,2,0)
+        self.specials += MultiReg(self.tx_cfg3.fields.swap_iq,self.tx_swap_iq,afe_sys_cd,2,0)
 
-        # Compatibility aliases for signals that may be referenced by board-level
-        # integration/debug code. New code should prefer self.phy.<signal>.
-        self.xcvr_rx_clock = self.phy.xcvr_rx_clock
-        self.xcvr_tx_clock = self.phy.xcvr_tx_clock
-        self.jesd_freerun_clk = self.phy.jesd_freerun_clk
-        self.tiafe_jesd_plls_locked = self.phy.tiafe_jesd_plls_locked
 
         # LiteScope example.
         # ------------------
@@ -95,30 +74,36 @@ class afe79xx(LiteXModule):
                 csr_csv      = "afe79xx_analyzer.csv"
             )
 
-        # -----------------------------------------
+        # ---------------------------------------------------------------------
         # RX data path
+        # ---------------------------------------------------------------------
+        # AFE79xxPHY(afe_source) -> AFE79xxRXFormatter -> AFE79xxRX -> source_cdc -> source
+
+        # AFE79xxRXFormatter
         self.rx_formatter = AFE79xxRXFormatter(
             afe_sys_cd    = afe_sys_cd,
             afe_sys_2x_cd = afe_sys_2x_cd,
         )
 
+        # Connect AFE79xxPHY(afe_source) -> AFE79xxRXFormatter
         self.comb += [
             # AFE PHY -> RX formatter
-            self.rx_formatter.sink.data.eq(afe_source.data),
-            self.rx_formatter.sink.valid.eq(afe_source.valid),
+            self.rx_formatter.sink.data.eq(self.afe_source.data),
+            self.rx_formatter.sink.valid.eq(self.afe_source.valid),
 
             # Formatter control
             self.rx_formatter.enable.eq(self.rx_en),
             self.rx_formatter.swap_iq.eq(self.rx_swap_iq),
         ]
 
+        # AFE79xxRX
         self.rx = AFE79xxRX(platform, clk_domain=afe_sys_2x_cd)
 
         # Preserve decimator CSR names without registering the module twice.
         self.autocsr_exclude = {"rx"}
         object.__setattr__(self, "decimate", self.rx.decimate)
 
-        # rx_formatter -> rx
+        # Connect AFE79xxRXFormatter -> AFE79xxRX
         self.comb += [
             self.rx.enable.eq(self.rx_en),
             self.rx_formatter.source.connect(self.rx.sink),
@@ -132,20 +117,21 @@ class afe79xx(LiteXModule):
             depth          =32
         )
 
-        # rx -> source_cdc
+        # Connect AFE79xxRX -> source_cdc
         self.comb += [
             self.source_cdc.sink.valid.eq(self.rx.source.valid),
             self.source_cdc.sink.data.eq(self.rx.source.data),
             self.rx.source.ready.eq(self.source_cdc.sink.ready),
         ]
 
-        # source_cdc -> source
+        # Connect source_cdc -> source
         self.comb += self.source_cdc.source.connect(self.source)
 
 
-        # -----------------------------------------
+        # ---------------------------------------------------------------------
         # TX data path
-        self.tx_en     = Signal()
+        # ---------------------------------------------------------------------
+        # sink -> sink_cdc -> AFE79xxTX -> AFE79xxTXFormatter -> AFE79xxPHY(afe_sink)
 
         self.sink_cdc = stream.ClockDomainCrossing(
             layout         =[("data", 128)],
@@ -155,7 +141,7 @@ class afe79xx(LiteXModule):
             depth          =32
         )
 
-        # sink -> sink_cdc
+        # Connect sink -> sink_cdc
         self.comb += [
             self.sink_cdc.sink.data.eq(self.sink.data),
             self.sink_cdc.sink.valid.eq(self.sink.valid),
@@ -163,6 +149,7 @@ class afe79xx(LiteXModule):
         ]
 
 
+        # AFE79xxTX
         self.tx = AFE79xxTX(
             platform,
             sys_clk_freq=sys_clk_freq,
@@ -179,12 +166,29 @@ class afe79xx(LiteXModule):
             object.__setattr__(self, "tx_dsp", self.tx.tx_dsp)
             object.__setattr__(self, "qadpd_a", self.tx.qadpd_a)
 
-        # sink_cdc -> tx
+        # Connect sink_cdc -> AFE79xxTX
         self.comb += [
             self.tx.tx_en.eq(self.tx_en),
             self.tx.sink.data.eq(self.sink_cdc.source.data),
             self.tx.sink.valid.eq(self.sink_cdc.source.valid),
             self.sink_cdc.source.ready.eq(self.tx.sink.ready),
+        ]
+
+        self.tx_formatter = AFE79xxTXFormatter(
+            afe_sys_cd=afe_sys_cd,
+            afe_sys_2x_cd = afe_sys_2x_cd,
+        )
+
+        # Connect AFE79xxTX -> AFE79xxTXFormatter -> AFE79xxPHY(afe_sink)
+        self.comb += [
+            self.tx_formatter.tx_en.eq(self.tx_en),
+            self.tx_formatter.tx_swap_iq.eq(self.tx_swap_iq),
+
+            self.tx.source.connect(self.tx_formatter.sink),
+
+            self.afe_sink.data.eq(self.tx_formatter.source.data),
+            self.afe_sink.valid.eq(self.tx_formatter.source.valid),
+            self.tx_formatter.source.ready.eq(self.afe_sink.ready),
         ]
 
         # Temp workaround begin, to keep compatibility with host software
@@ -195,109 +199,11 @@ class afe79xx(LiteXModule):
             )
         self.comb += self.Resampler_max_value.status.eq(3)  # Temp workaround end
 
+        # ------------------------------------------------------------
+        # QADPD Capture
+        # ------------------------------------------------------------
         if with_dpd:
-            # ------------------------------------------------------------
-            # QADPD Capture
-            # ------------------------------------------------------------
-            from gateware.LimeDFB.dsp.DPD.src.txchain.dpd_capture_buffer import DPDCaptureBuffer
-            self.dpd_capture_buffer = DPDCaptureBuffer(platform, 0x20000, "sys", afe_sys_2x_cd, 128, 13)
-
-
-            # TX Channel A before DPD.
-            # interpolate.source.data[0:16]  = A I before DPD
-            # interpolate.source.data[16:32] = A Q before DPD
-            tx_a_before_dpd = self.tx.tx_a_before_dpd
-
-            # TX Channel A after DPD.
-            # tx_a_data[0:16]  = A I after DPD
-            # tx_a_data[16:32] = A Q after DPD
-            tx_a_after_dpd = self.tx.tx_a_after_dpd
-
-            # Select logical RX channel after AFE remap: 0=A, 1=B, 2=C, 3=D.
-            # Set the SPI configuration before starting a capture.
-            capture_channel = Signal(2)
-            self.specials += MultiReg(
-                i=self.tx_dsp.txdsp1ch.sel_moni_source,
-                o=capture_channel,
-                odomain=afe_sys_2x_cd,
-            )
-            rx_from_afe = Signal(32)
-            self.comb += rx_from_afe.eq(Array([
-                self.rx_formatter.source.data[32*ch:32*(ch + 1)] for ch in range(4)
-            ])[capture_channel])
-
-
-            self.comb += [
-                self.dpd_capture_buffer.reset_n.eq(~ResetSignal("sys")),
-                self.dpd_capture_buffer.start_write.eq(self.tx_dsp.txdsp1ch.mem_start_write),
-                self.tx_dsp.txdsp1ch.mem_full.eq(self.dpd_capture_buffer.full),
-
-                # x = TX Channel A before DPD
-                self.dpd_capture_buffer.xpi.eq(tx_a_before_dpd[0:16]),
-                self.dpd_capture_buffer.xpq.eq(tx_a_before_dpd[16:32]),
-
-                # y = TX Channel A after DPD
-                self.dpd_capture_buffer.ypi.eq(tx_a_after_dpd[0:16]),
-                self.dpd_capture_buffer.ypq.eq(tx_a_after_dpd[16:32]),
-
-                # xi/xq = selected RX feedback channel from AFE receive
-                self.dpd_capture_buffer.xi.eq(rx_from_afe[0:16]),
-                self.dpd_capture_buffer.xq.eq(rx_from_afe[16:32]),
-            ]
-
-        self.tx_formatter = AFE79xxTXFormatter(
-            afe_sys_cd=afe_sys_cd,
-            afe_sys_2x_cd = afe_sys_2x_cd,
-        )
-
-        # interpolate/DPD -> TX formatter
-        self.comb += [
-            self.tx_formatter.tx_en.eq(self.tx_en),
-            self.tx_formatter.tx_swap_iq.eq(self.tx_swap_iq),
-
-            self.tx.source.connect(self.tx_formatter.sink),
-
-            afe_sink.data.eq(self.tx_formatter.source.data),
-            afe_sink.valid.eq(self.tx_formatter.source.valid),
-            self.tx_formatter.source.ready.eq(afe_sink.ready),
-        ]
-
-
-        # Signal lists for debugging
-        self.flow_control_signals = SimpleNamespace()
-        self.flow_control_signals.m_clk = [
-            afe_source.valid,
-            afe_source.ready,
-        ]
-
-        self.flow_control_signals.s_clk = [
-            afe_sink.ready,
-            afe_sink.valid,
-        ]
-
-        self.flow_control_signals.m_clk += [
-
-        ]
-        self.flow_control_signals.s_clk += [
-            self.flow_control_signals.s_clk[0], # afe_sink.ready
-        ]
-        self.flow_control_signals.demux_clk = [
-            self.source.valid,
-            self.source.ready,
-            self.sink.valid,
-            self.sink.ready,
-        ]
-        if resampling_stages > 0:
-            self.flow_control_signals.demux_clk += [
-                self.RX_A_RESAMPLER.sink.valid,
-                self.RX_A_RESAMPLER.sink.ready,
-                self.RX_A_RESAMPLER.source.valid,
-                self.RX_A_RESAMPLER.source.ready,
-                self.TX_A_RESAMPLER.sink.valid,
-                self.TX_A_RESAMPLER.sink.ready,
-                self.TX_A_RESAMPLER.source.valid,
-                self.TX_A_RESAMPLER.source.ready,
-            ]
+            self._add_dpd_capture(platform, afe_sys_2x_cd)
 
 
     def _add_csrs(self):
@@ -376,65 +282,92 @@ class afe79xx(LiteXModule):
             CSRField("rx_all_lanes_locked", size=1, offset=1, reset=0),
         ])
 
-    def _add_platform_sources(self):
-        platform = self.platform
+    def _add_phy(
+            self,
+            platform,
+            pads,
+            afe_sys_cd,
+    ):
 
-        for source in [
-            "./gateware/AFE79xx/afe79xx_jesd_ip_top.v",
-            "./gateware/AFE79xx/afe79xx_ti_ip_top.v",
-            "./gateware/AFE79xx/afe79xx_xcvr_top.v",
-            "./gateware/AFE79xx/afe79xx_xcvr_wrapper.sv",
-            "./gateware/AFE79xx/TI_IP_core_66b64/TI_204c_IP_6664.svp",
-        ]:
-            platform.add_source(source)
-
-        ip_path = os.path.abspath(
-            "./gateware/AFE79xx/ip/gth_uscale_64b66b_xcvr_xcau15p/"
-            "gth_uscale_64b66b_xcvr_xcau15p.xci"
+        self.phy = AFE79xxPHY(
+            platform=platform,
+            pads=pads,
+            afe_sys_cd=afe_sys_cd,
+            reg00=self.reg00,
+            core_ctrl=self.core_ctrl,
+            rx_ctrl=self.rx_ctrl,
+            rx_cfg0=self.rx_cfg0,
+            rx_cfg1=self.rx_cfg1,
+            rx_cfg2=self.rx_cfg2,
+            rx_status0=self.rx_status0,
+            tx_ctrl=self.tx_ctrl,
+            tx_cfg0=self.tx_cfg0,
+            tx_cfg1=self.tx_cfg1,
+            tx_status0=self.tx_status0,
+            core_status0=self.core_status0,
         )
 
-        platform.toolchain.project_commands += [
-            f"import_ip {ip_path}",
-            "upgrade_ip [get_ips gth_uscale_64b66b_xcvr_xcau15p]",
-            "synth_ip [get_ips gth_uscale_64b66b_xcvr_xcau15p] -force",
-            "set hipersdr_44xx_defines {{GT_XCVR_NAME=gth_uscale_64b66b_xcvr_xcau15p}}",
-            "set_property verilog_define $hipersdr_44xx_defines [get_filesets sources_1]",
-            "get_ips",
+        # Native AFE streams.
+        self.afe_source = self.phy.source
+        self.afe_sink = self.phy.sink
+
+        # Compatibility aliases for signals that may be referenced by board-level
+        # integration/debug code. New code should prefer self.phy.<signal>.
+        self.xcvr_rx_clock = self.phy.xcvr_rx_clock
+        self.xcvr_tx_clock = self.phy.xcvr_tx_clock
+        self.jesd_freerun_clk = self.phy.jesd_freerun_clk
+        self.tiafe_jesd_plls_locked = self.phy.tiafe_jesd_plls_locked
+
+    def _add_dpd_capture(
+            self,
+            platform,
+            afe_sys_2x_cd,
+    ):
+
+        from gateware.LimeDFB.dsp.DPD.src.txchain.dpd_capture_buffer import DPDCaptureBuffer
+        self.dpd_capture_buffer = DPDCaptureBuffer(
+            platform,
+            0x20000,
+            "sys",
+            afe_sys_2x_cd,
+            128,
+            13
+        )
+
+        # TX Channel A before DPD.
+        tx_a_before_dpd = self.tx.tx_a_before_dpd
+
+        # TX Channel A after DPD.
+        tx_a_after_dpd = self.tx.tx_a_after_dpd
+
+        # Select logical RX channel after AFE remap: 0=A, 1=B, 2=C, 3=D.
+        # Set the SPI configuration before starting a capture.
+        capture_channel = Signal(2)
+        self.specials += MultiReg(
+            i=self.tx.tx_dsp.txdsp1ch.sel_moni_source,
+            o=capture_channel,
+            odomain=afe_sys_2x_cd,
+        )
+
+        rx_from_afe = Signal(32)
+        self.comb += rx_from_afe.eq(Array([
+            self.rx_formatter.source.data[32 * ch:32 * (ch + 1)] for ch in range(4)
+        ])[capture_channel])
+
+        self.comb += [
+            self.dpd_capture_buffer.reset_n.eq(~ResetSignal("sys")),
+            self.dpd_capture_buffer.start_write.eq(self.tx.tx_dsp.txdsp1ch.mem_start_write),
+            self.tx.tx_dsp.txdsp1ch.mem_full.eq(self.dpd_capture_buffer.full),
+
+            # x = TX Channel A before DPD
+            self.dpd_capture_buffer.xpi.eq(tx_a_before_dpd[0:16]),
+            self.dpd_capture_buffer.xpq.eq(tx_a_before_dpd[16:32]),
+
+            # y = TX Channel A after DPD
+            self.dpd_capture_buffer.ypi.eq(tx_a_after_dpd[0:16]),
+            self.dpd_capture_buffer.ypq.eq(tx_a_after_dpd[16:32]),
+
+            # xi/xq = selected RX feedback channel from AFE receive
+            self.dpd_capture_buffer.xi.eq(rx_from_afe[0:16]),
+            self.dpd_capture_buffer.xq.eq(rx_from_afe[16:32]),
         ]
-
-        #platform.add_source("./gateware/AFE79xx/afe79xx_jesd_ip_top.v")
-        #platform.add_source("./gateware/AFE79xx/afe79xx_ti_ip_top.v")
-        #platform.add_source("./gateware/AFE79xx/afe79xx_xcvr_top.v")
-        #platform.add_source("./gateware/AFE79xx/afe79xx_xcvr_wrapper.sv")
-        #platform.add_source("./gateware/AFE79xx/TI_IP_core_66b64/TI_204c_IP_6664.svp")
-#
-        ##platform.add_ip("./gateware/afe79xx/ip/gth_uscale_64b66b_xcvr_xcau15p/gth_uscale_64b66b_xcvr_xcau15p.xci")
-        ##platform.toolchain.project_commands.append("source " + os.path.abspath("./gateware/afe79xx/ip/gth_uscale_64b66b_xcvr_xcau15p/gth_uscale_64b66b_xcvr_xcau15p.tcl"))
-        ##platform.toolchain.project_commands.append("synth_ip [get_ips gth_uscale_64b66b_xcvr_xcau15p] -force")
-#
-        #platform.toolchain.project_commands.append("import_ip " + os.path.abspath("./gateware/AFE79xx/ip/gth_uscale_64b66b_xcvr_xcau15p/gth_uscale_64b66b_xcvr_xcau15p.xci"))
-        #platform.toolchain.project_commands.append("upgrade_ip [get_ips gth_uscale_64b66b_xcvr_xcau15p]")
-        #platform.toolchain.project_commands.append("synth_ip [get_ips gth_uscale_64b66b_xcvr_xcau15p] -force")
-        #platform.toolchain.project_commands.append("set hipersdr_44xx_defines {{GT_XCVR_NAME=gth_uscale_64b66b_xcvr_xcau15p}}")
-        #platform.toolchain.project_commands.append("set_property verilog_define $hipersdr_44xx_defines [get_filesets sources_1]")
-        #platform.toolchain.project_commands.append("get_ips")
-
-    def _add_timing_constraints(self):
-        timings_sdc_filename = "afe79xx_timing.xdc"
-
-        with open(timings_sdc_filename, "w") as f:
-            f.write("# FPGA_GT_AFEREF 245.76Mhz\n")
-            f.write("create_clock -period 4.069 -name fpga_gt_aferef_clk "
-                    "[get_ports afe79xx_serdes_x4_fpga_gt_aferef_p]\n\n")
-
-            f.write("# FPGA_SYSREF 3.84Mhz\n")
-            f.write("create_clock -period 260.416 -name fpga_sysref_clk "
-                    "[get_ports FPGA_SYSREF_p]\n\n")
-
-            f.write("set_clock_groups -name afe_async2 -asynchronous "
-                    "-group [get_clocks xcvr_top_inst_n_0]\n\n")
-
-            f.write("set_clock_groups -name afe_async3 -asynchronous "
-                    "-group [get_clocks xcvr_top_inst_n_1]\n\n")
-
-        self.platform.add_source(timings_sdc_filename)
