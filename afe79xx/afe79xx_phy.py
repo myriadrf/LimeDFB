@@ -261,21 +261,18 @@ class AFE79xxPHY(LiteXModule):
         timings_sdc_filename = "afe79xx_timing.xdc"
 
         with open(timings_sdc_filename, "w") as f:
-            f.write("# FPGA_GT_AFEREF 245.76Mhz\\n")
-            f.write(
-                "create_clock -period 4.069 -name fpga_gt_aferef_clk "
-                "[get_ports afe79xx_serdes_x4_fpga_gt_aferef_p]\\n\\n")
+            f.write("# FPGA_GT_AFEREF 245.76Mhz\n")
+            f.write("create_clock -period 4.069 -name fpga_gt_aferef_clk "
+                    "[get_ports afe79xx_serdes_x4_fpga_gt_aferef_p]\n\n")
 
-            f.write("# FPGA_SYSREF 3.84Mhz\\n")
-            f.write(
-                "create_clock -period 260.416 -name fpga_sysref_clk "
-                "[get_ports FPGA_SYSREF_p]\\n\\n")
+            f.write("# FPGA_SYSREF 3.84Mhz\n")
+            f.write("create_clock -period 260.416 -name fpga_sysref_clk "
+                    "[get_ports FPGA_SYSREF_p]\n\n")
 
-            f.write(
-                "set_clock_groups -name afe_async2 -asynchronous "
-                "-group [get_clocks xcvr_top_inst_n_0]\\n\\n")
-            f.write(
-                "set_clock_groups -name afe_async3 -asynchronous "
-                "-group [get_clocks xcvr_top_inst_n_1]\\n\\n")
+            f.write("set_clock_groups -name afe_async2 -asynchronous "
+                    "-group [get_clocks xcvr_top_inst_n_0]\n\n")
+
+            f.write("set_clock_groups -name afe_async3 -asynchronous "
+                    "-group [get_clocks xcvr_top_inst_n_1]\n\n")
 
         self.platform.add_source(timings_sdc_filename)
