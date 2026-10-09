@@ -1,5 +1,7 @@
 from migen import *
 
+from litex.soc.interconnect.csr import *
+
 from litex.gen import LiteXModule
 from litex.soc.interconnect import stream
 from litex.soc.interconnect.axi import AXIStreamInterface
@@ -24,6 +26,11 @@ class AFE79xxTX(LiteXModule):
         self.interpolate = Interpolate4ch(platform, clk_domain=afe_sys_2x_cd, num_stages=3)
 
         interpolate_source = self.sink
+
+        # Temp workaround begin, to keep compatibility with host software
+        self.Resampler_max_value = CSRStatus(size=4, description="Maximum divider value for resampling")
+        self.comb += self.Resampler_max_value.status.eq(3)  # Temp workaround end
+
         if with_dpd:
             from gateware.LimeDFB.dsp.tx_dsp_4ch.tx_dsp_4ch import TxDsp4Ch
             self.tx_dsp = tx_dsp = TxDsp4Ch(platform, sys_clk_freq=sys_clk_freq, clk_domain=afe_dsp_cd)

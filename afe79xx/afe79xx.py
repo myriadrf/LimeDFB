@@ -161,6 +161,8 @@ class afe79xx(LiteXModule):
         # Preserve CSR names without registering the modules twice.
         self.autocsr_exclude.add("tx")
         object.__setattr__(self, "interpolate", self.tx.interpolate)
+        object.__setattr__(self, "Resampler_max_value", self.tx.Resampler_max_value)
+
 
         if with_dpd:
             object.__setattr__(self, "tx_dsp", self.tx.tx_dsp)
@@ -191,13 +193,6 @@ class afe79xx(LiteXModule):
             self.tx_formatter.source.ready.eq(self.afe_sink.ready),
         ]
 
-        # Temp workaround begin, to keep compatibility with host software
-        self.Resampler_max_value = CSRStatus(size=4, description="Maximum divider value for resampling")
-        if resampling_stages != 0:
-            raise ValueError(
-                f"resampling_stages must be 0 for this xilinx int/dec configuration (got {resampling_stages})"
-            )
-        self.comb += self.Resampler_max_value.status.eq(3)  # Temp workaround end
 
         # ------------------------------------------------------------
         # QADPD Capture
