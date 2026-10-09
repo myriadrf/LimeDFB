@@ -271,11 +271,14 @@ class TxDsp4Ch(LiteXModule):
             spi.pads.miso.eq(self.sdout),
         ]
 
-        # Add timing constraint for generated clock
-        self.platform.add_generated_clock_from_divider_reg(
-            name="tx_dsp_spi_clk",
-            reg_basename="afe_tx_dsp_pads_clk_reg",
-            divide_by=math.ceil(sys_clk_freq / spimaster_board_spi_clk_freq),
+        # LiteX resolves spi_clk to this SPI master's hierarchy-prefixed signal name,
+        # so the filter selects its clock register's C/Q pins.
+        self.platform.add_platform_command(
+            "create_generated_clock -name tx_dsp_spi_clk "
+            f"-divide_by {math.ceil(sys_clk_freq / spimaster_board_spi_clk_freq)} "
+            "-source [get_pins -hierarchical -filter {{NAME =~ *{spi_clk}_reg/C}}] "
+            "[get_pins -hierarchical -filter {{NAME =~ *{spi_clk}_reg/Q}}]",
+            spi_clk=spi.pads.clk,
         )
         # Configuration must settle before processing starts in other domains.
         self.platform.add_platform_command(
