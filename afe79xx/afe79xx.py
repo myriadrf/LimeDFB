@@ -23,12 +23,10 @@ class afe79xx(LiteXModule):
     def __init__(self, soc, platform, pads,
                  s_clk_domain = "sys500",
                  m_clk_domain = "sys500",
-                 sys_clk_freq = 300e6,
-                 afe_sys_cd = "fpga_1pps",
-                 afe_sys_2x_cd = "fpga_1pps_2x",
+                 afe_data_cd = "fpga_1pps",
+                 afe_data_2x_cd = "fpga_1pps_2x",
                  afe_dsp_cd = "fpga_1pps_dsp",
                  with_debug = False,
-                 resampling_stages = 2,
                  with_dpd = False):
 
         self.platform = platform
@@ -41,23 +39,24 @@ class afe79xx(LiteXModule):
         self.source = AXIStreamInterface(128, clock_domain=m_clk_domain)
         self.sink   = AXIStreamInterface(128, clock_domain=s_clk_domain)
 
+
         # ---------------------------------------------------------------------
         # AFE/JESD PHY
         # ---------------------------------------------------------------------
-        self._add_phy(platform,pads,afe_sys_cd)
+        self._add_phy(platform,pads,afe_data_cd)
 
 
         # ---------------------------------------------------------------------
         # Control/Misc
         # ---------------------------------------------------------------------
         self.rx_en = Signal()
-        self.tx_en     = Signal()
+        self.tx_en = Signal()
 
         # IQ swap belongs to sample formatting, not to the PHY.
         self.rx_swap_iq = Signal(4)
         self.tx_swap_iq = Signal(4)
-        self.specials += MultiReg(self.rx_cfg3.fields.swap_iq, self.rx_swap_iq, afe_sys_cd,2,0)
-        self.specials += MultiReg(self.tx_cfg3.fields.swap_iq,self.tx_swap_iq,afe_sys_cd,2,0)
+        self.specials += MultiReg(self.rx_cfg3.fields.swap_iq, self.rx_swap_iq, afe_data_cd,2,0)
+        self.specials += MultiReg(self.tx_cfg3.fields.swap_iq, self.tx_swap_iq, afe_data_cd,2,0)
 
 
         # LiteScope example.
@@ -81,8 +80,8 @@ class afe79xx(LiteXModule):
 
         # AFE79xxRXFormatter
         self.rx_formatter = AFE79xxRXFormatter(
-            afe_sys_cd    = afe_sys_cd,
-            afe_sys_2x_cd = afe_sys_2x_cd,
+            afe_data_cd    = afe_data_cd,
+            afe_data_2x_cd = afe_data_2x_cd,
         )
 
         # Connect AFE79xxPHY(afe_source) -> AFE79xxRXFormatter
@@ -97,7 +96,7 @@ class afe79xx(LiteXModule):
         ]
 
         # AFE79xxRX
-        self.rx = AFE79xxRX(platform, clk_domain=afe_sys_2x_cd)
+        self.rx = AFE79xxRX(platform, clk_domain=afe_data_2x_cd)
 
         # Preserve decimator CSR names without registering the module twice.
         self.autocsr_exclude = {"rx"}
@@ -111,7 +110,7 @@ class afe79xx(LiteXModule):
 
         self.source_cdc = stream.ClockDomainCrossing(
             layout         =[("data", 128)],
-            cd_from        =afe_sys_2x_cd,
+            cd_from        =afe_data_2x_cd,
             cd_to          =m_clk_domain,
             buffered       =True,
             depth          =32
@@ -136,7 +135,7 @@ class afe79xx(LiteXModule):
         self.sink_cdc = stream.ClockDomainCrossing(
             layout         =[("data", 128)],
             cd_from        =s_clk_domain,
-            cd_to          =afe_dsp_cd if with_dpd else afe_sys_2x_cd,
+            cd_to          =afe_dsp_cd if with_dpd else afe_data_2x_cd,
             buffered       =True,
             depth          =32
         )
@@ -152,8 +151,8 @@ class afe79xx(LiteXModule):
         # AFE79xxTX
         self.tx = AFE79xxTX(
             platform,
-            sys_clk_freq=sys_clk_freq,
-            afe_sys_2x_cd=afe_sys_2x_cd,
+            sys_clk_freq=soc.sys_clk_freq,
+            afe_data_2x_cd=afe_data_2x_cd,
             afe_dsp_cd=afe_dsp_cd,
             with_dpd=with_dpd,
         )
@@ -170,21 +169,21 @@ class afe79xx(LiteXModule):
 
         # Connect sink_cdc -> AFE79xxTX
         self.comb += [
-            self.tx.tx_en.eq(self.tx_en),
+            self.tx.enable.eq(self.tx_en),
             self.tx.sink.data.eq(self.sink_cdc.source.data),
             self.tx.sink.valid.eq(self.sink_cdc.source.valid),
             self.sink_cdc.source.ready.eq(self.tx.sink.ready),
         ]
 
         self.tx_formatter = AFE79xxTXFormatter(
-            afe_sys_cd=afe_sys_cd,
-            afe_sys_2x_cd = afe_sys_2x_cd,
+            afe_data_cd=afe_data_cd,
+            afe_data_2x_cd = afe_data_2x_cd,
         )
 
         # Connect AFE79xxTX -> AFE79xxTXFormatter -> AFE79xxPHY(afe_sink)
         self.comb += [
-            self.tx_formatter.tx_en.eq(self.tx_en),
-            self.tx_formatter.tx_swap_iq.eq(self.tx_swap_iq),
+            self.tx_formatter.enable.eq(self.tx_en),
+            self.tx_formatter.swap_iq.eq(self.tx_swap_iq),
 
             self.tx.source.connect(self.tx_formatter.sink),
 
@@ -198,7 +197,7 @@ class afe79xx(LiteXModule):
         # QADPD Capture
         # ------------------------------------------------------------
         if with_dpd:
-            self._add_dpd_capture(platform, afe_sys_2x_cd)
+            self._add_dpd_capture(platform, afe_data_2x_cd)
 
 
     def _add_csrs(self):
@@ -281,13 +280,13 @@ class afe79xx(LiteXModule):
             self,
             platform,
             pads,
-            afe_sys_cd,
+            afe_data_cd,
     ):
 
         self.phy = AFE79xxPHY(
             platform=platform,
             pads=pads,
-            afe_sys_cd=afe_sys_cd,
+            afe_data_cd=afe_data_cd,
             reg00=self.reg00,
             core_ctrl=self.core_ctrl,
             rx_ctrl=self.rx_ctrl,
@@ -316,7 +315,7 @@ class afe79xx(LiteXModule):
     def _add_dpd_capture(
             self,
             platform,
-            afe_sys_2x_cd,
+            afe_data_2x_cd,
     ):
 
         from gateware.LimeDFB.dsp.DPD.src.txchain.dpd_capture_buffer import DPDCaptureBuffer
@@ -324,7 +323,7 @@ class afe79xx(LiteXModule):
             platform,
             0x20000,
             "sys",
-            afe_sys_2x_cd,
+            afe_data_2x_cd,
             128,
             13
         )
@@ -341,7 +340,7 @@ class afe79xx(LiteXModule):
         self.specials += MultiReg(
             i=self.tx.tx_dsp.txdsp1ch.sel_moni_source,
             o=capture_channel,
-            odomain=afe_sys_2x_cd,
+            odomain=afe_data_2x_cd,
         )
 
         rx_from_afe = Signal(32)

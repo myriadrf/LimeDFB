@@ -12,18 +12,18 @@ class AFE79xxTX(LiteXModule):
         self,
         platform,
         sys_clk_freq=300e6,
-        afe_sys_2x_cd="fpga_1pps_2x",
+        afe_data_2x_cd="fpga_1pps_2x",
         afe_dsp_cd="fpga_1pps_dsp",
         with_dpd=False,
     ):
 
-        self.sink = AXIStreamInterface(128, clock_domain=afe_dsp_cd if with_dpd else afe_sys_2x_cd)
-        self.source = AXIStreamInterface(128, clock_domain=afe_sys_2x_cd)
+        self.sink = AXIStreamInterface(128, clock_domain=afe_dsp_cd if with_dpd else afe_data_2x_cd)
+        self.source = AXIStreamInterface(128, clock_domain=afe_data_2x_cd)
 
-        self.tx_en = Signal()
+        self.enable = Signal()
 
         from gateware.LimeDFB.dsp.interpolate_4ch.interpolate_4ch import Interpolate4ch
-        self.interpolate = Interpolate4ch(platform, clk_domain=afe_sys_2x_cd, num_stages=3)
+        self.interpolate = Interpolate4ch(platform, clk_domain=afe_data_2x_cd, num_stages=3)
 
         interpolate_source = self.sink
 
@@ -48,7 +48,7 @@ class AFE79xxTX(LiteXModule):
             self.dsp_cdc = stream.ClockDomainCrossing(
                 layout         =[("data", 128)],
                 cd_from        =afe_dsp_cd,
-                cd_to          =afe_sys_2x_cd,
+                cd_to          =afe_data_2x_cd,
                 buffered       =True,
                 depth          =32
             )
@@ -62,7 +62,7 @@ class AFE79xxTX(LiteXModule):
             interpolate_source = self.dsp_cdc.source
 
         self.comb += [
-            self.interpolate.aresetn.eq(self.tx_en),
+            self.interpolate.aresetn.eq(self.enable),
             self.interpolate.sink.data.eq(interpolate_source.data),
             self.interpolate.sink.valid.eq(interpolate_source.valid),
             interpolate_source.ready.eq(self.interpolate.sink.ready),
@@ -80,7 +80,7 @@ class AFE79xxTX(LiteXModule):
                 n=4,
                 m=2,
                 mul_n=18,
-                clk_domain=afe_sys_2x_cd,
+                clk_domain=afe_data_2x_cd,
             )
 
             # Channel A from interpolate:
@@ -90,8 +90,8 @@ class AFE79xxTX(LiteXModule):
             # QADPD input is 14-bit, while interpolate output is 16-bit.
             # Use [2:16] to keep the signed MSBs and drop 2 LSBs.
             self.comb += [
-                self.qadpd_a.reset_n.eq(self.tx_en),
-                self.qadpd_a.reset_mem_n.eq(self.tx_en),
+                self.qadpd_a.reset_n.eq(self.enable),
+                self.qadpd_a.reset_mem_n.eq(self.enable),
 
                 # If QADPD config SPI is unused for now, tie these off.
                 self.qadpd_a.sclk.eq(self.tx_dsp.sclk),

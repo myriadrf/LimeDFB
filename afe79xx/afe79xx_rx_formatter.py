@@ -5,7 +5,7 @@ from litex.soc.interconnect import stream
 from litex.soc.interconnect.axi import AXIStreamInterface
 
 
-def swap_iq(x):
+def negate_q(x):
     """
     Keep I unchanged and negate Q.
 
@@ -91,7 +91,7 @@ def apply_iq_swap(src, dst, swap_ctrl):
             dst[lo:hi].eq(
                 Mux(
                     swap_ctrl[swap_map[ch]],
-                    swap_iq(src[lo:hi]),
+                    negate_q(src[lo:hi]),
                     src[lo:hi],
                 )
             )
@@ -138,7 +138,7 @@ class AFE79xxRXFormatter(LiteXModule):
         256-bit native AFE stream @ afe_sys_cd
 
     Output:
-        128-bit canonical stream @ afe_sys_2x_cd
+        128-bit canonical stream @ afe_data_2x_cd
 
     Canonical output format:
         [31:0]    Channel A
@@ -162,8 +162,8 @@ class AFE79xxRXFormatter(LiteXModule):
 
     def __init__(
         self,
-        afe_sys_cd="fpga_1pps",
-        afe_sys_2x_cd="fpga_1pps_2x",
+        afe_data_cd,
+        afe_data_2x_cd,
     ):
         # ---------------------------------------------------------------------
         # Interfaces
@@ -171,12 +171,12 @@ class AFE79xxRXFormatter(LiteXModule):
 
         self.sink = AXIStreamInterface(
             data_width=256,
-            clock_domain=afe_sys_cd,
+            clock_domain=afe_data_cd,
         )
 
         self.source = AXIStreamInterface(
             data_width=128,
-            clock_domain=afe_sys_2x_cd,
+            clock_domain=afe_data_2x_cd,
         )
 
         self.enable = Signal(reset=1)
@@ -223,9 +223,9 @@ class AFE79xxRXFormatter(LiteXModule):
         # ---------------------------------------------------------------------
         # CDC:
         #
-        #   256-bit @ afe_sys_cd
+        #   256-bit @ afe_data_cd
         #       ->
-        #   256-bit @ afe_sys_2x_cd
+        #   256-bit @ afe_data_2x_cd
         #
         # One FIFO word contains:
         #   [127:0]   sample N
@@ -239,13 +239,13 @@ class AFE79xxRXFormatter(LiteXModule):
         )
 
         rx_cdc = ClockDomainsRenamer({
-            "write": afe_sys_cd,
-            "read":  afe_sys_2x_cd,
+            "write": afe_data_cd,
+            "read":  afe_data_2x_cd,
         })(rx_cdc)
 
         self.rx_cdc = rx_cdc
 
-        afe_sys_sync = getattr(self.sync, afe_sys_cd)
+        afe_sys_sync = getattr(self.sync, afe_data_cd)
 
         afe_sys_sync += [
             rx_cdc.sink.valid.eq(self.sink.valid),
@@ -273,7 +273,7 @@ class AFE79xxRXFormatter(LiteXModule):
         # ---------------------------------------------------------------------
 
         rx_conv = ResetInserter()(
-            ClockDomainsRenamer(afe_sys_2x_cd)(
+            ClockDomainsRenamer(afe_data_2x_cd)(
                 stream.Converter(
                     nbits_from=256,
                     nbits_to=128,

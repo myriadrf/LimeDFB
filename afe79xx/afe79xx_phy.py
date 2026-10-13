@@ -19,7 +19,7 @@ class AFE79xxPHY(LiteXModule):
     intentionally outside this module.
     """
 
-    def __init__(self, platform, pads, afe_sys_cd,
+    def __init__(self, platform, pads, afe_data_cd,
                  reg00, core_ctrl,
                  rx_ctrl, rx_cfg0, rx_cfg1, rx_cfg2, rx_status0,
                  tx_ctrl, tx_cfg0, tx_cfg1, tx_status0,
@@ -27,8 +27,8 @@ class AFE79xxPHY(LiteXModule):
         self.platform = platform
 
         # Native JESD application-side sample interfaces.
-        self.source = AXIStreamInterface(256, clock_domain=afe_sys_cd)
-        self.sink   = AXIStreamInterface(256, clock_domain=afe_sys_cd)
+        self.source = AXIStreamInterface(256, clock_domain=afe_data_cd)
+        self.sink   = AXIStreamInterface(256, clock_domain=afe_data_cd)
 
         self._add_platform_sources()
         self._add_timing_constraints()
@@ -95,53 +95,53 @@ class AFE79xxPHY(LiteXModule):
         self.specials += MultiReg(
             core_ctrl.fields.afe_core_rst_n,
             self.tiafe_master_reset_n,
-            afe_sys_cd, 2, 0)
+            afe_data_cd, 2, 0)
 
         self.specials += MultiReg(
             rx_ctrl.fields.tiafe_rx_sync_reset,
             self.tiafe_rx_sync_reset,
-            afe_sys_cd, 2, 1)
+            afe_data_cd, 2, 1)
         self.specials += MultiReg(
             rx_ctrl.fields.rx_clr_sysref_realign_count,
             self.tiafe_rx_clr_sysref_realign_count,
-            afe_sys_cd, 2, 0)
+            afe_data_cd, 2, 0)
         self.specials += MultiReg(
             rx_cfg0.fields.tiafe_cfg_rx_lane_enabled,
             self.tiafe_cfg_rx_lane_enabled,
-            afe_sys_cd, 2, 0)
+            afe_data_cd, 2, 0)
         self.specials += MultiReg(
             rx_cfg0.fields.tiafe_cfg_rx_lane_polarity,
             self.tiafe_cfg_rx_lane_polarity,
-            afe_sys_cd, 2, 0)
+            afe_data_cd, 2, 0)
         self.specials += MultiReg(
             rx_cfg1.fields.tiafe_cfg_rx_lane_map,
             self.tiafe_cfg_rx_lane_map,
-            afe_sys_cd, 2, 0)
+            afe_data_cd, 2, 0)
         self.specials += MultiReg(
             rx_cfg2.fields.tiafe_cfg_rx_buffer_release_delay,
             self.tiafe_cfg_rx_buffer_release_delay,
-            afe_sys_cd, 2, 0)
+            afe_data_cd, 2, 0)
 
         self.specials += MultiReg(
             tx_ctrl.fields.tiafe_tx_sync_reset,
             self.tiafe_tx_sync_reset,
-            afe_sys_cd, 2, 1)
+            afe_data_cd, 2, 1)
         self.specials += MultiReg(
             tx_cfg0.fields.tiafe_cfg_tx_lane_enabled,
             self.tiafe_cfg_tx_lane_enabled,
-            afe_sys_cd, 2, 0)
+            afe_data_cd, 2, 0)
         self.specials += MultiReg(
             tx_cfg0.fields.tiafe_cfg_tx_lane_polarity,
             self.tiafe_cfg_tx_lane_polarity,
-            afe_sys_cd, 2, 0)
+            afe_data_cd, 2, 0)
         self.specials += MultiReg(
             tx_cfg1.fields.tiafe_cfg_tx_lane_map,
             self.tiafe_cfg_tx_lane_map,
-            afe_sys_cd, 2, 0)
+            afe_data_cd, 2, 0)
         self.specials += MultiReg(
             tx_ctrl.fields.tx_clr_sysref_realign_count,
             self.tiafe_tx_clr_sysref_realign_count,
-            afe_sys_cd, 2, 0)
+            afe_data_cd, 2, 0)
 
         # AFE synchronization pins.
         self.specials += Instance(
@@ -186,7 +186,7 @@ class AFE79xxPHY(LiteXModule):
             i_xcvr_freerun_clock                    = self.jesd_freerun_clk,
             o_xcvr_rx_clock                         = self.afe7900_jesd_ip_top_0_xcvr_rx_clock,
 
-            i_rx_sys_clock                          = ClockSignal(afe_sys_cd),
+            i_rx_sys_clock                          = ClockSignal(afe_data_cd),
             i_rx_sync_reset                         = self.tiafe_rx_sync_reset,
             i_cfg_rx_lane_enable                    = self.tiafe_cfg_rx_lane_enabled,
             i_cfg_rx_lane_polarity                  = self.tiafe_cfg_rx_lane_polarity,
@@ -215,7 +215,7 @@ class AFE79xxPHY(LiteXModule):
             i_rx_lane_clr_crc_mismatch_err_count    = Constant(0, 4),
 
             o_xcvr_tx_clock                         = self.afe7900_jesd_ip_top_0_xcvr_tx_clock,
-            i_tx_sys_clock                          = ClockSignal(afe_sys_cd),
+            i_tx_sys_clock                          = ClockSignal(afe_data_cd),
             i_tx_sync_reset                         = self.tiafe_tx_sync_reset,
             i_cfg_tx_lane_enable                    = self.tiafe_cfg_tx_lane_enabled,
             i_cfg_tx_lane_polarity                  = self.tiafe_cfg_tx_lane_polarity,

@@ -6,7 +6,7 @@ from litex.soc.interconnect.axi import AXIStreamInterface
 from litex.soc.interconnect.stream import Endpoint
 
 
-def swap_iq(x):
+def negate_q(x):
     i1 = x[0:16]
     q1 = x[16:32]
     q1_neg = -q1
@@ -17,18 +17,18 @@ def swap_iq(x):
 class AFE79xxTXFormatter(LiteXModule):
     def __init__(
         self,
-        afe_sys_cd="fpga_1pps",
-        afe_sys_2x_cd="fpga_1pps_2x",
+        afe_data_cd="fpga_1pps",
+        afe_data_2x_cd="fpga_1pps_2x",
     ):
 
-        self.sink   = AXIStreamInterface(128, clock_domain=afe_sys_2x_cd)
-        self.source = AXIStreamInterface(256, clock_domain=afe_sys_cd)
+        self.sink   = AXIStreamInterface(128, clock_domain=afe_data_2x_cd)
+        self.source = AXIStreamInterface(256, clock_domain=afe_data_cd)
 
-        self.tx_en     = Signal()
-        self.tx_swap_iq = Signal(4)
+        self.enable     = Signal()
+        self.swap_iq = Signal(4)
 
         tx_conv = stream.Converter(nbits_from=128, nbits_to=256)
-        tx_conv = ClockDomainsRenamer(afe_sys_2x_cd)(tx_conv)
+        tx_conv = ClockDomainsRenamer(afe_data_2x_cd)(tx_conv)
         self.tx_conv = tx_conv
 
 
@@ -37,21 +37,21 @@ class AFE79xxTXFormatter(LiteXModule):
         # IQ mux Logic: Mux(condition, swapped_data, normal_data)
         self.comb += [
             # -----------------------------------------------------------------
-            # Channel A -> AFE CH 4 (Bits 96-128) | Controlled by tx_swap_iq[0]
+            # Channel A -> AFE CH 4 (Bits 96-128) | Controlled by swap_iq[0]
             # -----------------------------------------------------------------
-            tx_conv.sink.data[96:128].eq(Mux(self.tx_swap_iq[0],swap_iq(self.sink.data[0:32]),self.sink.data[0:32])),
+            tx_conv.sink.data[96:128].eq(Mux(self.swap_iq[0],negate_q(self.sink.data[0:32]),self.sink.data[0:32])),
             # -----------------------------------------------------------------
-            # Channel B -> AFE CH 3 (Bits 64-96) | Controlled by tx_swap_iq[1]
+            # Channel B -> AFE CH 3 (Bits 64-96) | Controlled by swap_iq[1]
             # -----------------------------------------------------------------
-            tx_conv.sink.data[64:96].eq(Mux(self.tx_swap_iq[1],swap_iq(self.sink.data[32:64]),self.sink.data[32:64])),
+            tx_conv.sink.data[64:96].eq(Mux(self.swap_iq[1],negate_q(self.sink.data[32:64]),self.sink.data[32:64])),
             # -----------------------------------------------------------------
-            # Channel C -> AFE CH 1 (Bits 0-32) | Controlled by tx_swap_iq[2]
+            # Channel C -> AFE CH 1 (Bits 0-32) | Controlled by swap_iq[2]
             # -----------------------------------------------------------------
-            tx_conv.sink.data[0:32].eq(Mux(self.tx_swap_iq[2],swap_iq(self.sink.data[64:96]),self.sink.data[64:96])),
+            tx_conv.sink.data[0:32].eq(Mux(self.swap_iq[2],negate_q(self.sink.data[64:96]),self.sink.data[64:96])),
             # -----------------------------------------------------------------
-            # Channel D -> AFE CH 2 (Bits 32-64) | Controlled by tx_swap_iq[3]
+            # Channel D -> AFE CH 2 (Bits 32-64) | Controlled by swap_iq[3]
             # -----------------------------------------------------------------
-            tx_conv.sink.data[32:64].eq(Mux(self.tx_swap_iq[3],swap_iq(self.sink.data[96:128]),self.sink.data[96:128])),
+            tx_conv.sink.data[32:64].eq(Mux(self.swap_iq[3],negate_q(self.sink.data[96:128]),self.sink.data[96:128])),
         ]
 
 
@@ -79,8 +79,8 @@ class AFE79xxTXFormatter(LiteXModule):
 
         self.tx_cdc = stream.ClockDomainCrossing(
             layout         =[("data", 256)],
-            cd_from        =afe_sys_2x_cd,
-            cd_to          =afe_sys_cd,
+            cd_from        =afe_data_2x_cd,
+            cd_to          =afe_data_cd,
             buffered       =True,
             depth          =32
         )
@@ -92,5 +92,5 @@ class AFE79xxTXFormatter(LiteXModule):
             self.source.valid.eq(self.tx_cdc.source.valid),
 
             # If in reset, assert ready to 'clear out' everything
-            self.tx_cdc.source.ready.eq(self.source.ready | ~self.tx_en)
+            self.tx_cdc.source.ready.eq(self.source.ready | ~self.enable)
         ]
