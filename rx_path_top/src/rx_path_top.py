@@ -35,6 +35,10 @@ class RXPathTop(LiteXModule):
         fixed_packet_size            = False,
         ):
 
+        self.s_clk_domain = s_clk_domain
+        self.m_clk_domain = m_clk_domain
+        self.int_clk_domain = int_clk_domain
+
         assert fpgacfg_manager is not None
         rx_stream_en = fpgacfg_manager.rx_en if rx_stream_en is None else rx_stream_en
         assert sink_width in [64, 128], f"Invalid sink_width: {sink_width}. Must be 64 (two channels) or 128 (four channels)."

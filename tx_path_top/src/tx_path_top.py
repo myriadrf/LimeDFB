@@ -60,6 +60,10 @@ class TXPathTop(LiteXModule):
         output4channels   = False,
         input_buff_size   = 512
         ):
+
+        self.s_clk_domain = s_clk_domain
+        self.m_clk_domain = m_clk_domain
+        self.rx_clk_domain = rx_clk_domain
         #Input buffer acts as CDC, so a minimum of 4 depth is required to instantiate the async FIFO
         assert input_buff_size >= (sink_width*4), "TXPathTop input_buff_size must be greater than or equal to 4 sink cycles"
 
