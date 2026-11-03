@@ -159,7 +159,12 @@ begin
          fsync_l <= (others => '0');
          fsync_h <= (others => '0');
       elsif rising_edge(CLK) then
-         if (s_axis_tready_reg = '1' and S_AXIS_TVALID ='1') then
+         -- if (s_axis_tready_reg = '1' and S_AXIS_TVALID ='1') then
+         -- If generating fsync only when data is actually available, the very first sample in
+         -- SISODDR mode gets discarded.
+         -- Ideally fsync should start generation one sample before the data
+         -- But generating it always is a simpler fix
+         if (s_axis_tready_reg = '1') then
             fsync_l <= int_fsync_l;
             fsync_h <= int_fsync_h;
          else
