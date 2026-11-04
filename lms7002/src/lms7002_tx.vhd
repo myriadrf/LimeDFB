@@ -55,6 +55,7 @@ architecture ARCH of LMS7002_TX is
    -- declare signals,  components here
 
    signal s_axis_tready_reg   : std_logic;
+   signal frame_phase         : std_logic;
 
    type T_DIQ_SHIFT_REG_TYPE is array (0 to 1) of std_logic_vector(15 downto 0);
 
@@ -66,38 +67,32 @@ architecture ARCH of LMS7002_TX is
    alias a_axis_fifo_bi       is s_axis_tdata(31 downto 16);
    alias a_axis_fifo_bq       is s_axis_tdata(15 downto  0);
 
-   signal fsync_l             : std_logic_vector(3 downto 0);
-   signal fsync_h             : std_logic_vector(3 downto 0);
-
    signal mux_fsync_l         : std_logic_vector(3 downto 0);
    signal mux_fsync_h         : std_logic_vector(3 downto 0);
 
    signal int_fsync_l         : std_logic_vector(3 downto 0);
    signal int_fsync_h         : std_logic_vector(3 downto 0);
+   signal tx_fsync_l          : std_logic;
+   signal tx_fsync_h          : std_logic;
 
 begin
 
-   -- According to axi stream protocol:
-   -- A Receiver is permitted to wait for TVALID to be asserted before asserting TREADY. It is permitted that a
-   -- Receiver asserts and deasserts TREADY without TVALID being asserted.
+   -- Keep framing active even when the stream has no valid data.
    process (CLK, RESET_N) is
    begin
 
       if (RESET_N = '0') then
-         s_axis_tready_reg <= '0';
+         frame_phase <= '1';
       elsif rising_edge(CLK) then
-         if (S_AXIS_TVALID = '1') then
-            if (DDR_EN = '1' and MIMO_EN = '0') then
-               s_axis_tready_reg <= '1';
-            else
-               s_axis_tready_reg <= NOT s_axis_tready_reg;
-            end if;
-         else
-            s_axis_tready_reg <= '0';
-         end if;
+         frame_phase <= not frame_phase;
       end if;
 
    end process;
+
+   -- Two-clock modes accept one word at the first phase of each frame.
+   s_axis_tready_reg <= '0' when RESET_N = '0' else
+                        '1' when (DDR_EN = '1' and MIMO_EN = '0') else
+                        frame_phase;
 
    -- diq_l and diq_h shift registers
    process (CLK, RESET_N) is
@@ -108,7 +103,11 @@ begin
       elsif rising_edge(CLK) then
          if (s_axis_tready_reg = '1' and S_AXIS_TVALID ='1') then
             diq_h_reg(0) <= a_axis_fifo_ai;
-            diq_h_reg(1) <= a_axis_fifo_bi;
+            if (MIMO_EN = '1') then
+               diq_h_reg(1) <= a_axis_fifo_bi;
+            else
+               diq_h_reg(1) <= (others => '0');
+            end if;
          else
             diq_h_reg(0) <= diq_h_reg(1);
             diq_h_reg(1) <= (others => '0');
@@ -125,7 +124,11 @@ begin
       elsif rising_edge(CLK) then
          if (s_axis_tready_reg = '1' and S_AXIS_TVALID ='1') then
             diq_l_reg(0) <= a_axis_fifo_aq;
-            diq_l_reg(1) <= a_axis_fifo_bq;
+            if (MIMO_EN = '1') then
+               diq_l_reg(1) <= a_axis_fifo_bq;
+            else
+               diq_l_reg(1) <= (others => '0');
+            end if;
          else
             diq_l_reg(0) <= diq_l_reg(1);
             diq_l_reg(1) <= (others => '0');
@@ -149,38 +152,20 @@ begin
    int_fsync_l <= (not mux_fsync_l(3) & not mux_fsync_l(2) & not mux_fsync_l(1) & not mux_fsync_l(0)) when FIDM = '0' else
                   mux_fsync_l;
 
-   -- fsync register has more taps than diq shift registers because
-   -- when we stop receiving valid diq samples from s_axis bus we want to
-   -- transmit one more frame with zeros on DIQ bus.
-   process (CLK, RESET_N) is
-   begin
+   tx_fsync_h <= '0' when RESET_N = '0' else
+                 int_fsync_h(0) when ((DDR_EN = '1' and MIMO_EN = '0') or frame_phase = '0') else
+                 int_fsync_h(1);
 
-      if (RESET_N = '0') then
-         fsync_l <= (others => '0');
-         fsync_h <= (others => '0');
-      elsif rising_edge(CLK) then
-         -- if (s_axis_tready_reg = '1' and S_AXIS_TVALID ='1') then
-         -- If generating fsync only when data is actually available, the very first sample in
-         -- SISODDR mode gets discarded.
-         -- Ideally fsync should start generation one sample before the data
-         -- But generating it always is a simpler fix
-         if (s_axis_tready_reg = '1') then
-            fsync_l <= int_fsync_l;
-            fsync_h <= int_fsync_h;
-         else
-            fsync_l <= '0' & fsync_l(3 downto 1);
-            fsync_h <= '0' & fsync_h(3 downto 1);
-         end if;
-      end if;
-
-   end process;
+   tx_fsync_l <= '0' when RESET_N = '0' else
+                 int_fsync_l(0) when ((DDR_EN = '1' and MIMO_EN = '0') or frame_phase = '0') else
+                 int_fsync_l(1);
 
    -- ----------------------------------------------------------------------------
    -- Output ports
    -- ----------------------------------------------------------------------------
 
-   DIQ_H <= fsync_h(0) & diq_h_reg(0)(15 downto 4);
-   DIQ_L <= fsync_l(0) & diq_l_reg(0)(15 downto 4);
+   DIQ_H <= tx_fsync_h & diq_h_reg(0)(15 downto 4);
+   DIQ_L <= tx_fsync_l & diq_l_reg(0)(15 downto 4);
 
    S_AXIS_TREADY <= s_axis_tready_reg;
 
