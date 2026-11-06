@@ -265,10 +265,10 @@ begin
           --res2_s(i)(j) <= STD_LOGIC_VECTOR(res2(i)(j)(2 * mul_n - 6 downto 0 ));
           --res3_s(i)(j) <= STD_LOGIC_VECTOR(res3(i)(j)(2 * mul_n - 6 downto 0 ));
           --res4_s(i)(j) <= STD_LOGIC_VECTOR(res4(i)(j)(2 * mul_n - 6 downto 0 )); 
-          res1_s(i)(j) <= STD_LOGIC_VECTOR(res1(i)(j)(2 * mul_n - 1 downto mul_n - 13 ));
-          res2_s(i)(j) <= STD_LOGIC_VECTOR(res2(i)(j)(2 * mul_n - 1 downto mul_n - 13 ));
-          res3_s(i)(j) <= STD_LOGIC_VECTOR(res3(i)(j)(2 * mul_n - 1 downto mul_n - 13 ));
-          res4_s(i)(j) <= STD_LOGIC_VECTOR(res4(i)(j)(2 * mul_n - 1 downto mul_n - 13 ));
+          res1_s(i)(j) <= STD_LOGIC_VECTOR(res1(i)(j)(2 * mul_n - 1 - j downto mul_n - 13 - j));
+          res2_s(i)(j) <= STD_LOGIC_VECTOR(res2(i)(j)(2 * mul_n - 1 - j downto mul_n - 13 - j));
+          res3_s(i)(j) <= STD_LOGIC_VECTOR(res3(i)(j)(2 * mul_n - 1 - j downto mul_n - 13 - j));
+          res4_s(i)(j) <= STD_LOGIC_VECTOR(res4(i)(j)(2 * mul_n - 1 - j downto mul_n - 13 - j));
         end if;
       end process;
 
