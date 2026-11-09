@@ -320,6 +320,11 @@ class afe79xx(LiteXModule):
             # RX data path
             # Create async FIFOs for clock domain crossing (must be buffered=True to improve timing)
             rx_cdc = stream.AsyncFIFO([("data", 256)], 32, buffered=True)
+            # Use BRAM for the wide FIFO to shorten the read-address-to-data path.
+            # stream wrapper -> buffered FIFO -> underlying asynchronous FIFO.
+            for special in rx_cdc.fifo.fifo._fragment.specials:
+                if isinstance(special, Memory):
+                    special.attr = {("ram_style", "block")}
             rx_cdc = ClockDomainsRenamer({"write": afe_sys_cd, "read":afe_sys_2x_cd})(rx_cdc)
             self.rx_cdc = rx_cdc
 
