@@ -167,7 +167,7 @@ class TXPathTop(LiteXModule):
             self.sink.ready.eq(          input_buff.sink.ready & s_reset_n),
 
             conv_64_to_128.sink.data.eq( input_buff.source.data),
-            conv_64_to_128.sink.last.eq( input_buff.source.last),
+            conv_64_to_128.sink.last.eq( 0),
             conv_64_to_128.sink.valid.eq(input_buff.source.valid & m_reset_n),
 
             # Async fifo used by ClockDomainCrossing does not have a reset
