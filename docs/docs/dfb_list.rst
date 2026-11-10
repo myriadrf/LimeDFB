@@ -20,4 +20,5 @@ Here you can find summary of available modules and their status.
    ./rx_path_top/README.md
    ./tx_path_top/README.md
    ./afe79xx/README.md
+   ./host_tcd_rx/README.rst
 
