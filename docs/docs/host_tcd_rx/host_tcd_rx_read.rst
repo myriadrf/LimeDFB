@@ -4,7 +4,7 @@ Reading Samples
 The read path runs on ``rd_clk`` and retrieves one completed slot from one
 selected channel at a time. It packs the samples as IQ16 or IQ12 and emits a
 256-bit stream. For bank, lane and slot definitions, see
-:doc:`Memory Layout <README>`.
+:ref:`Memory layout <host-tcd-rx-memory-layout>`.
 
 Channel Selection and Read Address
 ----------------------------------

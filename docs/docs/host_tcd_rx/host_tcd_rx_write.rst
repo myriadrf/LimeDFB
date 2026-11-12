@@ -2,7 +2,8 @@ Writing Samples
 ===============
 
 The write path stores each accepted four-channel IQ16 frame in sample RAM on
-``wr_clk``. For bank, lane and slot definitions, see :doc:`Memory Layout <README>`.
+``wr_clk``. For bank, lane and slot definitions, see
+:ref:`Memory layout <host-tcd-rx-memory-layout>`.
 
 Write Admission
 ---------------

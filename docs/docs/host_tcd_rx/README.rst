@@ -1,11 +1,50 @@
 HostTCD RX
 ==========
 
-Four-channel sample storage, channel-selective IQ16/IQ12 formatting and
-timestamp completions for HostTCD-driven RX DMA.
+HostTCD RX transfers acquired samples into separate host DMA buffers for up to
+four channels. Host software submits parent descriptors with destination
+addresses and a byte count per channel. The FPGA schedules smaller DMA
+transfers, reads the selected channel banks and formats samples as IQ16 or
+packed IQ12.
 
-Memory Layout
--------------
+Samples receive a shared acquisition tick before packing or DMA. When the
+parent's final DMA child retires, one completion record reports its destination
+addresses, sample counts and timestamp continuity. Software reads and pops
+these records to associate captured samples with their acquisition time.
+
+.. figure:: images/HostTCD_rx.drawio.svg
+   :width: 100%
+   :alt: Host descriptor submission, four-channel acquisition RAM, DMA to host buffers and timestamp completion readout
+
+   HostTCD RX overview. Solid arrows carry samples; dashed arrows carry control
+   and metadata. Sample slots are released after all requested channels have
+   been read. Timestamp records are published at final DMA retirement.
+
+HostTCD table and descriptor sequencer
+-------------------------------------
+
+The HostTCD table queues up to 16 parent descriptors. Each parent specifies
+one DMA destination per selected channel and a common byte count. The
+sequencer divides parents into channel blocks and 4 KiB boundary fragments,
+then programs the LitePCIe DMA descriptor table. Ordered commands keep sample
+readout aligned with those destinations. Program mode consumes queued parents;
+loop mode repeats them.
+
+See :ref:`host-tcd-rx-descriptor-table` for host submission and configuration.
+
+Acquisition RAM
+---------------
+
+The acquisition path stores simultaneous samples from channels A--D in shared
+slots across four RAM banks. Each completed slot carries its first acquisition
+tick and gap status. A slot remains owned by the reader until all requested
+channels have been read. If no slot is free, incoming frames are dropped while
+the acquisition counter continues.
+
+.. _host-tcd-rx-memory-layout:
+
+Memory layout
+~~~~~~~~~~~~~
 
 Samples arrive as frames on the 128-bit ``frame_data`` bus. Each valid frame
 contains one simultaneous complex sample from each of the four channels
@@ -50,130 +89,58 @@ The write path stores each accepted input frame in all four channel banks.
 See :doc:`Writing Samples <host_tcd_rx_write>` for write admission, address
 calculation, sample ordering and slot-filling diagrams.
 
-The read path retrieves a completed slot from a selected channel and formats
-its samples into a 256-bit stream. See :doc:`Reading Samples <host_tcd_rx_read>`
-for channel selection, address calculation, IQ packing and slot release.
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   Writing Samples <host_tcd_rx_write>
+
+Read & Format
+-------------
+
+The read path follows the sequencer's commands to select a completed slot and
+channel. It reads eight IQ16 samples in parallel and emits a 256-bit stream,
+either preserving IQ16 or packing the upper 12 bits of I and Q as IQ12.
+Backpressure pauses readout, and the slot is released after every requested
+channel has entered the output FIFO.
+
+See :doc:`Reading Samples <host_tcd_rx_read>` for channel selection, address
+calculation, IQ packing and slot release.
 
 .. toctree::
    :hidden:
+   :maxdepth: 1
 
-   host_tcd_rx_write
-   host_tcd_rx_read
+   Reading Samples <host_tcd_rx_read>
 
+Timestamp record FIFO
+---------------------
 
-Timestamp table
----------------
+One record is published when a parent's final DMA child retires. It contains
+the destination addresses, acquisition ticks, sample counts and gap flags for
+all participating channels. The default FIFO holds 256 records; software reads
+each through a snapshot and pops it to release capacity. A full reservation
+pool stalls new parents rather than discarding completion records.
 
-RX path publishes one timestamp record when the final native DMA child of
-a parent retires, across all requested channels. The default FIFO holds 256
-records, each containing 24 32-bit words (96 bytes). Use the loaded bitstream's
-generated CSR map for register addresses with the ``CSR_LIMETOP_RXTX_TOP_RX_PATH_``
-prefix. Below, ``CSR_..._`` abbreviates this prefix.
+See :ref:`host-tcd-rx-timestamp-record-fifo` for record fields and the
+snapshot/read/pop procedure.
 
-Reading entries
-~~~~~~~~~~~~~~~
+Host software guide
+-------------------
 
-Read the oldest completed parent through the snapshot registers. Poll
-``CSR_..._METADATA_LEVEL``, or check it after an RX interrupt.
-``CSR_..._METADATA_RESERVED`` includes
-unfinished parents as well as unread completions; it is not the readable count.
+See the :doc:`HostTCD RX software guide <host_tcd_software>` when implementing
+a host driver or consuming captured samples:
 
-.. code-block:: text
+* :ref:`HostTCD RX Descriptor table <host-tcd-rx-descriptor-table>`:
+  DMA addresses, channel configuration, block sizes and descriptor submission.
+* :ref:`Timestamp record FIFO <host-tcd-rx-timestamp-record-fifo>`:
+  record fields, snapshot/read/pop sequence and completion ownership.
+* :ref:`Host DMA buffer layout <host-tcd-rx-dma-buffer-layout>`:
+  channel destinations, sample ordering and IQ16/IQ12 representation.
 
-   while read32(CSR_..._METADATA_LEVEL) != 0:
-       write32(CSR_..._SNAPSHOT, 1)
-       wait until read32(CSR_..._SNAPSHOT_VALID) == 1, with a timeout
-       for i in 0..23:
-           words[i] = read32(CSR_..._RECORD_WORD0 + 4*i)
-       write32(CSR_..._POP, 1)
-       process the local copy of words
+.. toctree::
+   :hidden:
+   :maxdepth: 1
 
-
-Use ordered device register accesses. Writing one to ``CSR_..._SNAPSHOT`` latches the
-FIFO head into ``CSR_..._RECORD_WORD0`` through ``CSR_..._RECORD_WORD23``; a request
-with no available head captures nothing. Wait for ``CSR_..._SNAPSHOT_VALID`` before copying all
-24 words. The snapshot stays stable while new completions arrive. Reading a
-word does not advance the FIFO, and there is no random entry index.
-
-After copying, write one to ``CSR_..._POP`` to remove that entry, clear
-``CSR_..._SNAPSHOT_VALID`` and release one reservation. Pop without a valid snapshot does nothing. Take
-a new snapshot for each entry and use a single consumer for the entire sequence.
-If entries are not popped, reservations reach capacity and stall new parents;
-incoming samples can then be dropped when acquisition RAM fills. Do not pop
-independently while ``HostTCDStream`` owns the stream.
-
-Record fields
-~~~~~~~~~~~~~
-
-Word indices start at zero. All 64-bit fields store the low word first;
-reconstruct them as ``uint64(low) | (uint64(high) << 32)``.
-
-.. list-table:: Timestamp record fields
-   :header-rows: 1
-   :widths: 12 23 65
-
-   * - Word(s)
-     - Field
-     - Description
-   * - 0
-     - ``epoch``
-     - Software stream generation, configured while flushed; identifies the session, not a time value.
-   * - 1
-     - ``parent_sequence``
-     - Parent execution sequence modulo 2^32; advances for repeated loop executions even when addresses repeat.
-   * - 2
-     - ``flags``
-     - Bit 8: IQ12 format (otherwise IQ16); bit 16: valid record; bit 17: gap before parent; bit 18: internal gap; bit 19: timestamp discontinuity without an acquisition gap flag.
-   * - 3
-     - ``channel_map``
-     - Two bits per logical destination; destination ``i`` uses physical channel ``(words[3] >> (2*i)) & 3``, where 0--3 mean A--D.
-   * - 4
-     - ``channel_count``
-     - Number of logical destinations, from 1 to 4.
-   * - 5
-     - ``physical_channel_mask``
-     - Bits 0--3 identify participating physical channels A--D.
-   * - 6--13
-     - ``dma_base_addresses``
-     - Four 64-bit destination addresses in logical order. Destination ``i`` uses low word ``6 + 2*i`` and high word ``7 + 2*i``; unused addresses are zero. These are DMA addresses, not application virtual addresses or descriptor staging addresses.
-   * - 14--15
-     - ``first_tick``
-     - Acquisition tick of the first sample in the parent.
-   * - 16--17
-     - ``last_block_tick``
-     - Acquisition tick of the first sample in the parent's final block, not its final sample.
-   * - 18
-     - ``samples_per_channel``
-     - Total complex samples in each destination buffer.
-   * - 19
-     - ``bytes_per_channel``
-     - Total payload bytes in each destination buffer.
-   * - 20
-     - ``block_count``
-     - Acquisition blocks per channel; a block normally holds 1024 complex samples.
-   * - 21
-     - ``contiguous_samples``
-     - Length of the initial contiguous sample interval per channel.
-   * - 22
-     - ``first_gap_offset``
-     - Sample index of the first internal discontinuity, or ``0xffffffff`` when absent.
-   * - 23
-     - ``reserved``
-     - Zero.
-
-
-The acquisition counter advances on every valid input frame, including dropped
-frames, and all channels share a frame's tick. It resets on acquisition-domain
-reset, not ordinary stop/start or buffer flush. Ticks are sample frames, not UTC
-or host arrival times. For ``0 <= k < contiguous_samples``, sample ``k`` in every
-destination has timestamp ``(first_tick + k) mod 2^64``. Divide tick differences
-by the actual sample rate to obtain seconds.
-
-A gap before the parent does not invalidate its contiguous prefix. An internal
-gap limits reconstruction to that prefix; this summary cannot reconstruct all
-later timestamps. Reject records with flag bit 19 set. Validate the epoch,
-sequence, addresses, counts and flags before delivering samples. Apply the
-driver's DMA ordering and cache synchronization before reading sample buffers.
-Popping metadata releases table capacity; buffer reuse still requires consumer
-release and separate ownership tracking.
+   HostTCD RX software guide <host_tcd_software>
 
