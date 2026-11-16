@@ -179,8 +179,11 @@ class RXPathTop(LiteXModule):
         chnl_combiner = ChannelCombiner(platform, s_clk_rst_n, self.s_clk_ch_en)
         chnl_combiner = stream.BufferizeEndpoints({"sink": stream.DIR_SINK}, True, True)(chnl_combiner)
         chnl_combiner = stream.BufferizeEndpoints({"source": stream.DIR_SOURCE}, True, True)(chnl_combiner)
-        chnl_combiner = ClockDomainsRenamer(s_clk_domain)(chnl_combiner)
+        # Reset the endpoint buffers together with the combiner: otherwise a frame caught in them
+        # when the stream stops is emitted as the first sample of the next stream.
+        chnl_combiner = ResetInserter()(ClockDomainsRenamer(s_clk_domain)(chnl_combiner))
         self.chnl_combiner = chnl_combiner
+        self.comb += self.chnl_combiner.reset.eq(~s_clk_rst_n)
 
         self.bit_width_selector = ClockDomainsRenamer(s_clk_domain)(BitwidthSelector(platform))
 
