@@ -41,6 +41,7 @@ from migen.genlib.cdc import MultiReg
 from litex.gen import *
 
 from litex.soc.interconnect.axi.axi_stream import AXIStreamInterface
+from litex.soc.interconnect.csr            import CSRStatus, CSRStorage, CSRField
 from litex.soc.interconnect                import stream
 
 from gateware.common import *
@@ -83,6 +84,13 @@ class TXPathTop(LiteXModule):
 
         self.ext_reset_n       = Signal(reset=1)
 
+        self.pct_buff_cnt      = CSRStorage(8, reset_less=True,
+            description="Extra packets to buffer before starting sync_dis streaming (0-255, clamped to BUFF_COUNT-1). Streaming also starts once the TX buffer cannot accept more data."
+        )
+        self.payload_buff_cnt  = CSRStorage(16, reset_less=True,
+            description="Payload FIFO words (128-bit) to buffer before starting sync_dis streaming (0 = no gating, clamped to buffer size). Streaming also starts once the TX buffer cannot accept more data."
+        )
+
         # # #
 
         # Signals.
@@ -94,6 +102,8 @@ class TXPathTop(LiteXModule):
         ch_en            = Signal(4 if output4channels else 2)
         smpl_width       = Signal(2)
         synch_dis        = Signal()
+        pct_buff_cnt     = Signal(8)
+        payload_buff_cnt = Signal(16)
 
         pct_loss_flg_clr = Signal()
 
@@ -108,7 +118,7 @@ class TXPathTop(LiteXModule):
             cd_from  = s_clk_domain,
             cd_to    = m_clk_domain,
             depth    = int(input_buff_size/sink_width),
-            buffered = False)
+            buffered = True)
         self.input_buff = input_buff
 
         # AXI Slave sink_width -> 128 (must use m_axis_domain)
@@ -208,12 +218,14 @@ class TXPathTop(LiteXModule):
             o_m_axis_tvalid     = data_pad_tvalid,
             i_m_axis_tready     = data_pad_tready,
 
+            i_pct_buff_cnt      = pct_buff_cnt,
+            i_payload_buff_cnt  = payload_buff_cnt,
             i_pct_rd            = pct_rd,
             i_pct_clr           = pct_clear,
             o_pct_valid         = pct_valid,
             o_pct_header        = pct_header,
 
-            o_debug_packets_avail = self.txpct_fifo_debug_packets_avail,
+            o_debug_packets_avail    = self.txpct_fifo_debug_packets_avail,
             o_debug_packets_reserved = self.txpct_fifo_debug_packets_reserved,
             o_debug_store_state      = self.txpct_fifo_debug_store_state,
             o_debug_read_state       = self.txpct_fifo_debug_read_state,
@@ -331,10 +343,12 @@ class TXPathTop(LiteXModule):
         ]
 
         self.specials += [
-            MultiReg(fpgacfg_manager.ch_en,      ch_en,            odomain=m_clk_domain),
-            MultiReg(fpgacfg_manager.smpl_width, smpl_width,       odomain=m_clk_domain),
-            MultiReg(fpgacfg_manager.synch_dis,  synch_dis,        odomain=m_clk_domain),
-            MultiReg(self.pct_loss_flg_clr,      pct_loss_flg_clr, odomain=m_clk_domain),
+            MultiReg(fpgacfg_manager.ch_en,         ch_en,            odomain=m_clk_domain),
+            MultiReg(fpgacfg_manager.smpl_width,    smpl_width,       odomain=m_clk_domain),
+            MultiReg(fpgacfg_manager.synch_dis,     synch_dis,        odomain=m_clk_domain),
+            MultiReg(self.pct_loss_flg_clr,         pct_loss_flg_clr, odomain=m_clk_domain),
+            MultiReg(self.pct_buff_cnt.storage,     pct_buff_cnt,     odomain=m_clk_domain),
+            MultiReg(self.payload_buff_cnt.storage, payload_buff_cnt, odomain=m_clk_domain),
         ]
 
         sync_m_clk_domain = getattr(self.sync, m_clk_domain)
@@ -370,9 +384,12 @@ class TXPathTop(LiteXModule):
         # Signal lists for debugging
         self.flow_control_signals = SimpleNamespace()
         self.flow_control_signals.m_clk = [
+            m_reset_n,
             self.source.valid,
             self.source.ready,
             self.source.last,
+            pct_buff_cnt,
+            payload_buff_cnt,
             pct_rd,
             pct_valid,
             pct_clear,
@@ -403,6 +420,7 @@ class TXPathTop(LiteXModule):
         ]
 
         self.flow_control_signals.s_clk = [
+            s_reset_n,
             self.sink.valid,
             self.sink.ready,
             input_buff.sink.valid,

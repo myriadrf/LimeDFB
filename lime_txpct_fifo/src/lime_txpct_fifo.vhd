@@ -47,6 +47,10 @@ entity lime_txpct_fifo is
       ----------------------------------------------------------------------------
       -- Control / immediate access to oldest committed packet
       ----------------------------------------------------------------------------
+      -- Extra packet buffering threshold before starting sync_dis output (0 to 255 extra packets, capped to g_MAX_PACKETS-1; also released when the buffer is full)
+      pct_buff_cnt: in  std_logic_vector(7 downto 0) := (others => '0');
+      -- Payload FIFO word threshold before starting sync_dis output (0 = disabled/no gating, >0 = wait for N words, capped to g_MAX_FIFO_WORDS; also released when the buffer is full)
+      payload_buff_cnt: in  std_logic_vector(15 downto 0) := (others => '0');
       -- Pulse high for one clk cycle to start streaming the current packet.
       pct_rd      : in  std_logic;
       -- Pulse high for one clk cycle to discard the current packet.
@@ -227,6 +231,12 @@ architecture rtl of lime_txpct_fifo is
    signal payload_can_issue     : std_logic;
    signal payload_read_start    : std_logic;
    signal payload_is_empty      : std_logic;
+
+   signal sync_dis_stream_started : std_logic := '0';
+   signal sync_dis_buff_ready     : std_logic;
+   signal store_blocked           : std_logic;
+   signal pct_buff_cnt_capped     : unsigned(c_META_MEM_ADDR_WIDTH downto 0);
+   signal payload_buff_cnt_capped : unsigned(c_PAYLOAD_MEM_ADDR_WIDTH downto 0);
 
 begin
 
@@ -647,6 +657,49 @@ begin
    payload_is_empty <= '1' when unsigned(rd_meta.payload_words) = 0 else '0';
 
 
+   -- Buffering threshold capping: clamp requested values to the configured buffer dimensions.
+   -- Note: this alone does not guarantee the thresholds are reachable (payload RAM may fill up
+   -- before g_MAX_PACKETS packets are stored); store_blocked below handles that case.
+   pct_buff_cnt_capped <= to_unsigned(g_MAX_PACKETS - 1, meta_mem_used_count'length)
+                          when unsigned(pct_buff_cnt) > (g_MAX_PACKETS - 1)
+                          else resize(unsigned(pct_buff_cnt), meta_mem_used_count'length);
+
+   payload_buff_cnt_capped <= to_unsigned(g_MAX_FIFO_WORDS, payload_mem_used_count'length)
+                              when unsigned(payload_buff_cnt) > g_MAX_FIFO_WORDS
+                              else resize(unsigned(payload_buff_cnt), payload_mem_used_count'length);
+
+   -- Write side is stalled: no free metadata slot, or the next packet's payload does not fit.
+   -- While the head packet is held, occupancy can only grow until this point, so once the writer
+   -- is stalled no further buffering is possible and the start thresholds must be released.
+   store_blocked <= '1' when (current_store_state = ST_WAIT_HEADER          and meta_mem_full = '1') or
+                             (current_store_state = ST_CHECK_PAYLOAD_LENGTH and store_pckt_payload_will_fit = '0')
+                    else '0';
+
+   -- Stream start buffering for sync_dis packets:
+   -- Once stream has started, enough extra packets and payload words are accumulated,
+   -- or the buffer cannot accept more data, allow sync_dis packets to stream automatically.
+   sync_dis_buff_ready <= '1' when sync_dis_stream_started = '1' or
+                                   store_blocked = '1' or
+                                   (
+                                      meta_mem_used_count >= pct_buff_cnt_capped and
+                                      (payload_buff_cnt_capped = 0 or payload_mem_used_count >= payload_buff_cnt_capped)
+                                   )
+                          else '0';
+
+   process (clk)
+   begin
+      if rising_edge(clk) then
+         if rst = '1' then
+            sync_dis_stream_started <= '0';
+         else
+            if current_read_state = RD_META_CHECK and payload_read_start = '1' and rd_meta.sync_dis = '1' then
+               sync_dis_stream_started <= '1';
+            end if;
+         end if;
+      end if;
+   end process;
+
+
    -- Intended behavior for payload read:
    --    sync_dis = 0, pct_clr = 1:
    --    discard packet
@@ -655,12 +708,12 @@ begin
    --    stream packet
    --
    --    sync_dis = 1:
-   --    auto-stream packet, regardless of pct_rd/pct_clr
+   --    auto-stream packet, regardless of pct_rd/pct_clr (gated by stream start buffering)
    payload_read_start <= '1' when current_read_state = RD_META_CHECK and
                                rd_meta_valid = '1' and
                                (
-                                  rd_meta.sync_dis = '1' or
-                                  (pct_clr = '0' and pct_rd = '1')
+                                  (rd_meta.sync_dis = '1' and sync_dis_buff_ready = '1') or
+                                  (rd_meta.sync_dis = '0' and pct_clr = '0' and pct_rd = '1')
                                )
                          else '0';
 
