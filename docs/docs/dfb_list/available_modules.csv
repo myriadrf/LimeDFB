@@ -4,3 +4,4 @@ Module,Version,Status,Description
 :ref:`tx_path_top <docs/tx_path_top/readme:tx_path_top>`,v0.0,dev,"Unpack packets into IQ samples, perform synchronization"
 :ref:`afe79xx <docs/afe79xx/readme:afe79xx>`,v0.0,dev,"Top module for AFE7901 IC digital interface"
 :ref:`host_tcd_rx <docs/host_tcd_rx/readme:hosttcd rx>`,v2,dev,"Four-channel HostTCD sample RAM, IQ formatter and timestamp completions"
+:ref:`host_tcd_tx <docs/host_tcd_tx/readme:hosttcd tx>`,v3,dev,"Timestamped HostTCD TX with chunk buffering and parent completions"
