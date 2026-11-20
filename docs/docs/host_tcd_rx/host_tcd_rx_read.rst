@@ -42,7 +42,7 @@ successive packed reads into complete 256-bit output words, accepted when
 ``source_valid`` and ``source_ready`` are both asserted.
 
 Slot Ownership and Backpressure
---------------------------------
+-------------------------------
 
 The scheduler retains each completed-slot descriptor while reading every
 requested channel. It returns the slot through the ``released_slots``

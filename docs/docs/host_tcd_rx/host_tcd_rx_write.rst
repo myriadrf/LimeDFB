@@ -58,7 +58,7 @@ and 7 on subsequent accepted frames.
    Sample numbers are offsets within the slot, not acquisition timestamps.
 
 Write Timing and Slot Advancement
---------------------------------
+---------------------------------
 
 ``ram_write_pipeline_proc`` first captures ``wr_data_r``, ``wr_addr_r`` and
 ``wr_en_r``. On the next rising edge, ``ram_write_proc`` commits the sample.

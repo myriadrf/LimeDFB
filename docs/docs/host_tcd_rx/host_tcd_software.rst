@@ -1,9 +1,9 @@
 HostTCD RX software guide
-========================
+=========================
 
 HostTCD receives samples into separate host DMA buffers for channels A--D.
 Each parent descriptor specifies the channel count, one DMA address per channel,
-and the byte count per channel. One timestamp record describes the whole parent.
+and the byte count per channel. One completion record describes the whole parent.
 
 
 .. _host-tcd-rx-descriptor-table:
@@ -60,10 +60,10 @@ accesses and the generated CSR addresses for the loaded bitstream.
 
 .. _host-tcd-rx-timestamp-record-fifo:
 
-Timestamp record FIFO
----------------------
+Completion record FIFO
+----------------------
 
-RX path publishes one timestamp record when the final native DMA child of
+RX path publishes one completion record when the final native DMA child of
 a parent retires, across all requested channels. The default FIFO holds 256
 records, each containing 24 32-bit words (96 bytes). Use the loaded bitstream's
 generated CSR map for register addresses with the ``CSR_LIMETOP_RXTX_TOP_RX_PATH_``
@@ -114,7 +114,7 @@ Record fields
 Word indices start at zero. All 64-bit fields store the low word first;
 reconstruct them as ``uint64(low) | (uint64(high) << 32)``.
 
-.. list-table:: Timestamp record fields
+.. list-table:: Completion record fields
    :header-rows: 1
    :widths: 12 23 65
 
@@ -231,7 +231,7 @@ in each buffer. PCIe fragments do not add headers or padding.
 Buffer ownership
 ~~~~~~~~~~~~~~~~
 
-Match each Timestamp record FIFO entry to its buffers using the epoch, parent
+Match each Completion record FIFO entry to its buffers using the epoch, parent
 sequence and DMA addresses. Synchronize DMA memory before CPU access. Reuse a
 buffer only after DMA completion and consumer release; popping a timestamp
 record alone does not release it.

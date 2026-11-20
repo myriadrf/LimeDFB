@@ -12,18 +12,22 @@ parent's final DMA child retires, one completion record reports its destination
 addresses, sample counts and timestamp continuity. Software reads and pops
 these records to associate captured samples with their acquisition time.
 
+See :ref:`hosttcd-terminology` for shared terminology and abbreviations.
+
 .. figure:: images/HostTCD_rx.drawio.svg
    :width: 100%
-   :alt: Host descriptor submission, four-channel acquisition RAM, DMA to host buffers and timestamp completion readout
+   :alt: Host parent descriptor submission, four-channel acquisition RAM, DMA to host buffers and completion record readout
 
    HostTCD RX overview. Solid arrows carry samples; dashed arrows carry control
    and metadata. Sample slots are released after all requested channels have
-   been read. Timestamp records are published at final DMA retirement.
+   been read. Completion records are published at final DMA retirement.
 
-HostTCD table and descriptor sequencer
--------------------------------------
+   Editable source: :download:`draw.io diagram <images/HostTCD_rx.drawio.svg>`.
 
-The HostTCD table queues up to 16 parent descriptors. Each parent specifies
+HostTCD descriptor table and descriptor sequencer
+-------------------------------------------------
+
+The HostTCD descriptor table queues up to 16 parent descriptors. Each parent specifies
 one DMA destination per selected channel and a common byte count. The
 sequencer divides parents into channel blocks and 4 KiB boundary fragments,
 then programs the LitePCIe DMA descriptor table. Ordered commands keep sample
@@ -113,8 +117,8 @@ calculation, IQ packing and slot release.
 
    Reading Samples <host_tcd_rx_read>
 
-Timestamp record FIFO
----------------------
+Completion record FIFO
+----------------------
 
 One record is published when a parent's final DMA child retires. It contains
 the destination addresses, acquisition ticks, sample counts and gap flags for
@@ -133,7 +137,7 @@ a host driver or consuming captured samples:
 
 * :ref:`HostTCD RX Descriptor table <host-tcd-rx-descriptor-table>`:
   DMA addresses, channel configuration, block sizes and descriptor submission.
-* :ref:`Timestamp record FIFO <host-tcd-rx-timestamp-record-fifo>`:
+* :ref:`Completion record FIFO <host-tcd-rx-timestamp-record-fifo>`:
   record fields, snapshot/read/pop sequence and completion ownership.
 * :ref:`Host DMA buffer layout <host-tcd-rx-dma-buffer-layout>`:
   channel destinations, sample ordering and IQ16/IQ12 representation.
