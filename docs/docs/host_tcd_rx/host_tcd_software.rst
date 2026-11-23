@@ -1,15 +1,34 @@
-HostTCD RX software guide
-=========================
+Host software guide
+###################
 
 HostTCD receives samples into separate host DMA buffers for channels A--D.
 Each parent descriptor specifies the channel count, one DMA address per channel,
 and the byte count per channel. One completion record describes the whole parent.
 
 
+.. contents:: On this page
+   :local:
+   :depth: 2
+
+Initialization and configuration
+================================
+
+Identify the loaded RX and HostTCD versions and use the matching CSR map.
+See :ref:`host-tcd-rx-descriptor-csrs` and :ref:`host-tcd-rx-acquisition-csrs`
+for register semantics.
+With acquisition and descriptor execution disabled and the DMA writer idle,
+configure ``iq12``, ``channel_map`` and a new ``epoch`` while flushed. Clear
+``flush``, wait for acknowledgement and check status before configuring the
+matching ``split_size`` and preparing destination DMA mappings.
+
+Queue the initial parents using the procedure below, enable HostTCD execution,
+then start acquisition. Service completion records during operation to release
+FIFO capacity and track when destination buffers can be reused.
+
 .. _host-tcd-rx-descriptor-table:
 
-HostTCD RX Descriptor table
----------------------------
+Parent descriptor submission
+============================
 
 Software fills one parent at a time through the CSR staging window. For each
 logical channel, select its index, write the DMA address high and low words,
@@ -19,12 +38,12 @@ making the complete parent visible to the DMA sequencer. Wait for acceptance
 before changing staging registers; a successful submission clears the address
 initialization mask, so every parent needs its addresses written again.
 
-.. figure:: images/HostTCD_RX_descriptors.drawio.svg
+.. figure:: /images/host_tcd_rx/HostTCD_RX_submission.drawio.svg
    :width: 50%
    :align: center
-   :alt: HostTCD RX descriptor staging and DMA destination addresses
+   :alt: HostTCD RX initialization, address staging, submission and execution algorithm
 
-   HostTCD RX descriptor table and channel DMA destinations.
+   Figure 1. HostTCD RX parent descriptor submission procedure.
 
 The following algorithm assumes program mode, available table capacity and
 matching RX format, channel map and split size. ``dma_addr`` contains
@@ -61,7 +80,7 @@ accesses and the generated CSR addresses for the loaded bitstream.
 .. _host-tcd-rx-timestamp-record-fifo:
 
 Completion record FIFO
-----------------------
+======================
 
 RX path publishes one completion record when the final native DMA child of
 a parent retires, across all requested channels. The default FIFO holds 256
@@ -70,7 +89,7 @@ generated CSR map for register addresses with the ``CSR_LIMETOP_RXTX_TOP_RX_PATH
 prefix. Below, ``CSR_..._`` abbreviates this prefix.
 
 Reading entries
-~~~~~~~~~~~~~~~
+---------------
 
 Read the oldest completed parent through the snapshot registers. Poll
 ``CSR_..._METADATA_LEVEL``, or check it after an RX interrupt.
@@ -109,14 +128,16 @@ incoming samples can then be dropped when acquisition RAM fills. Do not pop
 independently while ``HostTCDStream`` owns the stream.
 
 Record fields
-~~~~~~~~~~~~~
+-------------
 
 Word indices start at zero. All 64-bit fields store the low word first;
 reconstruct them as ``uint64(low) | (uint64(high) << 32)``.
 
-.. list-table:: Completion record fields
+.. list-table:: Table 1. Completion record fields
    :header-rows: 1
    :widths: 12 23 65
+   :width: 100%
+   :class: hosttcd-terminology hosttcd-record-table
 
    * - Word(s)
      - Field
@@ -190,33 +211,31 @@ addresses listed there.
 .. _host-tcd-rx-dma-buffer-layout:
 
 Host DMA buffer layout
-----------------------
+======================
 
-Sample layout in memory
-~~~~~~~~~~~~~~~~~~~~~~~
+Sample format and channel mapping
+---------------------------------
 
-Each selected channel has a separate DMA buffer containing consecutive complex
-samples, indexed 0 through ``N - 1``. With the default channel map, ``addr[0]``
-points to channel A, ``addr[1]`` to B, and so on. Other channel maps change
-this assignment.
+``iq12=0`` preserves I16/Q16, producing 4096 bytes per channel slot.
+``iq12=1`` selects bits 15:4 of each component, producing 3072 bytes per
+channel slot. I precedes Q, samples are in acquisition order, and the first
+sample occupies the least significant bits of the first DMA word. The
+formatter has a 256-bit output in either mode.
 
-* IQ16: four bytes per sample, signed I16 followed by Q16, little-endian.
-* IQ12: three bytes per sample, I in bits 11:0 and Q in bits 23:12,
-  least-significant byte first. Each component retains its upper 12 acquired bits.
+Set HostTCD ``split_size`` to exactly 4096 or 3072 respectively, and set
+``bytes_per_channel`` to a positive multiple of that size. Addresses retain
+32-byte alignment. HostTCD rejects partial-slot parent lengths and refuses
+to run with an incompatible split size. Native 4 KiB address-boundary
+fragments may cut an IQ12 sample; formatter state persists across them.
 
-Sample ``k`` starts at byte offset ``4*k`` for IQ16 or ``3*k`` for IQ12.
-There are no headers, timestamps or padding between samples.
-
-.. figure:: images/HostTCD_rx_dma_layout.drawio.svg
-   :width: 100%
-   :align: center
-   :alt: Separate channel A, B, C and D sample arrays under the default channel map
-
-   Each row is one channel buffer. Indices are relative to the parent buffer,
-   not acquisition timestamps.
+``channel_map`` has four two-bit entries, logical destination zero in bits
+1:0. The default ``0xe4`` maps logical indices 0,1,2,3 to physical channels
+0,1,2,3. The map must be a permutation; HostTCD ``channel_count`` selects its
+first N entries. For example ``0x72`` maps to 2,0,3,1. Duplicate mappings are
+rejected by the acquisition path's status check.
 
 Transfer split size
-~~~~~~~~~~~~~~~~~~~
+-------------------
 
 ``split_size`` controls how many bytes the FPGA schedules for one channel
 before switching to the next. For this RX path it must equal 1024 samples:
@@ -229,9 +248,209 @@ before switching to the next. For this RX path it must equal 1024 samples:
 in each buffer. PCIe fragments do not add headers or padding.
 
 Buffer ownership
-~~~~~~~~~~~~~~~~
+----------------
 
 Match each Completion record FIFO entry to its buffers using the epoch, parent
 sequence and DMA addresses. Synchronize DMA memory before CPU access. Reuse a
 buffer only after DMA completion and consumer release; popping a timestamp
 record alone does not release it.
+
+Stopping and reconfiguration
+============================
+
+Disable HostTCD first and keep acquisition running until the current parent
+drains and ``busy`` clears. Then stop acquisition, consume completions and
+assert ``flush`` before reconfiguration. A parent cannot drain after its sample
+supply stops.
+
+Flush changes require stream-start RX enable, HostTCD busy and native writer
+enable to be zero. An unsafe request is ignored and reported in status bit 4;
+clear the request before continuing. Fatal sequencer or DMA faults require
+SoC reset recovery.
+
+
+.. _host-tcd-rx-status-errors:
+
+Status and error handling
+=========================
+
+``SUBMIT_STATUS`` bit 0 reports validation/copy busy, bit 1 acceptance and bit 2
+rejection. ``ERRORS`` is sticky: bit 0 invalid parent, bit 1 full table, bit 2
+submission in loop mode, bit 3 invalid split size, bit 4 CSR bus failure, bit 5
+unexpected DMA retirement, bit 6 reset while busy, bit 7 mode change while busy,
+bit 8 missing address, bit 9 staging or submission while busy and bit 10 invalid
+address index. Bus failure and unexpected retirement latch a fatal sequencer
+fault; clearing error bits alone does not resume execution.
+
+.. _host-tcd-rx-descriptor-csrs:
+
+Descriptor table CSR reference
+==============================
+
+.. list-table:: Table 2. Parent descriptor table and configuration CSRs
+   :header-rows: 1
+   :widths: 40 60
+   :width: 100%
+   :class: hosttcd-terminology hosttcd-csr-table
+
+   * - CSR name
+     - Description
+   * - ``RX_HOST_TCD_VERSION``
+     - Read-only descriptor table ABI version: 2.
+   * - ``RX_HOST_TCD_CAPABILITIES``
+     - Read-only capabilities: bits 0--7 give the maximum channel count, bits
+       8--23 the parent table depth and bit 24 ordered payload commands. Bit 31
+       inhibits execution for table-only builds. The replacement RX path
+       supports four channels and 16 parents.
+   * - ``RX_HOST_TCD_CHANNEL_COUNT``
+     - Stages the participating logical destination count, from 1 to 4.
+   * - ``RX_HOST_TCD_BYTES_PER_CHANNEL``
+     - Stages the destination payload length per channel; a positive multiple
+       of split size.
+   * - ``RX_HOST_TCD_FLAGS``
+     - Stages parent flags. Bit 0 disables the parent interrupt; bit 1 disables
+       early-last termination and is required for multiple channels. Use 2 for
+       fixed-length parents with interrupts.
+   * - ``RX_HOST_TCD_ADDRESS_INDEX``
+     - Selects the logical destination address to stage, from 0 to 3. Physical
+       channel selection comes from the RX channel map.
+   * - ``RX_HOST_TCD_ADDRESS_HIGH``
+     - Stages bits 63:32 of the selected destination DMA address.
+   * - ``RX_HOST_TCD_ADDRESS_LOW``
+     - Stages bits 31:0 of the selected destination DMA address.
+   * - ``RX_HOST_TCD_ADDRESS_WRITE``
+     - Write 1 to copy the staged high and low words into the selected address
+       entry.
+   * - ``RX_HOST_TCD_ADDRESSES_WRITTEN``
+     - Read-only initialized-address mask. Successful submission clears it;
+       restage every participating address for each parent.
+   * - ``RX_HOST_TCD_SUBMIT``
+     - Write 1 to validate and enqueue a parent. Keep staging registers
+       unchanged until validation and copying finish.
+   * - ``RX_HOST_TCD_SUBMIT_STATUS``
+     - Read-only result: bit 0 validation/copy busy, bit 1 last submission
+       accepted, bit 2 last submission rejected.
+   * - ``RX_HOST_TCD_LEVEL``
+     - Read-only occupied parent entry count, including active work. Program
+       mode consumes entries; loop mode recycles them. This is not the
+       completion record count.
+   * - ``RX_HOST_TCD_ENABLE``
+     - Set to 1 to execute queued parents. Clear to drain the active parent and
+       stop; keep acquisition running until busy clears.
+   * - ``RX_HOST_TCD_LOOP_PROG_N``
+     - Select while stopped: 0 executes parents once in program mode; 1 repeats
+       the queued table in loop mode. Stage parents in program mode before
+       selecting loop mode.
+   * - ``RX_HOST_TCD_RESET``
+     - Write 1 while execution is disabled, submission idle and the sequencer
+       stopped to clear the table. Active reset requests are rejected; fatal
+       sequencer faults require SoC reset.
+   * - ``RX_HOST_TCD_SPLIT_SIZE``
+     - Channel-block size in bytes: 4096 for IQ16 or 3072 for IQ12 with 1024
+       samples per block. Must match the acquisition format.
+   * - ``RX_HOST_TCD_COMPLETED_TOTAL``
+     - Read-only cumulative retired-parent count, including repeated loop
+       executions.
+   * - ``RX_HOST_TCD_LOOP_STATUS``
+     - Program mode: completed-parent count. Loop mode: current parent index in
+       the low table-index bits, followed by the loop iteration count. Index
+       width depends on table depth (4 bits for 16 entries).
+   * - ``RX_HOST_TCD_ERRORS``
+     - Read-only sticky error bitmap; see status and error handling below.
+   * - ``RX_HOST_TCD_CLEAR_ERRORS``
+     - Write a mask to clear corresponding sticky error bits. Clearing
+       diagnostics does not recover a fatal sequencer fault.
+   * - ``RX_HOST_TCD_BUSY``
+     - Read-only sequencer activity. Wait for 0 after disabling execution
+       before changing mode, resetting or stopping acquisition.
+   * - ``RX_HOST_TCD_OUTSTANDING``
+     - Read-only issued DMA child descriptors awaiting retirement.
+   * - ``RX_HOST_TCD_CHILD_ISSUED``
+     - Read-only cumulative issued-child count.
+   * - ``RX_HOST_TCD_CHILD_COMPLETED``
+     - Read-only cumulative retired-child count.
+   * - ``RX_HOST_TCD_REJECTED``
+     - Read-only rejected-submission count, including submission attempts while
+       busy.
+   * - ``RX_HOST_TCD_RING_SIZE``
+     - Read-only number of parents captured when loop execution starts.
+
+Destination DMA addresses must be 32-byte aligned and cover the entire payload
+without wrapping the 64-bit address range. Use positive per-channel lengths
+that are multiples of the configured block size. RX format, channel mapping
+and epoch are configured in the acquisition path, rather than staged per parent.
+
+Generated C address macros use ``CSR_RX_HOST_TCD_<NAME>_ADDR``. Resolve addresses
+from the loaded bitstream's CSR map; see :ref:`host-tcd-rx-descriptor-table`
+for the submission algorithm.
+
+.. _host-tcd-rx-acquisition-csrs:
+
+Acquisition and completion CSR reference
+========================================
+
+These registers belong to the replacement RX path. The names below omit the
+``LIMETOP_RXTX_TOP_RX_PATH_`` prefix used in the current HiperSDR CSR map.
+Generated C address macros add ``CSR_`` and ``_ADDR``. The descriptor table
+above uses its separate ``RX_HOST_TCD_`` prefix.
+
+.. list-table:: Table 3. Acquisition and completion CSRs
+   :header-rows: 1
+   :widths: 40 60
+   :width: 100%
+   :class: hosttcd-terminology hosttcd-csr-table
+
+   * - CSR name
+     - Description
+   * - ``VERSION``
+     - Read-only acquisition/completion ABI version: 2.
+   * - ``FLUSH``
+     - Defaults to 1. Hold while stopped to clear queues and apply
+       configuration. Clear and wait for status bit 0 to clear before
+       acquisition. Never flush active DMA.
+   * - ``IQ12``
+     - Format configuration while flushed: 0 preserves IQ16; 1 packs the upper
+       twelve bits of I and Q.
+   * - ``CHANNEL_MAP``
+     - Four two-bit logical-to-physical indices; must be a permutation. Default
+       0xe4 selects A, B, C, D in order. Frozen during operation.
+   * - ``EPOCH``
+     - Software stream generation, applied while flushed and copied into
+       completions.
+   * - ``STATUS``
+     - Read-only bitmap: bit 0 flush acknowledged, bit 1 capture active, bit 2
+       fatal, bit 3 invalid channel map, bit 4 blocked flush request.
+   * - ``DROPPED``
+     - Read-only live dropped-frame count with clock-crossing synchronization
+       delay.
+   * - ``BLOCK_SAMPLES``
+     - Read-only samples per channel in one acquisition block; normally 1024.
+   * - ``BLOCK_BYTES``
+     - Read-only bytes per channel block for the active format: normally 4096
+       for IQ16 or 3072 for IQ12.
+   * - ``METADATA_CAPACITY``
+     - Read-only completion reservation capacity; defaults to 256 records.
+   * - ``METADATA_LEVEL``
+     - Read-only number of completed records available to snapshot.
+   * - ``METADATA_RESERVED``
+     - Read-only reservations including unfinished parents and unread records.
+       Capacity exhaustion stalls new parents.
+   * - ``METADATA_RECORD_WORDS``
+     - Read-only record length: 24 words.
+   * - ``SNAPSHOT``
+     - Write 1 to latch the oldest completed record. An empty FIFO captures
+       nothing.
+   * - ``SNAPSHOT_VALID``
+     - Read-only indication that snapshot words are valid and stable.
+   * - ``RECORD_WORD0 through RECORD_WORD23``
+     - Read-only snapshot words. Read all 24 before popping; 64-bit fields use
+       low word first.
+   * - ``POP``
+     - Write 1 after copying a valid snapshot to remove the record and release
+       its reservation. Does nothing without a valid snapshot.
+   * - ``IRQ_ENABLE``
+     - Enables the acquisition IRQ while a completion is available or the
+       acquisition path is fatal; routed to the existing RX MSI.
+
+See :ref:`host-tcd-rx-timestamp-record-fifo` for record fields and the
+snapshot/read/pop procedure.
