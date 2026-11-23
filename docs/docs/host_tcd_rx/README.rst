@@ -12,7 +12,39 @@ parent's final DMA child retires, one completion record reports its destination
 addresses, sample counts and timestamp continuity. Software reads and pops
 these records to associate captured samples with their acquisition time.
 
-See :ref:`hosttcd-terminology` for shared terminology and abbreviations.
+.. _host-tcd-rx-terminology:
+
+Terminology and abbreviations
+-----------------------------
+
+.. list-table:: HostTCD RX terminology
+   :header-rows: 1
+   :widths: 25 75
+   :width: 100%
+   :class: hosttcd-terminology
+
+   * - Term
+     - Meaning
+   * - HostTCD
+     - Host-submitted parent descriptors executed by the FPGA DMA sequencer.
+   * - Parent descriptor
+     - One host submission specifying a destination DMA address for each
+       selected channel and a common byte count per channel.
+   * - DMA child descriptor
+     - One smaller native LitePCIe DMA transfer generated from a parent.
+       It writes one channel's samples and respects PCIe page boundaries.
+   * - Completion record
+     - One record published after the parent's final DMA child retires.
+       It reports destination addresses, sample counts and acquisition
+       timestamp continuity across all participating channels.
+   * - Complex sample / IQ pair
+     - One in-phase (I) component and one quadrature (Q) component for one
+       channel. Sample counts and byte counts are per channel unless stated
+       otherwise. IQ16 stores 16-bit components; IQ12 packs 12-bit components.
+   * - Acquisition tick
+     - A sample-frame counter shared by all channels. It advances on every
+       valid input frame, including dropped frames, and identifies acquisition
+       time rather than host arrival time.
 
 .. figure:: images/HostTCD_rx.drawio.svg
    :width: 100%
@@ -21,8 +53,6 @@ See :ref:`hosttcd-terminology` for shared terminology and abbreviations.
    HostTCD RX overview. Solid arrows carry samples; dashed arrows carry control
    and metadata. Sample slots are released after all requested channels have
    been read. Completion records are published at final DMA retirement.
-
-   Editable source: :download:`draw.io diagram <images/HostTCD_rx.drawio.svg>`.
 
 HostTCD descriptor table and descriptor sequencer
 -------------------------------------------------
@@ -74,7 +104,6 @@ describe the incoming data and its organization in memory:
   four banks, so it identifies the same acquisition interval for every channel.
   With the defaults, each slot occupies 128 rows in each lane and holds 1024
   samples per channel. A slot is an address region, not a separate RAM instance.
-
 
 With the default settings, each bank contains four slots of 1024 IQ16 samples,
 giving 16 KiB per bank and 64 KiB overall. Writes distribute consecutive samples

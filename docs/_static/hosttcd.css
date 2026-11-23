@@ -1,0 +1,27 @@
+/* Keep the terminology table within the reading column, including on mobile. */
+table.hosttcd-terminology {
+    width: 100%;
+    table-layout: fixed;
+}
+
+.wy-table-responsive table.hosttcd-terminology th,
+.wy-table-responsive table.hosttcd-terminology td {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* Remove theme highlighting from inline names in register and record tables. */
+.rst-content table.hosttcd-csr-table .literal,
+.rst-content table.hosttcd-csr-table .literal .pre,
+.rst-content table.hosttcd-record-table .literal,
+.rst-content table.hosttcd-record-table .literal .pre {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* Distinguish the CSR-name column with blue monospace text. */
+.rst-content table.hosttcd-csr-table td:first-child code.literal {
+    color: #24476b;
+    font-family: monospace;
+}

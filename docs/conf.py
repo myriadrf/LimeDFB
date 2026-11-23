@@ -80,6 +80,10 @@ if not project_cfg.archived:
 else:
     html_css_files = [urljoin(asset_base, 'mr-archived.css')]
 
+# Local table styling
+html_static_path = ['_static']
+html_css_files.append('hosttcd.css')
+
 # Get custom footer and navbar
 extrabody_content = _fetch_remote('mr-navbar.html')
 extrafooter_content = _fetch_remote('mr-footer.html')
