@@ -234,6 +234,13 @@ architecture rtl of lime_txpct_fifo is
 
    signal sync_dis_stream_started : std_logic := '0';
    signal sync_dis_buff_ready     : std_logic;
+   signal sync_dis_buff_ready_comb: std_logic;
+   signal payload_mem_free        : unsigned(c_PAYLOAD_MEM_ADDR_WIDTH downto 0); -- registered free space
+   signal store_check_wait        : std_logic; -- first ST_CHECK_PAYLOAD_LENGTH cycle, will_fit not valid yet
+   signal wr_payload_last         : unsigned(c_PACKET_PAYLOAD_SIZE_WIDTH-1 downto 0); -- registered payload_words - 1
+   signal store_left              : unsigned(c_PACKET_PAYLOAD_SIZE_WIDTH-1 downto 0); -- payload beats left after the current one
+   signal payload_discard_words   : unsigned(c_PACKET_PAYLOAD_SIZE_WIDTH-1 downto 0); -- registered discard amount
+   signal payload_rd_left         : unsigned(c_PACKET_PAYLOAD_SIZE_WIDTH-1 downto 0); -- RAM reads still to issue
    signal store_blocked           : std_logic;
    signal pct_buff_cnt_capped     : unsigned(c_META_MEM_ADDR_WIDTH downto 0);
    signal payload_buff_cnt_capped : unsigned(c_PAYLOAD_MEM_ADDR_WIDTH downto 0);
@@ -326,7 +333,37 @@ begin
 
    meta_mem_full                 <= '0' when meta_mem_reserved_count < g_MAX_PACKETS else '1';
    store_pckt_hdr_accepted       <= '1' when current_store_state = ST_WAIT_HEADER and s_axis_handshake = '1' else '0';
-   store_pckt_payload_will_fit   <= '1' when unsigned(wr_meta.payload_words) <= (g_MAX_FIFO_WORDS - payload_mem_used_count) else '0';
+   -- Timing (lms_tx at 122.88 MHz on LimeSDR-USB): the free-space subtraction and the
+   -- comparison are registered, so the store FSM only sees flop outputs. In
+   -- ST_CHECK_PAYLOAD_LENGTH no payload is being written (the last write was at least
+   -- two cycles earlier), so payload_mem_used_count can only fall: the registered
+   -- free space is conservative. The first cycle of ST_CHECK_PAYLOAD_LENGTH is skipped
+   -- (store_check_wait) because wr_meta.payload_words was loaded on the edge entering it.
+   process (clk)
+   begin
+      if rising_edge(clk) then
+         if rst = '1' then
+            payload_mem_free            <= (others => '0');
+            store_pckt_payload_will_fit <= '0';
+            wr_payload_last             <= (others => '0');
+            store_check_wait            <= '0';
+         else
+            payload_mem_free <= to_unsigned(g_MAX_FIFO_WORDS, payload_mem_free'length) - payload_mem_used_count;
+            if unsigned(wr_meta.payload_words) <= resize(payload_mem_free, wr_meta.payload_words'length) then
+               store_pckt_payload_will_fit <= '1';
+            else
+               store_pckt_payload_will_fit <= '0';
+            end if;
+            -- valid from the second ST_CHECK_PAYLOAD_LENGTH cycle on, i.e. before ST_STORE_PAYLOAD
+            wr_payload_last <= unsigned(wr_meta.payload_words) - 1;
+            if current_store_state = ST_WAIT_HEADER and s_axis_handshake = '1' then
+               store_check_wait <= '1';
+            else
+               store_check_wait <= '0';
+            end if;
+         end if;
+      end if;
+   end process;
 
 
    meta_mem_rd_en <= '1' when rd_meta_valid = '0' AND rd_meta_pending = '0' AND  meta_mem_used_count /= 0 else '0';
@@ -404,7 +441,17 @@ begin
       if rising_edge(clk) then
          if rst = '1' then
             payload_mem_used_count <= (others => '0');
+            payload_discard_words  <= (others => '0');
          else
+
+            -- The discarded packet's words are released one cycle late (timing: keeps the
+            -- 16-bit subtraction out of the increment/decrement path). Until then the used
+            -- count is overestimated by that packet, which only delays will_fit.
+            if payload_discard = '1' then
+               payload_discard_words <= unsigned(rd_meta.payload_words);
+            else
+               payload_discard_words <= (others => '0');
+            end if;
 
             v_used := payload_mem_used_count;
 
@@ -418,9 +465,7 @@ begin
             end if;
 
             -- Release entire packet when discarded
-            if payload_discard = '1' then
-               v_used := v_used - resize(unsigned(rd_meta.payload_words), v_used'length);
-            end if;
+            v_used := v_used - resize(payload_discard_words, v_used'length);
 
             payload_mem_used_count <= v_used;
 
@@ -437,12 +482,11 @@ begin
 
       v_occ_after := to_integer(payload_buf_count);
 
-      -- AXI pop frees one buffer slot this clock
-      if payload_axis_pop = '1' then
-         if v_occ_after > 0 then
-            v_occ_after := v_occ_after - 1;
-         end if;
-      end if;
+      -- No credit is taken for an AXI pop in this clock: that would put m_axis_tready
+      -- (combinational from the downstream FIFO level) in front of the RAM read address
+      -- and the used-word counter (122.88 MHz timing on LimeSDR-USB). Conservative: a
+      -- read is issued only when the 2-entry buffer has room without the pop, which still
+      -- far exceeds the TX sample rate (at most one 128-bit word per few clocks).
 
       -- RAM data returning this clock consumes one buffer slot
       if payload_buf_push = '1' then
@@ -450,7 +494,8 @@ begin
       end if;
 
       if current_read_state = RD_READ_PAYLOAD then
-         if payload_rd_req_cnt < unsigned(rd_meta.payload_words) then
+         -- equivalent to payload_rd_req_cnt < rd_meta.payload_words (timing: zero test only)
+         if payload_rd_left /= 0 then
             if v_occ_after < 2 then
                payload_can_issue <= '1';
             end if;
@@ -471,6 +516,7 @@ begin
             payload_mem_rd_en_d <= '0';
 
             payload_rd_req_cnt  <= (others => '0');
+            payload_rd_left     <= (others => '0');
             payload_tx_remaining <= (others => '0');
 
          else
@@ -482,6 +528,7 @@ begin
             if payload_read_start = '1' then
                payload_mem_rd_addr <= rd_meta.payload_addr_begin;
                payload_rd_req_cnt  <= (others => '0');
+               payload_rd_left     <= unsigned(rd_meta.payload_words);
 
                -- Load number of words that must be accepted by m_axis.
                payload_tx_remaining <= unsigned(rd_meta.payload_words);
@@ -492,6 +539,7 @@ begin
                if payload_mem_rd_en = '1' then
                   payload_mem_rd_addr <= std_logic_vector(unsigned(payload_mem_rd_addr) + 1);
                   payload_rd_req_cnt  <= payload_rd_req_cnt + 1;
+                  payload_rd_left     <= payload_rd_left - 1;
                end if;
 
                -- Downstream accepted one AXI word.
@@ -505,6 +553,7 @@ begin
 
             if current_read_state = RD_DONE then
                payload_rd_req_cnt   <= (others => '0');
+               payload_rd_left      <= (others => '0');
                payload_tx_remaining <= (others => '0');
             end if;
 
@@ -552,7 +601,7 @@ begin
             end if;
 
          when ST_CHECK_PAYLOAD_LENGTH =>
-            if store_pckt_payload_will_fit = '1' then 
+            if store_pckt_payload_will_fit = '1' and store_check_wait = '0' then 
                if unsigned(wr_meta.payload_words) = 0 then -- zero length payload should not be allowed from host, but just in case
                   next_store_state <= ST_STORE_META;
                else
@@ -562,7 +611,8 @@ begin
 
          when ST_STORE_PAYLOAD => 
             if s_axis_handshake = '1' then 
-               if store_cnt >= unsigned(wr_meta.payload_words) - 1  then 
+               -- equivalent to store_cnt >= payload_words - 1 (timing: zero test only)
+               if store_left = 0 then 
                   next_store_state <= ST_STORE_META;
                end if;
             end if;
@@ -601,7 +651,17 @@ begin
       if rising_edge(clk) then
          if rst = '1' then
             store_cnt <= (others=>'0');
+            store_left <= (others=>'0');
          else
+
+            -- Loaded every cycle outside ST_STORE_PAYLOAD; on the edge that enters
+            -- ST_STORE_PAYLOAD (earliest the 2nd ST_CHECK_PAYLOAD_LENGTH cycle)
+            -- wr_payload_last already holds the new packet's payload_words - 1.
+            if current_store_state /= ST_STORE_PAYLOAD then
+               store_left <= wr_payload_last;
+            elsif s_axis_handshake = '1' then
+               store_left <= store_left - 1;
+            end if;
 
             if current_store_state = ST_STORE_PAYLOAD then
                if s_axis_handshake = '1' then
@@ -672,19 +732,32 @@ begin
    -- While the head packet is held, occupancy can only grow until this point, so once the writer
    -- is stalled no further buffering is possible and the start thresholds must be released.
    store_blocked <= '1' when (current_store_state = ST_WAIT_HEADER          and meta_mem_full = '1') or
-                             (current_store_state = ST_CHECK_PAYLOAD_LENGTH and store_pckt_payload_will_fit = '0')
+                             (current_store_state = ST_CHECK_PAYLOAD_LENGTH and store_check_wait = '0' and store_pckt_payload_will_fit = '0')
                     else '0';
 
    -- Stream start buffering for sync_dis packets:
    -- Once stream has started, enough extra packets and payload words are accumulated,
    -- or the buffer cannot accept more data, allow sync_dis packets to stream automatically.
-   sync_dis_buff_ready <= '1' when sync_dis_stream_started = '1' or
+   -- Registered (one cycle later start of a sync_dis stream; removes the
+   -- payload_buff_cnt/pct_buff_cnt compare from the payload read-address path).
+   sync_dis_buff_ready_comb <= '1' when sync_dis_stream_started = '1' or
                                    store_blocked = '1' or
                                    (
                                       meta_mem_used_count >= pct_buff_cnt_capped and
                                       (payload_buff_cnt_capped = 0 or payload_mem_used_count >= payload_buff_cnt_capped)
                                    )
                           else '0';
+
+   process (clk)
+   begin
+      if rising_edge(clk) then
+         if rst = '1' then
+            sync_dis_buff_ready <= '0';
+         else
+            sync_dis_buff_ready <= sync_dis_buff_ready_comb;
+         end if;
+      end if;
+   end process;
 
    process (clk)
    begin
