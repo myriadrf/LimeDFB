@@ -29,7 +29,22 @@ entity slaveFIFO5b is
 				socket0_max_wrwords_int : integer;
 				socket1_max_wrwords_int : integer;
 				socket2_max_wrwords_int : integer;
-				socket3_max_wrwords_int : integer
+				socket3_max_wrwords_int : integer;
+				-- 0: poll all four threads every round (original behaviour).
+				-- N>0: skip the FPGA->PC control thread (EP8F) while its FIFO holds no packet,
+				--      and poll the PC->FPGA control thread (EP0F) only every N-th round
+				--      (saves the ~9-cycle flag-latency visit of each idle control thread).
+				ctrl_poll_skip          : integer := 0;
+				-- 1: after a PC->FPGA data burst (socket 0), visit socket 0 once more before the
+				--    other threads if the FPGA TX buffer still has room for a packet and the
+				--    FPGA->PC data FIFO (socket 2) is below half full. At most one extra burst.
+				tx_burst2               : integer := 0;
+				-- 0: off. N>0: once the PC->FPGA data thread (socket 0) has found the FX3 empty
+				--    (flagA low) on 64 consecutive visits, poll it only every N-th round; the
+				--    first data read restores normal polling. A streaming TX can not trigger it
+				--    (64 empty rounds is far beyond any TX buffer), visits that end on a full
+				--    FPGA TX buffer do not count as empty.
+				data_out_idle_skip      : integer := 0
 				);
 	port(
 		reset_n 					: in std_logic;									--input reset active low
@@ -128,6 +143,15 @@ signal socket_array_thread3	: socket_array;
 signal array_of_threads			: thread_array;
 
 signal thread_addr_cnt	: unsigned(1 downto 0);
+signal skip_thread		: std_logic;
+signal ctrl_out_div_cnt	: unsigned(7 downto 0);
+signal tx_rep_pending	: std_logic;
+signal tx_rep_used		: std_logic;
+signal tx_rep_go			: std_logic;
+signal rx_level_low		: std_logic;
+signal ep01_empty_cnt	: unsigned(6 downto 0);
+signal ep01_backoff		: std_logic;
+signal data_out_div_cnt	: unsigned(7 downto 0);
 signal thread_addr_reg	: std_logic_vector(1 downto 0);
 signal socket_addr_cnt	: unsigned (2 downto 0);
 signal socket_addr_reg	: std_logic_vector(2 downto 0);
@@ -569,7 +593,9 @@ process (clk, reset_n) begin
 	if (reset_n = '0') then 
 		thread_addr_cnt <= "00";
 	elsif (clk'event and clk = '1') then 
-		if (current_state = prep_thread_addr) then 
+		if (current_state = idle and tx_rep_go = '1') then
+			thread_addr_cnt <= "00";
+		elsif (current_state = prep_thread_addr) or (current_state = idle and skip_thread = '1') then 
 			if thread_addr_cnt < 3 then 
 				thread_addr_cnt <= thread_addr_cnt+1;
 			else 
@@ -705,6 +731,85 @@ process(clk, reset_n)begin
 end process;
 
 
+-- ----------------------------------------------------------------------------
+-- Idle control-thread poll skip (ctrl_poll_skip) and one extra TX burst (tx_burst2).
+-- Logical socket = thread index here (socket_array_threadX(0) = "000", prep_socket_addr
+-- is never entered). Both decisions are taken in the idle state and cost one cycle.
+-- ----------------------------------------------------------------------------
+skip_thread <= '1' when ctrl_poll_skip /= 0 and tx_rep_go = '0' and
+                        socket_type(to_integer(thread_addr_cnt)) = '1' and
+                        ((rd_wr(to_integer(thread_addr_cnt)) = '1' and socket_fifo_rdy(to_integer(thread_addr_cnt)) = '0') or
+                         (rd_wr(to_integer(thread_addr_cnt)) = '0' and ctrl_out_div_cnt /= 0))
+               else
+               '1' when data_out_idle_skip /= 0 and tx_rep_go = '0' and thread_addr_cnt = 0 and
+                        ep01_backoff = '1' and data_out_div_cnt /= 0
+               else '0';
+
+-- EP01 idle backoff (data_out_idle_skip)
+ep01_backoff <= ep01_empty_cnt(6);   -- >= 64 consecutive empty visits
+
+process(clk, reset_n)begin
+	if(reset_n = '0')then
+		ep01_empty_cnt   <= (others=>'0');
+		data_out_div_cnt <= (others=>'0');
+	elsif(clk'event and clk = '1')then
+		if data_out_idle_skip /= 0 then
+			if current_state = stream_out_read and faddr_reg = "00000" then
+				ep01_empty_cnt <= (others=>'0');
+			elsif current_state = wait_flagA and faddr_reg = "00000" and flaga_d = '0' and ep01_backoff = '0' then
+				ep01_empty_cnt <= ep01_empty_cnt + 1;
+			end if;
+			if thread_addr_cnt = 0 then
+				if current_state = idle and skip_thread = '1' then
+					data_out_div_cnt <= data_out_div_cnt - 1;
+				elsif current_state = prep_thread_addr then
+					data_out_div_cnt <= to_unsigned(data_out_idle_skip - 1, data_out_div_cnt'length);
+				end if;
+			end if;
+		end if;
+	end if;
+end process;
+
+process(clk, reset_n)begin
+	if(reset_n = '0')then
+		ctrl_out_div_cnt <= (others=>'0');
+	elsif(clk'event and clk = '1')then
+		if ctrl_poll_skip /= 0 and socket_type(to_integer(thread_addr_cnt)) = '1' and rd_wr(to_integer(thread_addr_cnt)) = '0' then
+			if current_state = idle and skip_thread = '1' then
+				ctrl_out_div_cnt <= ctrl_out_div_cnt - 1;
+			elsif current_state = prep_thread_addr then
+				ctrl_out_div_cnt <= to_unsigned(ctrl_poll_skip - 1, ctrl_out_div_cnt'length);
+			end if;
+		end if;
+	end if;
+end process;
+
+rx_level_low <= '1' when unsigned(socket2_fifo_rdusedw) < to_unsigned(socket2_max_wrwords_int/2, socket2_rdusedw_size) else '0';
+
+tx_rep_go <= '1' when tx_burst2 /= 0 and current_state = idle and tx_rep_pending = '1' and
+                      socket0_fifo_rdy = '1' and rx_level_low = '1'
+             else '0';
+
+process(clk, reset_n)begin
+	if(reset_n = '0')then
+		tx_rep_pending <= '0';
+		tx_rep_used    <= '0';
+	elsif(clk'event and clk = '1')then
+		if tx_burst2 /= 0 then
+			if current_state = stream_out_read and faddr_reg = "00000" and tx_rep_used = '0' then
+				tx_rep_pending <= '1';
+			elsif current_state = idle then
+				tx_rep_pending <= '0';
+			end if;
+			if current_state = idle and tx_rep_go = '1' then
+				tx_rep_used <= '1';
+			elsif current_state = prep_thread_addr and thread_addr_cnt /= 0 then
+				tx_rep_used <= '0';
+			end if;
+		end if;
+	end if;
+end process;
+
 --stream state machine
 stream_in_fsm_f : process(clk, reset_n)begin
 	if(reset_n = '0')then 
@@ -717,13 +822,17 @@ end process;
 --Stream state machine combo
 stream_fsm : process(current_state, flaga_d, flagb_d, flagb, flg_latency_cnt, rd_wr, faddr_reg,
 							rd_oe_delay_cnt, oe_delay_cnt, slwr_cnt, socket_type, 
-							max_control_pct_cnt,socket_fifo_rdy)begin
+							max_control_pct_cnt,socket_fifo_rdy, skip_thread, tx_rep_go)begin
 							
 	next_state <= current_state;
 	
 	case current_state is
 	when idle =>							
-		next_state <= prep_thread_addr;
+		if skip_thread = '1' or tx_rep_go = '1' then
+			next_state <= idle;
+		else
+			next_state <= prep_thread_addr;
+		end if;
 		
 	when prep_thread_addr => 
 		next_state <= wait_flg_latency;
