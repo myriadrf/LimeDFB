@@ -25,6 +25,16 @@ entity smpl_cmp is
       clk            : in std_logic;
       reset_n        : in std_logic;
       fidm           : in std_logic := '0';
+      -- '0': every I/Q word must equal its cmp_* value (constant test pattern).
+      -- '1': pattern of txiq_tst_ptrn with g_ALT_PTRN = 1: every I word must be cmp_*I or
+      --      cmp_*Q (0xAAA/0x555) and every Q word all-zeros or all-ones. Any bit error moves
+      --      a word out of its set, and an I<->Q (half-period) slip puts a word in the wrong set.
+      alt_ptrn       : in std_logic := '0';
+      -- alt_ptrn mode only: '1' = channel A (IQSEL = fidm) Q words must be all-zeros and
+      -- channel B Q words all-ones, as sent by txiq_tst_ptrn (A frames have IQSEL = 0, the
+      -- same level lms7002_tx uses for channel A while streaming). This rejects an A/B
+      -- (frame) swap, which the AAA/555 patterns cannot see. '0' = either value on either channel.
+      alt_ab_strict  : in std_logic := '1';
       -- Values to compare with (changing defaults not recommended)
       cmp_AI      : std_logic_vector(smpl_width-1 downto 0) := x"AAA";
       cmp_AQ      : std_logic_vector(smpl_width-1 downto 0) := x"555";
@@ -65,6 +75,10 @@ architecture arch of smpl_cmp is
 signal diq_h_reg        : std_logic_vector(smpl_width downto 0);
 signal diq_l_reg        : std_logic_vector(smpl_width downto 0);
 signal fidm_reg         : std_logic;
+signal alt_ptrn_reg     : std_logic;
+signal alt_ab_strict_reg: std_logic;
+constant c_ALL_ZEROS    : std_logic_vector(smpl_width-1 downto 0) := (others => '0');
+constant c_ALL_ONES     : std_logic_vector(smpl_width-1 downto 0) := (others => '1');
 signal cmp_done_reg     : std_logic;
 signal cmp_start_reg    : std_logic;
 signal cmp_error_reg    : std_logic;
@@ -121,11 +135,15 @@ with current_state select
          diq_h_reg         <= (others=>'0');
          diq_l_reg         <= (others=>'0');
          fidm_reg          <= '0';
+         alt_ptrn_reg      <= '0';
+         alt_ab_strict_reg <= '1';
          cmp_start_reg     <= '0';
       elsif (clk'event AND clk='1') then 
          diq_h_reg      <= diq_h;
          diq_l_reg      <= diq_l;
          fidm_reg       <= fidm;
+         alt_ptrn_reg   <= alt_ptrn;
+         alt_ab_strict_reg <= alt_ab_strict;
          cmp_start_reg  <= cmp_start;
       end if;
    end process;
@@ -160,13 +178,16 @@ with current_state select
          --compare ch. A samples
          if diq_h_reg(smpl_width) = fidm_reg AND diq_l_reg(smpl_width) = fidm_reg then 
             --AI
-            if diq_l_reg(smpl_width-1 downto 0) = cmp_AI then 
+            if diq_l_reg(smpl_width-1 downto 0) = cmp_AI or
+               (alt_ptrn_reg = '1' and diq_l_reg(smpl_width-1 downto 0) = cmp_AQ) then 
                AI_err <= '0';
             else 
                AI_err <= '1';
             end if;
             --AQ
-            if diq_h_reg(smpl_width-1 downto 0) = cmp_AQ then 
+            if (alt_ptrn_reg = '0' and diq_h_reg(smpl_width-1 downto 0) = cmp_AQ) or
+               (alt_ptrn_reg = '1' and (diq_h_reg(smpl_width-1 downto 0) = c_ALL_ZEROS or
+                                        (alt_ab_strict_reg = '0' and diq_h_reg(smpl_width-1 downto 0) = c_ALL_ONES))) then 
                AQ_err <= '0';
             else 
                AQ_err <= '1';
@@ -179,13 +200,16 @@ with current_state select
          --compare ch. B samples
          if diq_h_reg(smpl_width) /= fidm_reg AND diq_l_reg(smpl_width) /= fidm_reg then 
             --BI
-            if diq_l_reg(smpl_width-1 downto 0) = cmp_BI then 
+            if diq_l_reg(smpl_width-1 downto 0) = cmp_BI or
+               (alt_ptrn_reg = '1' and diq_l_reg(smpl_width-1 downto 0) = cmp_BQ) then 
                BI_err <= '0';
             else 
                BI_err <= '1';
             end if;
             --BQ
-            if diq_h_reg(smpl_width-1 downto 0) = cmp_BQ then 
+            if (alt_ptrn_reg = '0' and diq_h_reg(smpl_width-1 downto 0) = cmp_BQ) or
+               (alt_ptrn_reg = '1' and (diq_h_reg(smpl_width-1 downto 0) = c_ALL_ONES or
+                                        (alt_ab_strict_reg = '0' and diq_h_reg(smpl_width-1 downto 0) = c_ALL_ZEROS))) then 
                BQ_err <= '0';
             else 
                BQ_err <= '1';

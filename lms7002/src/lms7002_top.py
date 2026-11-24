@@ -42,6 +42,11 @@ class LMS7002Top(LiteXModule):
         one_chnl            = False,
         with_txiq_mux       = False,
         unified_clk_csr     = False,
+        # TX interface phase-search pattern: False = constant I/Q 0xAAA/0x555 (legacy),
+        # True = 4-frame sequence exercising both edge directions on every pin at both
+        # DDR boundaries (txiq_tst_ptrn g_ALT_PTRN=1); smpl_cmp then accepts either word
+        # while the TX test pattern is enabled.
+        tx_alt_test_ptrn    = False,
         ):
 
         assert pads            is not None
@@ -132,6 +137,8 @@ class LMS7002Top(LiteXModule):
         self.smpl_cmp_done  = smpl_cmp_done       = Signal()
         self.smpl_cmp_error = smpl_cmp_error      = Signal()
         self.smpl_cmp_cnt   = smpl_cmp_cnt        = Signal(16)
+        smpl_cmp_alt_ptrn   = Signal()
+        smpl_cmp_ab_strict  = Signal(reset=1)
 
 
 
@@ -219,6 +226,7 @@ class LMS7002Top(LiteXModule):
         txiq_tst_ptrn_params.update(
             # Parameters.
             p_diq_width = diq_width,
+            p_g_ALT_PTRN = int(tx_alt_test_ptrn),
 
             # Clk/Reset.
             i_clk       = ClockSignal("lms_tx"),
@@ -230,6 +238,15 @@ class LMS7002Top(LiteXModule):
         )
 
         self.txiq_tst_ptrn = Instance("txiq_tst_ptrn", **txiq_tst_ptrn_params)
+
+        # The TX phase search loops the TX test pattern back to RX through the LMS7002M,
+        # so the RX-side sample comparator must accept the alternative pattern words.
+        if tx_alt_test_ptrn:
+            self.specials += MultiReg(fpgacfg_manager.tx_ptrn_en, smpl_cmp_alt_ptrn, odomain="lms_rx")
+            # Auto phase step register (LMS64C 0x003F) bit 15 = 1 relaxes the channel A/B check
+            # (bits 9:0 are the step size; 15:10 are unused by the phase-search FSM).
+            self.specials += MultiReg(~self.lms7002_clk.CLK_CTRL.Auto_PHcfg_step.storage[15],
+                                      smpl_cmp_ab_strict, odomain="lms_rx", reset=1)
 
         self.specials += MultiReg(tx_stream_en, tx_reset_n, odomain="lms_tx")
 
@@ -271,6 +288,8 @@ class LMS7002Top(LiteXModule):
 
             # Control signals
             i_cmp_start     = smpl_cmp_en,
+            i_alt_ptrn      = smpl_cmp_alt_ptrn,
+            i_alt_ab_strict = smpl_cmp_ab_strict,
             i_cmp_length    = smpl_cmp_cnt,
             o_cmp_done      = smpl_cmp_done,
             o_cmp_error     = smpl_cmp_error,

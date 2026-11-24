@@ -294,7 +294,6 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
                 self.max10_pll.clk_ena.eq(       self.clk_ena),
                 self.max10_pll.drct_clk_en.eq(   self.drct_clk_en),
                 self.pll_locked.eq(              self.max10_pll.pll_locked),
-                self.smpl_cmp_en.eq(             self.max10_pll.smpl_cmp_en),
                 self.max10_pll.smpl_cmp_done.eq( self.smpl_cmp_done),
                 self.max10_pll.smpl_cmp_error.eq(self.smpl_cmp_error),
                 self.smpl_cmp_cnt.eq(            self.max10_pll.smpl_cmp_cnt),
@@ -354,7 +353,6 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
             # Other ports
             self.comb += [
                 # smpl_cmp signals
-                self.smpl_cmp_en.eq(self.cycloneiv_pll.smpl_cmp_en),
                 self.cycloneiv_pll.smpl_cmp_done.eq(self.smpl_cmp_done),
                 self.cycloneiv_pll.smpl_cmp_error.eq(self.smpl_cmp_error),
                 self.smpl_cmp_cnt.eq(self.cycloneiv_pll.smpl_cmp_cnt),
@@ -372,6 +370,16 @@ class LMS7002CLK_Altera(LMS7002CLKBase):
             raise ValueError(
                 "LMS7002CLK_Altera: Unsupported family selected. "
             )
+
+        # smpl_cmp_en comes from the PLL phase-search FSM (scan clock domain) and drives the
+        # sample comparator's asynchronous reset and start in lms_rx. Unsynchronised, a reset
+        # release close to an lms_rx edge can let cmp_start_reg and the comparator FSM leave
+        # reset in different cycles: the start edge is missed, cmp_done never rises and the
+        # search FSM watchdog aborts the search with the PLL at an arbitrary phase (LimeSDR-USB:
+        # RX search error -> RX capture half a cycle off -> no RX data, a few % of Configure()
+        # calls, placement-dependent). Synchronise it into lms_rx, as the Xilinx path does.
+        pll_smpl_cmp_en = self.max10_pll.smpl_cmp_en if family == "max10" else self.cycloneiv_pll.smpl_cmp_en
+        self.specials += MultiReg(pll_smpl_cmp_en, self.smpl_cmp_en, odomain="lms_rx")
 
 class LMS7002CLK_Xilinx(LMS7002CLKBase):
     def __init__(self, platform, pads=None,

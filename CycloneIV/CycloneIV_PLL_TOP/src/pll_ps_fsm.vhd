@@ -36,7 +36,10 @@ entity pll_ps_fsm is
       ps_updwn          : in std_logic; -- 1- UP, 0 - DOWN
       ps_phase          : in std_logic_vector(9 downto 0); -- phase to shift in manual mode, 
                                                            -- max phase limit in auto mode.
-      ps_step_size      : in std_logic_vector(9 downto 0); -- step size in auto mode
+      ps_step_size      : in std_logic_vector(9 downto 0); -- auto mode: (6:0) step size,
+                                                          -- (9:7) post-search bias in steps
+                                                          -- (final phase = window centre + bias,
+                                                          -- in the search direction)
       ps_done           : out std_logic; -- 0 - not done,  1 - done
       ps_status         : out std_logic; -- 0 - OK, 1 - error      
       --pll ports
@@ -61,6 +64,22 @@ end pll_ps_fsm;
 -- Architecture
 -- ----------------------------------------------------------------------------
 architecture arch of pll_ps_fsm is
+
+function adaptive_step(step_field : std_logic_vector(9 downto 0);
+                       phase_lim  : std_logic_vector(9 downto 0)) return unsigned is
+   variable v_reg  : unsigned(9 downto 0);
+   variable v_auto : unsigned(9 downto 0);
+begin
+   v_reg  := resize(unsigned(step_field(6 downto 0)), 10);
+   v_auto := shift_right(resize(unsigned(phase_lim), 11) + 1, 6)(9 downto 0);
+   if v_auto > v_reg then
+      v_reg := v_auto;
+   end if;
+   if v_reg = 0 then
+      v_reg := to_unsigned(1, 10);
+   end if;
+   return v_reg;
+end function;
 --declare signals,  components here
 signal ps_done_reg_manual_mode         : std_logic;
 signal ps_ctrl_busy_reg                : std_logic;
@@ -69,10 +88,17 @@ signal ps_cnt_reg                      : std_logic_vector(2 downto 0);
 signal ps_updwn_reg                    : std_logic;
 signal ps_phase_reg                    : std_logic_vector(9 downto 0);
 signal ps_step_size_reg                : std_logic_vector(9 downto 0);
+signal step_sz                         : unsigned(9 downto 0); -- effective step (latched inputs)
+signal step_in                         : unsigned(9 downto 0); -- effective step (live inputs, idle)
+signal ps_bias                         : unsigned(9 downto 0); -- ps_step_size_reg(9:7)
 signal pll_reset_req_reg               : std_logic;
 signal smpl_cmp_en_reg                 : std_logic;
 signal find_min                        : std_logic;
 signal find_max                        : std_logic;
+signal seen_fail                       : std_logic; -- a failing phase was seen while looking for the minimum
+signal init_valid                      : std_logic; -- passing run seen before the first failure
+signal init_min                        : unsigned(9 downto 0); -- that run (it may be truncated by the
+signal init_max                        : unsigned(9 downto 0); -- start of the range)
 signal step_cnt                        : unsigned(9 downto 0);
 signal step_cnt_min                    : unsigned(9 downto 0);
 signal step_cnt_max                    : unsigned(9 downto 0);
@@ -97,7 +123,7 @@ constant RST_PLL_TIMEOUT               : unsigned(19 downto 0) := to_unsigned(g_
 
 
 type state_type is (idle, rst_pll, wait_pll_lock, check_cmp_status, 
-cmp_smpls, min_found, max_found, check_max_steps, ph_shift, wait_after_ph_shift, end_srch, prep_phase);
+cmp_smpls, min_found, max_found, check_max_steps, ph_shift, wait_after_ph_shift, end_srch, sel_window, prep_phase);
 signal current_state, next_state : state_type;
 
 signal time_count                      : unsigned(31 downto 0);
@@ -109,6 +135,16 @@ attribute noprune of time_count: signal is true;
 begin
 
 -- "1111111111" forces to search in whole phase step range if maximum value not found
+-- Effective step size in auto mode: max(register step, steps per period / 64), at least 1.
+-- LimeSuiteNG writes steps per interface period - 1 into ps_phase (CNT_PHASE) before an
+-- automatic search. Keeping ~64 compares per period bounds the search time at low interface
+-- frequencies (where a period is up to ~1024 steps and each compare takes longer), so the
+-- search ends before the host moves on to the next PLL (fixed 10 ms waits on LimeSDR-USB);
+-- at >= 112 MHz (80 steps per period) the register step (1) is used. ps_phase = 0 (host not
+-- writing it) leaves the register step unchanged.
+step_sz <= adaptive_step(ps_step_size_reg, ps_phase_reg);
+step_in <= adaptive_step(ps_step_size, ps_phase);
+ps_bias <= resize(unsigned(ps_step_size_reg(9 downto 7)), ps_bias'length);
 step_cnt_max_constant <= (others=> '1');
 
 -- ----------------------------------------------------------------------------
@@ -169,7 +205,7 @@ step_cnt_max_constant <= (others=> '1');
       if reset_n = '0' then
          step_cnt_max_reg <= (others=>'1');
       elsif (clk'event AND clk='1') then 
-         step_cnt_max_reg <= step_cnt_max_constant - unsigned(ps_step_size_reg);
+         step_cnt_max_reg <= step_cnt_max_constant - step_sz;
       end if;
    end process;
   
@@ -204,7 +240,7 @@ end process;
 --state machine combo
 -- ----------------------------------------------------------------------------
 fsm : process(current_state, ps_en, ps_mode, ps_reset_at_start, pll_locked, 
-               smpl_cmp_done, smpl_cmp_error, find_min, find_max, 
+               smpl_cmp_done, smpl_cmp_error, find_min, find_max, seen_fail, 
                ps_ctrl_busy, ps_ctrl_busy_reg, ps_en_reg, step_cnt, 
                prep_phase_cnt, wait_after_ph_shift_cnt, step_cnt_max_reg, fsm_timer) begin
    next_state <= current_state;
@@ -256,7 +292,12 @@ fsm : process(current_state, ps_en, ps_mode, ps_reset_at_start, pll_locked,
          if smpl_cmp_done = '1' then
             -- check if we are looking for minimum phase 
             if find_min = '1' then 
-               if smpl_cmp_error = '0' AND step_cnt > 2 then
+               -- Accept the minimum only on a fail -> pass transition. A pass seen before
+               -- any failure may be in the middle of a window that straddles the start
+               -- phase, which would bias the midpoint. Failures at the first two
+               -- steps (step_cnt <= 2) are ignored, as before, because the compare
+               -- right after the PLL reset may be invalid.
+               if smpl_cmp_error = '0' AND seen_fail = '1' then
                   next_state <= min_found;
                else 
                   next_state <= check_max_steps;
@@ -282,14 +323,22 @@ fsm : process(current_state, ps_en, ps_mode, ps_reset_at_start, pll_locked,
          next_state <= check_max_steps;
          
       when max_found =>       -- maximum phase is found, prepare final phase value
+         next_state <= sel_window;
+         
+      when sel_window =>      -- keep the larger of [min, max] and the initial passing run
          next_state <= prep_phase;
          
       when check_max_steps =>
          if step_cnt < step_cnt_max_reg then 
             next_state <= ph_shift;
          else
-            if find_min = '0' then 
-               next_state <= prep_phase;
+            -- End of range:
+            --  * minimum found, maximum not: window extends to the end of the range,
+            --    centre on [min, last tested step];
+            --  * no failure seen at all: every phase passes, centre on the range;
+            --  * failures seen but no passing window after them: error.
+            if find_min = '0' OR seen_fail = '0' then 
+               next_state <= sel_window;
             else 
                next_state <= end_srch;
             end if;
@@ -345,7 +394,7 @@ begin
       -- minimum phase search control bit for fsm
       if current_state = idle then 
          find_min <= '1';
-      elsif current_state = min_found then 
+      elsif current_state = min_found OR current_state = prep_phase then 
          find_min <= '0';
       else 
          find_min <= find_min;         
@@ -360,8 +409,36 @@ begin
          find_max <= find_max;         
       end if;
       
+      -- failing phase seen while searching for the minimum
+      if current_state = idle then 
+         seen_fail <= '0';
+      elsif current_state = cmp_smpls AND smpl_cmp_done = '1' AND find_min = '1' AND 
+            smpl_cmp_error = '1' AND step_cnt > 2 then 
+         seen_fail <= '1';
+      end if;
+      
+      -- passing run before the first failure (the window may straddle the start phase;
+      -- it is only used if the window found after the failure is smaller, e.g. when
+      -- that one is truncated by the end of the range at low interface frequencies)
+      if current_state = idle then 
+         init_valid <= '0';
+         init_min   <= (others => '0');
+         init_max   <= (others => '0');
+      elsif current_state = cmp_smpls AND smpl_cmp_done = '1' AND find_min = '1' AND 
+            seen_fail = '0' AND step_cnt > 2 then 
+         if smpl_cmp_error = '0' AND init_valid = '0' then 
+            init_valid <= '1';
+            init_min   <= step_cnt;
+         elsif smpl_cmp_error = '1' then 
+            init_max   <= step_cnt - step_sz;
+         end if;
+      end if;
+      
       -- minimum phase shift register
-      if current_state = min_found then 
+      if current_state = sel_window AND init_valid = '1' AND seen_fail = '1' AND 
+         (init_max - init_min) > (step_cnt_max - step_cnt_min) then 
+         step_cnt_min <= init_min;
+      elsif current_state = min_found then 
          step_cnt_min <= step_cnt;
       elsif current_state = idle then 
          step_cnt_min   <= (others=> '0');
@@ -370,9 +447,15 @@ begin
       end if;
       
       -- maximum phase shift value register
-      if current_state = max_found then
+      if current_state = sel_window AND init_valid = '1' AND seen_fail = '1' AND 
+         (init_max - init_min) > (step_cnt_max - step_cnt_min) then 
+         step_cnt_max <= init_max;
+      elsif current_state = max_found then
          -- minus 1 step, because last phase step is always invalid 
-         step_cnt_max <= step_cnt - unsigned(ps_step_size_reg);
+         step_cnt_max <= step_cnt - step_sz;
+      elsif current_state = check_max_steps AND step_cnt >= step_cnt_max_reg AND find_max = '1' then
+         -- end of range without a maximum: last tested step is the window end
+         step_cnt_max <= step_cnt;
       elsif current_state = idle then 
          step_cnt_max <= step_cnt_max_constant;
       else 
@@ -380,8 +463,10 @@ begin
       end if;
       
       -- counter for phase shift value
-      if current_state = check_max_steps then 
-         step_cnt <= step_cnt + unsigned(ps_step_size_reg);
+      -- (only when a further shift follows: when the range is exhausted the PLL stays
+      -- at the last tested step, and step_cnt must match it for the final reverse shift)
+      if current_state = check_max_steps AND step_cnt < step_cnt_max_reg then 
+         step_cnt <= step_cnt + step_sz;
       elsif current_state = idle then 
          step_cnt <= (others=> '0');
       else 
@@ -468,9 +553,15 @@ begin
       
       -- phase shift control module phase register
       if current_state = idle then 
-         ps_ctrl_phase_reg <= ps_step_size;
+         ps_ctrl_phase_reg <= std_logic_vector(step_in);
       elsif current_state = prep_phase then 
-         ps_ctrl_phase_reg <= std_logic_vector(step_cnt_reverse);
+         -- final move from the last tested phase to centre + bias:
+         -- back by (reverse - bias), or forward by (bias - reverse) if the bias is larger
+         if step_cnt_reverse >= ps_bias then 
+            ps_ctrl_phase_reg <= std_logic_vector(step_cnt_reverse - ps_bias);
+         else 
+            ps_ctrl_phase_reg <= std_logic_vector(ps_bias - step_cnt_reverse);
+         end if;
       else 
          ps_ctrl_phase_reg <= ps_ctrl_phase_reg;
       end if;
@@ -479,7 +570,11 @@ begin
       if current_state = idle then 
          ps_ctrl_updwn_reg <= ps_updwn;
       elsif current_state = prep_phase then 
-         ps_ctrl_updwn_reg <= not ps_updwn_reg;
+         if step_cnt_reverse >= ps_bias then 
+            ps_ctrl_updwn_reg <= not ps_updwn_reg;
+         else 
+            ps_ctrl_updwn_reg <= ps_updwn_reg;
+         end if;
       else 
          ps_ctrl_updwn_reg <= ps_ctrl_updwn_reg;
       end if;
