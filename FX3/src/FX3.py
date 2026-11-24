@@ -37,7 +37,6 @@ class FX3(LiteXModule):
                  EP8F_size    = 1024,  # Control FPGA->PC, FIFO size in bytes
                  EP8F_wwidth  = 32,    # Control FPGA->PC, wr width
                  ctrl_poll_skip = 0,   # slaveFIFO5b: 0 = poll all threads each round; N = skip idle EP8F, poll EP0F every N-th round
-                 tx_burst2    = False, # slaveFIFO5b: one extra EP01 burst per round (see slaveFIFO5b.vhd)
                  data_out_idle_skip = 0, # slaveFIFO5b: N = poll an idle EP01 (64 empty visits) only every N-th round
                  cd_source_1_rd = "sys"): # Read clock domain for source 1 FIFO
         self.pads = pads
@@ -261,7 +260,6 @@ class FX3(LiteXModule):
             p_socket2_max_wrwords_int = self.sink_data_fifo.depth,
             p_socket3_max_wrwords_int = self.sink_ctrl_fifo.depth,
             p_ctrl_poll_skip          = ctrl_poll_skip,
-            p_tx_burst2               = int(tx_burst2),
             p_data_out_idle_skip      = data_out_idle_skip,
 
             # Ports

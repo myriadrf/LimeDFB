@@ -1,6 +1,6 @@
 -- ----------------------------------------------------------------------------
 -- FILE:          slaveFIFO5b_sched_tb.vhd
--- DESCRIPTION:   Thread scheduling testbench for slaveFIFO5b (ctrl_poll_skip, tx_burst2).
+-- DESCRIPTION:   Thread scheduling testbench for slaveFIFO5b (ctrl_poll_skip, data_out_idle_skip).
 --                Behavioural FX3 model: 1024-word DMA buffers per socket, flags derived
 --                from the buffer state of the addressed socket (no 3-cycle flag latency,
 --                the DUT waits for it anyway). FPGA side: TX FIFO drained and RX FIFO filled
@@ -8,7 +8,7 @@
 --                Reports TX underrun / RX overflow cycles, transferred words and the
 --                worst control-packet latency. Not cycle-exact to the FX3; for A/B only.
 -- Run (GHDL):    ghdl -a --std=08 slaveFIFO5b.vhd slaveFIFO5b_sched_tb.vhd
---                ghdl -r --std=08 slaveFIFO5b_sched_tb -gG_SKIP=16 -gG_BURST2=1
+--                ghdl -r --std=08 slaveFIFO5b_sched_tb -gG_SKIP=16
 -- ----------------------------------------------------------------------------
 library ieee;
 use ieee.std_logic_1164.all;
@@ -17,7 +17,6 @@ use ieee.numeric_std.all;
 entity slaveFIFO5b_sched_tb is
    generic (
       G_SKIP      : integer := 0;      -- ctrl_poll_skip
-      G_BURST2    : integer := 0;      -- tx_burst2
       G_RATE_PPM  : integer := 460000; -- RX (FPGA->PC) stream rate, words/cycle * 1e6 (0.46 = 184 MB/s)
       G_TX_RATE_PPM : integer := -1;   -- TX (PC->FPGA) rate; -1 = same as G_RATE_PPM, 0 = no TX (EP01 empty)
       G_EP01_SKIP : integer := 0;      -- data_out_idle_skip
@@ -63,7 +62,7 @@ begin
       socket3_wrusedw_size => 9,  socket3_rdusedw_size => 9,
       socket0_max_wrwords_int => C_TX_DEPTH, socket1_max_wrwords_int => C_CT_DEPTH,
       socket2_max_wrwords_int => C_RX_DEPTH, socket3_max_wrwords_int => C_CT_DEPTH,
-      ctrl_poll_skip => G_SKIP, tx_burst2 => G_BURST2, data_out_idle_skip => G_EP01_SKIP)
+      ctrl_poll_skip => G_SKIP, data_out_idle_skip => G_EP01_SKIP)
    port map (
       reset_n => reset_n, clk => clk, clk_out => open, usb_speed => '1', slcs => open,
       fdata => open, faddr => faddr, slrd => slrd, sloe => sloe, slwr => slwr,
@@ -192,7 +191,7 @@ begin
             end if;
 
             if cyc = G_CYCLES then
-               report "RESULT skip=" & integer'image(G_SKIP) & " burst2=" & integer'image(G_BURST2) &
+               report "RESULT skip=" & integer'image(G_SKIP) & 
                       " ep01skip=" & integer'image(G_EP01_SKIP) & " tx_ppm=" & integer'image(tx_rate) &
                       " rate_ppm=" & integer'image(G_RATE_PPM) & " gap=" & integer'image(G_HOST_GAP) &
                       " | tx_words=" & integer'image(tx_words) & " rx_words=" & integer'image(rx_words) &
