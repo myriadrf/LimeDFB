@@ -33,7 +33,7 @@ entity pll_ps_top is
                                                    -- 110 -  C4
       ps_updwn                      : in std_logic; -- 1- UP, 0 - DOWN 
       ps_phase                      : in std_logic_vector(9 downto 0); -- phase value in steps
-      ps_step_size                  : in std_logic_vector(9 downto 0);
+      ps_step_size                  : in std_logic_vector(14 downto 0); -- see pll_ps_fsm
       ps_busy                       : out std_logic;
       ps_done                       : out std_logic;
       ps_status                     : out std_logic;     
@@ -48,7 +48,8 @@ entity pll_ps_top is
       --sample compare module
       smpl_cmp_en                   : out std_logic;
       smpl_cmp_done                 : in std_logic;
-      smpl_cmp_error                : in std_logic
+      smpl_cmp_error                : in std_logic;
+      ps_dbg                        : out std_logic_vector(31 downto 0)  -- see pll_ps_fsm
             
       );
 end pll_ps_top;
@@ -247,7 +248,8 @@ pll_ps_fsm_inst1 : entity work.pll_ps_fsm
       --sample compare module
       smpl_cmp_en       => inst1_smpl_cmp_en,
       smpl_cmp_done     => smpl_cmp_done,
-      smpl_cmp_error    => smpl_cmp_error
+      smpl_cmp_error    => smpl_cmp_error,
+      ps_dbg            => ps_dbg
       );
       
    

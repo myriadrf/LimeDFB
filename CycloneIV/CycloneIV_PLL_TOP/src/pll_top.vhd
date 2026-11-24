@@ -71,6 +71,7 @@ entity pll_top is
       txpll_smpl_cmp_done  : in  std_logic;
       txpll_smpl_cmp_error : in  std_logic;
       txpll_smpl_cmp_cnt   : out std_logic_vector(15 downto 0);
+      txpll_ps_dbg         : out std_logic_vector(31 downto 0);
       -- RX pll ports
       rxpll_inclk          : in  std_logic;
       rxpll_reconfig_clk   : in  std_logic;
@@ -85,6 +86,7 @@ entity pll_top is
       rxpll_smpl_cmp_done  : in  std_logic;
       rxpll_smpl_cmp_error : in  std_logic;
       rxpll_smpl_cmp_cnt   : out std_logic_vector(15 downto 0);
+      rxpll_ps_dbg         : out std_logic_vector(31 downto 0);
       -- pllcfg ports
       -- to pllcfg
       -- Status Inputs
@@ -176,12 +178,15 @@ signal inst2_cnt_phase        : std_logic_vector(15 downto 0);
 signal inst2_pllcfg_data      : std_logic_vector(143 downto 0);
 signal inst2_auto_phcfg_smpls : std_logic_vector(15 downto 0);
 signal inst2_auto_phcfg_step  : std_logic_vector(15 downto 0);
+signal tx_auto_phcfg_step     : std_logic_vector(14 downto 0);
 
 begin
 
 -- ----------------------------------------------------------------------------
 -- TX PLL instance
 -- ----------------------------------------------------------------------------
+tx_auto_phcfg_step <= "00" & inst2_auto_phcfg_step(12 downto 0);
+
 tx_pll_top_inst0 : entity work.tx_pll_top
    generic map(
       bandwidth_type          => TXPLL_BANDWIDTH_TYPE,
@@ -228,7 +233,10 @@ tx_pll_top_inst0 : entity work.tx_pll_top
    dynps_cnt_sel     => inst2_cnt_ind(2 downto 0),
    -- max phase steps in auto mode, phase steps to shift in manual mode
    dynps_phase       => inst2_cnt_phase(9 downto 0),
-   dynps_step_size   => inst2_auto_phcfg_step(9 downto 0),
+   -- TX: bits 14:13 (final point fraction) forced to 00 = window centre; the
+   -- off-centre placement compensates an RX-side effect (simultaneous switching
+   -- on DIQ2), the TX window is not known to be asymmetric
+   dynps_step_size   => tx_auto_phcfg_step,
    dynps_busy        => open,
    dynps_done        => inst0_dynps_done,
    dynps_status      => inst0_dynps_status,
@@ -236,6 +244,7 @@ tx_pll_top_inst0 : entity work.tx_pll_top
    smpl_cmp_en       => inst0_smpl_cmp_en,
    smpl_cmp_done     => txpll_smpl_cmp_done,
    smpl_cmp_error    => txpll_smpl_cmp_error,
+   dynps_dbg         => txpll_ps_dbg,
    --Overall configuration PLL status
    busy              => inst0_busy   
    );
@@ -289,7 +298,7 @@ rx_pll_top_inst0 : entity work.rx_pll_top
    dynps_cnt_sel     => inst2_cnt_ind(2 downto 0),
    -- max phase steps in auto mode, phase steps to shift in manual mode
    dynps_phase       => inst2_cnt_phase(9 downto 0),
-   dynps_step_size   => inst2_auto_phcfg_step(9 downto 0),
+   dynps_step_size   => inst2_auto_phcfg_step(14 downto 0),
    dynps_busy        => open,
    dynps_done        => inst1_dynps_done,
    dynps_status      => inst1_dynps_status,
@@ -297,6 +306,7 @@ rx_pll_top_inst0 : entity work.rx_pll_top
    smpl_cmp_en       => inst1_smpl_cmp_en,
    smpl_cmp_done     => rxpll_smpl_cmp_done,
    smpl_cmp_error    => rxpll_smpl_cmp_error,
+   dynps_dbg         => rxpll_ps_dbg,
    --Overall configuration PLL status
    busy              => inst1_busy   
    );

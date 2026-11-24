@@ -62,7 +62,7 @@ entity rx_pll_top is
    dynps_cnt_sel     : in std_logic_vector(2 downto 0);
    -- max phase steps in auto mode, phase steps to shift in manual mode 
    dynps_phase       : in std_logic_vector(9 downto 0);
-   dynps_step_size   : in std_logic_vector(9 downto 0);
+   dynps_step_size   : in std_logic_vector(14 downto 0); -- (6:0) step, (9:7) bias, (12:10) edge refinement k, (14:13) centre fraction
    dynps_busy        : out std_logic;
    dynps_done        : out std_logic;
    dynps_status      : out std_logic;
@@ -70,6 +70,7 @@ entity rx_pll_top is
    smpl_cmp_en       : out std_logic;
    smpl_cmp_done     : in std_logic;
    smpl_cmp_error    : in std_logic;
+   dynps_dbg         : out std_logic_vector(31 downto 0); -- last auto search result (pll_ps_fsm ps_dbg)
    --Overall configuration PLL status
    busy              : out std_logic
    
@@ -96,7 +97,7 @@ signal dynps_en_sync             : std_logic;
 signal dynps_dir_sync            : std_logic;
 signal dynps_cnt_sel_sync        : std_logic_vector(2 downto 0);
 signal dynps_phase_sync          : std_logic_vector(9 downto 0);
-signal dynps_step_size_sync      : std_logic_vector(9 downto 0);
+signal dynps_step_size_sync      : std_logic_vector(14 downto 0);
 signal rcnfig_en_sync_scanclk    : std_logic;
 signal dynps_mode_sync           : std_logic;
 signal dynps_tst_sync            : std_logic;
@@ -116,6 +117,11 @@ signal inst1_pll_configupdate    : std_logic;
 signal inst1_pll_scanclk         : std_logic;
 signal inst1_pll_scanclkena      : std_logic;
 signal inst1_pll_scandata        : std_logic;
+-- reconfig module -> PLL scan interface, registered (see scan_pipe)
+signal pll_areset_q              : std_logic := '0';
+signal pll_configupdate_q        : std_logic := '0';
+signal pll_scanclkena_q          : std_logic := '0';
+signal pll_scandata_q            : std_logic := '0';
 signal inst1_rom_address_out     : std_logic_vector(7 downto 0);
 signal inst1_write_rom_ena       : std_logic;
 signal inst1_pll_areset_in       : std_logic;
@@ -297,7 +303,7 @@ pll_areset_n   <= not pll_areset;
  port map(inst1_pll_scanclk, pll_logic_reset_n, dynps_phase, dynps_phase_sync);
  
  bus_sync_reg3 : entity work.bus_sync_reg
- generic map (10) 
+ generic map (15) 
  port map(inst1_pll_scanclk, pll_logic_reset_n, dynps_step_size, dynps_step_size_sync);
   
  
@@ -396,7 +402,8 @@ pll_ps_top_inst2 : entity work.pll_ps_top
       --sample compare module
       smpl_cmp_en             => smpl_cmp_en,
       smpl_cmp_done           => smpl_cmp_done_sync,
-      smpl_cmp_error          => smpl_cmp_error_sync
+      smpl_cmp_error          => smpl_cmp_error_sync,
+      ps_dbg                  => dynps_dbg
             
       );   
 
@@ -470,16 +477,16 @@ GENERIC MAP (
       scan_chain_mif_file        => scan_chain_mif_file
 )
 PORT MAP (
-      areset               => inst1_pll_areset,
-      configupdate         => inst1_pll_configupdate,
+      areset               => pll_areset_q,
+      configupdate         => pll_configupdate_q,
       inclk                => inst3_inclk,
       pfdena               => '1',
       phasecounterselect   => inst2_pll_phasecounterselect,
       phasestep            => inst2_pll_phasestep,
       phaseupdown          => inst2_pll_phaseupdown,
       scanclk              => inst1_pll_scanclk,
-      scanclkena           => inst1_pll_scanclkena,
-      scandata             => inst1_pll_scandata,
+      scanclkena           => pll_scanclkena_q,
+      scandata             => pll_scandata_q,
       clk                  => inst3_clk,
       locked               => inst3_locked,
       phasedone            => inst3_phasedone,
@@ -488,6 +495,24 @@ PORT MAP (
 );
    
    
+-- ----------------------------------------------------------------------------
+-- Reconfiguration scan interface pipeline: the reconfig module drives scandata
+-- straight from its M9K output, and the M9K -> PLL scan register path (to the PLL
+-- at the die edge) was a failing sys-clock path. scandata, scanclkena, configupdate
+-- and areset are all delayed by the same one scanclk cycle (scanclk itself is not),
+-- so their relative timing - the scan protocol - is unchanged (handbook vol.1, PLL
+-- reconfiguration steps 1-6).
+-- ----------------------------------------------------------------------------
+scan_pipe : process(inst1_pll_scanclk)
+begin
+   if rising_edge(inst1_pll_scanclk) then
+      pll_areset_q       <= inst1_pll_areset;
+      pll_configupdate_q <= inst1_pll_configupdate;
+      pll_scanclkena_q   <= inst1_pll_scanclkena;
+      pll_scandata_q     <= inst1_pll_scandata;
+   end if;
+end process;
+
 pll_reconfig_status_inst4 : entity work.pll_reconfig_status
    port map(
       clk               => inst1_pll_scanclk,

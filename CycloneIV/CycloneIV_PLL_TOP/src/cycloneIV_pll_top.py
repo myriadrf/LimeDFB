@@ -38,6 +38,9 @@ class CycloneIVPLLTop(LiteXModule):
         self.smpl_cmp_done  = Signal()
         self.smpl_cmp_error = Signal()
         self.smpl_cmp_cnt   = Signal(16)
+        # last auto phase search result per PLL (pll_ps_fsm ps_dbg layout)
+        self.txpll_ps_dbg   = Signal(32)
+        self.rxpll_ps_dbg   = Signal(32)
 
         # # #
 
@@ -115,6 +118,8 @@ class CycloneIVPLLTop(LiteXModule):
           i_rxpll_smpl_cmp_done  = self.smpl_cmp_done,
           i_rxpll_smpl_cmp_error = self.smpl_cmp_error,
           o_rxpll_smpl_cmp_cnt   = self.smpl_cmp_cnt,
+          o_txpll_ps_dbg         = self.txpll_ps_dbg,
+          o_rxpll_ps_dbg         = self.rxpll_ps_dbg,
           # from to_pllcfg
           o_pllcfg_busy          = self.pllcfg_busy,
           o_pllcfg_done          = self.pllcfg_done,
