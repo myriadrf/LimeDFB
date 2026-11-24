@@ -17,10 +17,12 @@ Identify the loaded RX and HostTCD versions and use the matching CSR map.
 See :ref:`host-tcd-rx-descriptor-csrs` and :ref:`host-tcd-rx-acquisition-csrs`
 for register semantics.
 With acquisition and descriptor execution disabled and the DMA writer idle,
-configure ``iq12``, ``channel_map`` and a new ``epoch`` while flushed. Clear
+assert ``flush`` and wait for status bit 0 to become one. Configure ``iq12``,
+``channel_map`` and a new ``epoch`` while flushed. Clear
 ``flush``, wait for acknowledgement and check status before configuring the
 matching ``split_size`` and preparing destination DMA mappings.
 
+While stopped, select program mode and reset the table for a new stream.
 Queue the initial parents using the procedure below, enable HostTCD execution,
 then start acquisition. Service completion records during operation to release
 FIFO capacity and track when destination buffers can be reused.
@@ -198,10 +200,13 @@ by the actual sample rate to obtain seconds.
 
 A gap before the parent does not invalidate its contiguous prefix. An internal
 gap limits reconstruction to that prefix; this summary cannot reconstruct all
-later timestamps. Reject records with flag bit 19 set. Validate the epoch,
+later timestamps. Reject records with valid bit 16 clear or flag bit 19 set.
+Validate the epoch,
 sequence, addresses, counts and flags before delivering samples. Apply the
 driver's DMA ordering and cache synchronization before reading sample buffers.
-Popping metadata releases table capacity; buffer reuse still requires consumer
+Native DMA retirement means the writer has issued the payload writes; it is
+not a PCIe acknowledgement or a replacement for host DMA synchronization.
+Popping metadata releases completion-reservation capacity; buffer reuse still requires consumer
 release and separate ownership tracking.
 
 Obtain register addresses from the loaded bitstream's generated ``csr.csv``.
@@ -252,8 +257,10 @@ Buffer ownership
 
 Match each Completion record FIFO entry to its buffers using the epoch, parent
 sequence and DMA addresses. Synchronize DMA memory before CPU access. Reuse a
-buffer only after DMA completion and consumer release; popping a timestamp
-record alone does not release it.
+buffer only after DMA completion and consumer release; popping a completion
+record alone does not release it. Hardware loop mode reuses the same DMA
+addresses without waiting for host consumption; use program mode with explicit
+buffer recycling when unread samples must be preserved.
 
 Stopping and reconfiguration
 ============================
@@ -310,7 +317,8 @@ Descriptor table CSR reference
    * - ``RX_HOST_TCD_FLAGS``
      - Stages parent flags. Bit 0 disables the parent interrupt; bit 1 disables
        early-last termination and is required for multiple channels. Use 2 for
-       fixed-length parents with interrupts.
+       fixed-length parents with parent interrupts, or 3 to disable parent
+       interrupts. Metadata interrupts have a separate ``IRQ_ENABLE`` control.
    * - ``RX_HOST_TCD_ADDRESS_INDEX``
      - Selects the logical destination address to stage, from 0 to 3. Physical
        channel selection comes from the RX channel map.
@@ -353,8 +361,8 @@ Descriptor table CSR reference
        executions.
    * - ``RX_HOST_TCD_LOOP_STATUS``
      - Program mode: completed-parent count. Loop mode: current parent index in
-       the low table-index bits, followed by the loop iteration count. Index
-       width depends on table depth (4 bits for 16 entries).
+       bits 15:0 and the loop iteration count in bits 31:16. Both fields are
+       fixed at 16 bits, independent of table depth.
    * - ``RX_HOST_TCD_ERRORS``
      - Read-only sticky error bitmap; see status and error handling below.
    * - ``RX_HOST_TCD_CLEAR_ERRORS``
