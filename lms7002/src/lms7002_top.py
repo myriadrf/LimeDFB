@@ -29,6 +29,10 @@ from gateware.LimeDFB.lms7002.src.lms7002_clk   import LMS7002CLK
 
 class LMS7002Top(LiteXModule):
     domain_rst_on_unlock = False  # Board targets may enable it before building (see reset section).
+    # TX phase search with the alternative test pattern: require channel A frames to carry
+    # Q = 0x000 and channel B frames Q = 0xFFF (rejects an A/B frame swap). False accepts
+    # either marker (previous behaviour). Board targets may enable it before building.
+    tx_alt_ab_strict     = False
 
     def __init__(self, platform, vendor, family, pads=None,
         fpgacfg_manager      = None,
@@ -140,7 +144,7 @@ class LMS7002Top(LiteXModule):
         self.smpl_cmp_error = smpl_cmp_error      = Signal()
         self.smpl_cmp_cnt   = smpl_cmp_cnt        = Signal(16)
         smpl_cmp_alt_ptrn   = Signal()
-        smpl_cmp_ab_strict  = Signal(reset=1)
+        smpl_cmp_ab_strict  = Constant(int(LMS7002Top.tx_alt_ab_strict), 1)
 
 
 
@@ -251,10 +255,6 @@ class LMS7002Top(LiteXModule):
         # so the RX-side sample comparator must accept the alternative pattern words.
         if tx_alt_test_ptrn:
             self.specials += MultiReg(fpgacfg_manager.tx_ptrn_en, smpl_cmp_alt_ptrn, odomain="lms_rx")
-            # Auto phase step register (LMS64C 0x003F) bit 15 = 1 relaxes the channel A/B check
-            # (bits 9:0 are the step size; 15:10 are unused by the phase-search FSM).
-            self.specials += MultiReg(~self.lms7002_clk.CLK_CTRL.Auto_PHcfg_step.storage[15],
-                                      smpl_cmp_ab_strict, odomain="lms_rx", reset=1)
 
         self.specials += MultiReg(tx_stream_en, tx_reset_n, odomain="lms_tx")
 

@@ -19,6 +19,9 @@ use ieee.numeric_std.all;
 -- Entity declaration
 -- ----------------------------------------------------------------------------
 entity pll_ps_top is
+   generic (
+      g_BIAS                        : natural := 0  -- see pll_ps_fsm
+   );
    port (
 
       clk                           : in std_logic;
@@ -33,7 +36,7 @@ entity pll_ps_top is
                                                    -- 110 -  C4
       ps_updwn                      : in std_logic; -- 1- UP, 0 - DOWN 
       ps_phase                      : in std_logic_vector(9 downto 0); -- phase value in steps
-      ps_step_size                  : in std_logic_vector(14 downto 0); -- see pll_ps_fsm
+      ps_step_size                  : in std_logic_vector(9 downto 0);
       ps_busy                       : out std_logic;
       ps_done                       : out std_logic;
       ps_status                     : out std_logic;     
@@ -222,6 +225,9 @@ pll_ps_inst0 : entity work.pll_ps
    
    
 pll_ps_fsm_inst1 : entity work.pll_ps_fsm
+   generic map(
+      g_BIAS            => g_BIAS
+   )
    port map(
       clk               => clk,
       reset_n           => reset_n,

@@ -20,10 +20,9 @@ entity pll_ps_fsm is
    generic (
       g_TIMEOUT_LIMIT   : integer := 262143; -- ~262,143 cycles (~2.62 ms @ 100MHz)
       g_RST_PLL_TIMEOUT : integer := 1023;   -- ~1023 cycles (~10.23 us @ 100MHz)
-      -- edge refinement: at most this many inward moves per edge; a further error
-      -- ends that edge's refinement instead of moving it (sporadic compare errors
-      -- inside the window must not shrink it to nothing)
-      g_REF_MAX_MOVES   : integer := 4
+      -- post-search bias in phase steps, applied in the search direction:
+      -- final phase = window centre + g_BIAS (0 = centre, legacy behaviour)
+      g_BIAS            : natural := 0
    );
    port (
 
@@ -40,22 +39,7 @@ entity pll_ps_fsm is
       ps_updwn          : in std_logic; -- 1- UP, 0 - DOWN
       ps_phase          : in std_logic_vector(9 downto 0); -- phase to shift in manual mode, 
                                                            -- max phase limit in auto mode.
-      ps_step_size      : in std_logic_vector(14 downto 0); -- auto mode: (6:0) step size,
-                                                          -- (9:7) post-search bias in steps
-                                                          -- (final phase = window centre + bias,
-                                                          -- in the search direction),
-                                                          -- (12:10) edge refinement k (0 = off):
-                                                          -- after the search, each window edge
-                                                          -- is re-tested with back-to-back
-                                                          -- compares for 2^(17+k) clk cycles
-                                                          -- (~1.3 ms * 2^k at 100 MHz) without
-                                                          -- an error, moved inward one step per
-                                                          -- failure,
-                                                          -- (14:13) final point within [min, max]:
-                                                          -- 00 - 8/16 (centre, legacy), 01 - 6/16,
-                                                          -- 10 - 5/16, 11 - 11/32 of the width
-                                                          -- from min (min = first edge in the
-                                                          -- search direction)
+      ps_step_size      : in std_logic_vector(9 downto 0); -- step size in auto mode
       ps_done           : out std_logic; -- 0 - not done,  1 - done
       ps_status         : out std_logic; -- 0 - OK, 1 - error      
       --pll ports
@@ -74,9 +58,8 @@ entity pll_ps_fsm is
       smpl_cmp_error    : in std_logic;
       --debug: result of the last automatic search, latched at its end (step_cnt units,
       --relative to the search start): (31) error, (30) failure seen, (29:20) window min,
-      --(19:10) window max, (9:0) final point before bias
+      --(19:10) window max, (9:0) window centre (final phase before g_BIAS)
       ps_dbg            : out std_logic_vector(31 downto 0)
-
         );  
 end pll_ps_fsm;
 
@@ -90,7 +73,7 @@ function adaptive_step(step_field : std_logic_vector(9 downto 0);
    variable v_reg  : unsigned(9 downto 0);
    variable v_auto : unsigned(9 downto 0);
 begin
-   v_reg  := resize(unsigned(step_field(6 downto 0)), 10);
+   v_reg  := unsigned(step_field);
    v_auto := shift_right(resize(unsigned(phase_lim), 11) + 1, 6)(9 downto 0);
    if v_auto > v_reg then
       v_reg := v_auto;
@@ -107,10 +90,10 @@ signal ps_en_reg                       : std_logic;
 signal ps_cnt_reg                      : std_logic_vector(2 downto 0);
 signal ps_updwn_reg                    : std_logic;
 signal ps_phase_reg                    : std_logic_vector(9 downto 0);
-signal ps_step_size_reg                : std_logic_vector(14 downto 0);
+signal ps_step_size_reg                : std_logic_vector(9 downto 0);
 signal step_sz                         : unsigned(9 downto 0); -- effective step (latched inputs)
 signal step_in                         : unsigned(9 downto 0); -- effective step (live inputs, idle)
-signal ps_bias                         : unsigned(9 downto 0); -- ps_step_size_reg(9:7)
+signal ps_bias                         : unsigned(9 downto 0); -- g_BIAS
 signal pll_reset_req_reg               : std_logic;
 signal smpl_cmp_en_reg                 : std_logic;
 signal find_min                        : std_logic;
@@ -137,27 +120,13 @@ signal step_cnt_max_constant           : unsigned(9 downto 0);
 
 signal fsm_timer                       : unsigned(19 downto 0);
 signal timeout_err                     : std_logic;
--- edge refinement
-signal ref_k                           : unsigned(2 downto 0);  -- ps_step_size_reg(12:10)
-signal ref_tmr                        : unsigned(24 downto 0); -- clk cycles without error at this edge
-signal ref_tdone                       : std_logic;             -- ref_tmr reached 2^(17+k) (registered)
-signal ref_room                        : std_logic;             -- min + step <= max (registered)
-signal ref_act                         : std_logic;             -- refinement running
-signal ref_edge                        : std_logic;             -- 0 - minimum edge, 1 - maximum edge
-signal ref_fail                        : std_logic;             -- window collapsed
-signal cmp_err_lat                     : std_logic;             -- last compare result
-signal ref_mv                          : unsigned(3 downto 0);  -- inward moves at the current edge
-signal ref_capped                      : std_logic;             -- ref_mv reached g_REF_MAX_MOVES
-signal ref_err_mv                      : std_logic;             -- error that moves the edge
-signal ref_edge_done                   : std_logic;             -- current edge finished
 constant FSM_TIMEOUT_LIMIT             : unsigned(19 downto 0) := to_unsigned(g_TIMEOUT_LIMIT, 20);
 constant RST_PLL_TIMEOUT               : unsigned(19 downto 0) := to_unsigned(g_RST_PLL_TIMEOUT, 20);
 
 
 
 type state_type is (idle, rst_pll, wait_pll_lock, check_cmp_status, 
-cmp_smpls, min_found, max_found, check_max_steps, ph_shift, wait_after_ph_shift, end_srch, sel_window, prep_phase,
-ref_start, ref_move, ref_eval);
+cmp_smpls, min_found, max_found, check_max_steps, ph_shift, wait_after_ph_shift, end_srch, sel_window, prep_phase);
 signal current_state, next_state : state_type;
 
 signal time_count                      : unsigned(31 downto 0);
@@ -184,34 +153,11 @@ begin
    if reset_n = '0' then
       step_sz <= to_unsigned(1, step_sz'length);
    elsif rising_edge(clk) then
-      step_sz <= adaptive_step(ps_step_size_reg(9 downto 0), ps_phase_reg);
+      step_sz <= adaptive_step(ps_step_size_reg, ps_phase_reg);
    end if;
 end process;
-step_in <= adaptive_step(ps_step_size(9 downto 0), ps_phase);
-ps_bias <= resize(unsigned(ps_step_size_reg(9 downto 7)), ps_bias'length);
-ref_k       <= unsigned(ps_step_size_reg(12 downto 10));
-ref_capped    <= '1' when ref_mv >= to_unsigned(g_REF_MAX_MOVES, ref_mv'length) else '0';
-ref_err_mv    <= cmp_err_lat AND NOT ref_capped;
-ref_edge_done <= (NOT cmp_err_lat AND ref_tdone) OR (cmp_err_lat AND ref_capped);
--- registered (one cycle late, harmless: min/max/timer settle long before the next ref_eval)
-process(clk, reset_n)
-begin
-   if reset_n = '0' then
-      ref_tdone <= '0';
-      ref_room  <= '0';
-   elsif rising_edge(clk) then
-      if ref_tmr >= shift_left(to_unsigned(1, 25), 17 + to_integer(ref_k)) then
-         ref_tdone <= '1';
-      else
-         ref_tdone <= '0';
-      end if;
-      if step_cnt_min + step_sz <= step_cnt_max then
-         ref_room <= '1';
-      else
-         ref_room <= '0';
-      end if;
-   end if;
-end process;
+step_in <= adaptive_step(ps_step_size, ps_phase);
+ps_bias <= to_unsigned(g_BIAS, ps_bias'length);
 step_cnt_max_constant <= (others=> '1');
 
 -- ----------------------------------------------------------------------------
@@ -309,10 +255,7 @@ end process;
 fsm : process(current_state, ps_en, ps_mode, ps_reset_at_start, pll_locked, 
                smpl_cmp_done, smpl_cmp_error, find_min, find_max, seen_fail, 
                ps_ctrl_busy, ps_ctrl_busy_reg, ps_en_reg, step_cnt, 
-               prep_phase_cnt, wait_after_ph_shift_cnt, step_cnt_max_reg, fsm_timer,
-               ref_k, ref_act, ref_edge, ref_tdone, ref_room, cmp_err_lat,
-               ref_err_mv, ref_edge_done,
-               ps_ctrl_phase_reg) begin
+               prep_phase_cnt, wait_after_ph_shift_cnt, step_cnt_max_reg, fsm_timer) begin
    next_state <= current_state;
    case current_state is
    
@@ -359,9 +302,7 @@ fsm : process(current_state, ps_en, ps_mode, ps_reset_at_start, pll_locked,
          end if;
          
       when cmp_smpls =>                -- get status from compared samples
-         if smpl_cmp_done = '1' AND ref_act = '1' then
-            next_state <= ref_eval;
-         elsif smpl_cmp_done = '1' then
+         if smpl_cmp_done = '1' then
             -- check if we are looking for minimum phase 
             if find_min = '1' then 
                -- Accept the minimum only on a fail -> pass transition. A pass seen before
@@ -398,46 +339,7 @@ fsm : process(current_state, ps_en, ps_mode, ps_reset_at_start, pll_locked,
          next_state <= sel_window;
          
       when sel_window =>      -- keep the larger of [min, max] and the initial passing run
-         if ref_k /= 0 AND find_min = '0' then
-            next_state <= ref_start;
-         else
-            next_state <= prep_phase;
-         end if;
-
-      -- Edge refinement (ref_k /= 0): a short compare misses low error rates, so the
-      -- coarse window can extend past an edge whose error rate rises gradually and
-      -- its centre moves towards that edge. Re-test the minimum edge, then the maximum
-      -- edge, with back-to-back compares until 2^(17+k) clk cycles have passed without
-      -- an error (a time budget, so the search length does not depend on the sample
-      -- rate: the host does not wait for the search on LimeSDR-USB); on any error move
-      -- that edge one step inward and start again. The PLL ends at the maximum edge, so the final
-      -- move to the centre is the usual backward shift (prep_phase).
-      when ref_start =>       -- move from the last tested step back to the minimum edge
-         next_state <= ref_move;
-
-      when ref_move =>
-         if unsigned(ps_ctrl_phase_reg) = 0 then
-            next_state <= wait_after_ph_shift;
-         else
-            next_state <= ph_shift;
-         end if;
-
-      when ref_eval =>
-         if ref_err_mv = '1' then
-            if ref_room = '0' then
-               next_state <= end_srch;        -- no clean window left
-            else
-               next_state <= ref_move;        -- edge one step inward
-            end if;
-         elsif ref_edge_done = '1' then
-            if ref_edge = '0' then
-               next_state <= ref_move;        -- minimum done, go to the maximum edge
-            else
-               next_state <= prep_phase;      -- both edges done
-            end if;
-         else
-            next_state <= wait_after_ph_shift; -- next compare at the same phase
-         end if;
+         next_state <= prep_phase;
          
       when check_max_steps =>
          if step_cnt < step_cnt_max_reg then 
@@ -500,12 +402,6 @@ begin
       step_cnt_max   <= (others=> '1');
       prep_phase_cnt <= (others=> '0');
       wait_after_ph_shift_cnt <= (others => '0');
-      cmp_err_lat    <= '0';
-      ref_act        <= '0';
-      ref_edge       <= '0';
-      ref_tmr        <= (others => '0');
-      ref_mv         <= (others => '0');
-      ref_fail       <= '0';
    elsif (clk'event AND clk='1') then
    
       -- minimum phase search control bit for fsm
@@ -557,8 +453,6 @@ begin
          step_cnt_min <= init_min;
       elsif current_state = min_found then 
          step_cnt_min <= step_cnt;
-      elsif current_state = ref_eval AND ref_err_mv = '1' AND ref_edge = '0' then
-         step_cnt_min <= step_cnt_min + step_sz;
       elsif current_state = idle then 
          step_cnt_min   <= (others=> '0');
       else 
@@ -575,8 +469,6 @@ begin
       elsif current_state = check_max_steps AND step_cnt >= step_cnt_max_reg AND find_max = '1' then
          -- end of range without a maximum: last tested step is the window end
          step_cnt_max <= step_cnt;
-      elsif current_state = ref_eval AND ref_err_mv = '1' AND ref_edge = '1' then
-         step_cnt_max <= step_cnt_max - step_sz;
       elsif current_state = idle then 
          step_cnt_max <= step_cnt_max_constant;
       else 
@@ -588,51 +480,10 @@ begin
       -- at the last tested step, and step_cnt must match it for the final reverse shift)
       if current_state = check_max_steps AND step_cnt < step_cnt_max_reg then 
          step_cnt <= step_cnt + step_sz;
-      elsif current_state = ref_start then
-         -- during refinement step_cnt tracks the PLL position (same units)
-         step_cnt <= step_cnt_min;
-      elsif current_state = ref_eval AND ref_err_mv = '1' AND ref_edge = '0' then
-         step_cnt <= step_cnt + step_sz;
-      elsif current_state = ref_eval AND ref_err_mv = '1' AND ref_edge = '1' then
-         step_cnt <= step_cnt - step_sz;
-      elsif current_state = ref_eval AND ref_edge_done = '1' AND ref_edge = '0' then
-         step_cnt <= step_cnt_max;
       elsif current_state = idle then 
          step_cnt <= (others=> '0');
       else 
          step_cnt <= step_cnt;
-      end if;
-
-      -- edge refinement state
-      if current_state = cmp_smpls AND smpl_cmp_done = '1' then
-         cmp_err_lat <= smpl_cmp_error;
-      end if;
-      if current_state = idle OR current_state = prep_phase OR current_state = end_srch then
-         ref_act <= '0';
-      elsif current_state = ref_start then
-         ref_act <= '1';
-      end if;
-      if current_state = ref_start then
-         ref_edge <= '0';
-      elsif current_state = ref_eval AND ref_edge_done = '1' then
-         ref_edge <= '1';
-      end if;
-      -- error-free time at the current edge (restarted on arrival at an edge and on
-      -- every error; the move itself is included, which is negligible)
-      if current_state = ref_start OR (current_state = ref_eval AND (cmp_err_lat = '1' OR ref_tdone = '1')) then
-         ref_tmr <= (others => '0');
-      elsif ref_act = '1' AND ref_tdone = '0' then
-         ref_tmr <= ref_tmr + 1;
-      end if;
-      if current_state = ref_start OR (current_state = ref_eval AND ref_edge_done = '1') then
-         ref_mv <= (others => '0');
-      elsif current_state = ref_eval AND ref_err_mv = '1' then
-         ref_mv <= ref_mv + 1;
-      end if;
-      if current_state = idle then
-         ref_fail <= '0';
-      elsif current_state = ref_eval AND ref_err_mv = '1' AND ref_room = '0' then
-         ref_fail <= '1';
       end if;
       
       -- counter to hold fsm in prep_phase state
@@ -716,12 +567,6 @@ begin
       -- phase shift control module phase register
       if current_state = idle then 
          ps_ctrl_phase_reg <= std_logic_vector(step_in);
-      elsif current_state = ref_start then
-         ps_ctrl_phase_reg <= std_logic_vector(step_cnt - step_cnt_min);
-      elsif current_state = ref_eval AND ref_err_mv = '1' then
-         ps_ctrl_phase_reg <= std_logic_vector(step_sz);
-      elsif current_state = ref_eval AND ref_edge_done = '1' AND ref_edge = '0' then
-         ps_ctrl_phase_reg <= std_logic_vector(step_cnt_max - step_cnt_min);
       elsif current_state = prep_phase then 
          -- final move from the last tested phase to centre + bias:
          -- back by (reverse - bias), or forward by (bias - reverse) if the bias is larger
@@ -737,16 +582,6 @@ begin
       -- phase shift control module phase direction register
       if current_state = idle then 
          ps_ctrl_updwn_reg <= ps_updwn;
-      elsif current_state = ref_start then
-         ps_ctrl_updwn_reg <= not ps_updwn_reg;                -- back to the minimum
-      elsif current_state = ref_eval AND ref_err_mv = '1' then
-         if ref_edge = '0' then
-            ps_ctrl_updwn_reg <= ps_updwn_reg;                 -- minimum moves forward
-         else
-            ps_ctrl_updwn_reg <= not ps_updwn_reg;             -- maximum moves back
-         end if;
-      elsif current_state = ref_eval AND ref_edge_done = '1' AND ref_edge = '0' then
-         ps_ctrl_updwn_reg <= ps_updwn_reg;                    -- forward to the maximum
       elsif current_state = prep_phase then 
          if step_cnt_reverse >= ps_bias then 
             ps_ctrl_updwn_reg <= not ps_updwn_reg;
@@ -770,7 +605,7 @@ begin
       if ps_en = '0' then
          ps_status_reg <= '0';
       elsif current_state = end_srch then
-         if timeout_err = '1' or find_min = '1' or ref_fail = '1' then
+         if timeout_err = '1' or find_min = '1' then
             ps_status_reg <= '1';
          else
             ps_status_reg <= smpl_cmp_error;
@@ -791,7 +626,7 @@ begin
       ps_dbg <= (others => '0');
    elsif rising_edge(clk) then
       if current_state = end_srch then
-         if timeout_err = '1' or find_min = '1' or ref_fail = '1' then
+         if timeout_err = '1' or find_min = '1' then
             ps_dbg(31) <= '1';
          else
             ps_dbg(31) <= smpl_cmp_error;
@@ -815,14 +650,7 @@ begin
       step_cnt_reverse  <= (others => '0');
    elsif (clk'event AND clk='1') then 
       step_cnt_diff     <= step_cnt_max - step_cnt_min;
-      -- final point = min + frac * (max - min), frac from ps_step_size_reg(14:13)
-      case ps_step_size_reg(14 downto 13) is
-         -- (diff * n) / 2^m with a single rounding (14-bit intermediate, no overflow)
-         when "01"   => step_cnt_middle <= resize(shift_right(resize(step_cnt_diff, 14) * 3, 3), 10) + step_cnt_min;  -- 6/16
-         when "10"   => step_cnt_middle <= resize(shift_right(resize(step_cnt_diff, 14) * 5, 4), 10) + step_cnt_min;  -- 5/16
-         when "11"   => step_cnt_middle <= resize(shift_right(resize(step_cnt_diff, 14) * 11, 5), 10) + step_cnt_min; -- 11/32
-         when others => step_cnt_middle <= unsigned('0' & step_cnt_diff(9 downto 1)) + step_cnt_min;                     -- 8/16
-      end case;
+      step_cnt_middle   <= unsigned('0' & step_cnt_diff(9 downto 1)) + step_cnt_min;
       step_cnt_reverse  <= step_cnt - step_cnt_middle;
    end if;
 end process;

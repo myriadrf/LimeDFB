@@ -14,8 +14,6 @@ entity pll_ps_fsm_tb is
       g_START_PH   : integer := 0;    -- PLL phase after reset
       g_STEP       : integer := 2;    -- auto phase step size
       g_BIAS       : integer := 0;    -- post-search bias (steps)
-      g_REFINE     : integer := 0;    -- edge refinement k (time budget 2^(17+k) clk per edge)
-      g_FRAC       : integer := 0;    -- final point: 0 - 8/16, 1 - 6/16, 2 - 5/16, 3 - 11/32 of the window
       g_SOFT_LEN   : integer := 0;    -- steps after the window end that fail only sometimes
       g_SOFT_N     : integer := 8;    -- ... on every g_SOFT_N-th compare there
       g_SPUR_N     : integer := 0;    -- >0: every g_SPUR_N-th compare inside the window fails (sporadic)
@@ -45,8 +43,6 @@ architecture sim of pll_ps_fsm_tb is
    signal n_soft         : integer := 0;
    signal n_win          : integer := 0;
    signal ps_dbg         : std_logic_vector(31 downto 0);
-   type int4 is array (0 to 3) of integer;
-   constant c_FRAC32     : int4 := (16, 12, 10, 11);
 
    function soft(ph : integer) return boolean is
       variable rel : integer;
@@ -65,11 +61,12 @@ begin
    clk <= not clk after 5 ns;
 
    dut : entity work.pll_ps_top
+      generic map (g_BIAS => g_BIAS)
       port map (
          clk => clk, reset_n => reset_n,
          ps_en => ps_en, ps_mode => '1', ps_tst => '0', ps_cnt => "011",
          ps_updwn => '1', ps_phase => std_logic_vector(to_unsigned(g_PHASE_LIM, 10)),
-         ps_step_size => std_logic_vector(to_unsigned(g_FRAC, 2)) & std_logic_vector(to_unsigned(g_REFINE, 3)) & std_logic_vector(to_unsigned(g_BIAS, 3)) & std_logic_vector(to_unsigned(g_STEP, 7)),
+         ps_step_size => std_logic_vector(to_unsigned(g_STEP, 10)),
          ps_busy => open, ps_done => ps_done, ps_status => ps_status,
          pll_phasecounterselect => pll_cntsel, pll_phaseupdown => pll_updown,
          pll_phasestep => pll_phasestep, pll_phasedone => pll_phasedone,
@@ -131,7 +128,7 @@ begin
       wait until ps_done = '1' for 50 ms;
       assert ps_done = '1' report "TIMEOUT: search never finished" severity failure;
       wait for 1 us;
-      centre := (g_WIN_START + ((g_WIN_LEN - 1) * c_FRAC32(g_FRAC)) / 32 + g_BIAS) mod g_PERIOD;
+      centre := (g_WIN_START + (g_WIN_LEN - 1) / 2 + g_BIAS) mod g_PERIOD;
       dist   := abs((phase - centre + g_PERIOD/2) mod g_PERIOD - g_PERIOD/2);
       report "RESULT status=" & std_logic'image(ps_status) &
              " final_phase=" & integer'image(phase) &

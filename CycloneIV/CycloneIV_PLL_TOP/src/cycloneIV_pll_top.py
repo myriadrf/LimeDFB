@@ -14,6 +14,12 @@ from litex.soc.interconnect.csr import *
 # CycloneIV PLL Top ------------------------------------------------------------------------------------
 
 class CycloneIVPLLTop(LiteXModule):
+    # Automatic phase search bias per PLL, in phase steps: the search ends at the passing
+    # window centre + bias, in the search direction. 0 = centre (default, legacy behaviour).
+    # Board targets may set these before building.
+    tx_ps_bias = 0
+    rx_ps_bias = 0
+
     def __init__(self, platform, pads,
         ):
 
@@ -90,7 +96,9 @@ class CycloneIVPLLTop(LiteXModule):
         # pll_top instance.
         # -----------------
         self.specials += Instance("pll_top",
-        # Skipping parameters, because they all match the defaults
+        # Remaining parameters match the defaults.
+          p_TXPLL_PS_BIAS        = CycloneIVPLLTop.tx_ps_bias,
+          p_RXPLL_PS_BIAS        = CycloneIVPLLTop.rx_ps_bias,
           i_txpll_inclk          = pads.MCLK1,
           i_txpll_reconfig_clk   = ClockSignal("sys"),
           i_txpll_logic_reset_n  = ~ResetSignal("sys"),

@@ -37,6 +37,7 @@ entity pll_top is
       TXPLL_SCAN_CHAIN_MIF_FILE     : STRING    := "ip/txpll/pll.mif";
       TXPLL_DRCT_C0_NDLY            : integer   := 1;
       TXPLL_DRCT_C1_NDLY            : integer   := 2;
+      TXPLL_PS_BIAS                 : natural   := 0;  -- auto phase search bias, steps
       -- RX pll parameters
       RXPLL_BANDWIDTH_TYPE          : STRING    := "AUTO";
       RXPLL_CLK0_DIVIDE_BY          : NATURAL   := 1;
@@ -53,7 +54,8 @@ entity pll_top is
       RXPLL_OPERATION_MODE          : STRING    := "SOURCE_SYNCHRONOUS";
       RXPLL_SCAN_CHAIN_MIF_FILE     : STRING    := "ip/pll/pll.mif";
       RXPLL_DRCT_C0_NDLY            : integer   := 1;
-      RXPLL_DRCT_C1_NDLY            : integer   := 2
+      RXPLL_DRCT_C1_NDLY            : integer   := 2;
+      RXPLL_PS_BIAS                 : natural   := 0   -- auto phase search bias, steps
 
    );
    port (
@@ -178,15 +180,12 @@ signal inst2_cnt_phase        : std_logic_vector(15 downto 0);
 signal inst2_pllcfg_data      : std_logic_vector(143 downto 0);
 signal inst2_auto_phcfg_smpls : std_logic_vector(15 downto 0);
 signal inst2_auto_phcfg_step  : std_logic_vector(15 downto 0);
-signal tx_auto_phcfg_step     : std_logic_vector(14 downto 0);
 
 begin
 
 -- ----------------------------------------------------------------------------
 -- TX PLL instance
 -- ----------------------------------------------------------------------------
-tx_auto_phcfg_step <= "00" & inst2_auto_phcfg_step(12 downto 0);
-
 tx_pll_top_inst0 : entity work.tx_pll_top
    generic map(
       bandwidth_type          => TXPLL_BANDWIDTH_TYPE,
@@ -204,7 +203,8 @@ tx_pll_top_inst0 : entity work.tx_pll_top
       operation_mode          => TXPLL_OPERATION_MODE,
       scan_chain_mif_file     => TXPLL_SCAN_CHAIN_MIF_FILE,
       drct_c0_ndly            => TXPLL_DRCT_C0_NDLY,
-      drct_c1_ndly            => TXPLL_DRCT_C1_NDLY
+      drct_c1_ndly            => TXPLL_DRCT_C1_NDLY,
+      ps_bias                 => TXPLL_PS_BIAS
    )
    port map(
    --PLL input 
@@ -233,10 +233,7 @@ tx_pll_top_inst0 : entity work.tx_pll_top
    dynps_cnt_sel     => inst2_cnt_ind(2 downto 0),
    -- max phase steps in auto mode, phase steps to shift in manual mode
    dynps_phase       => inst2_cnt_phase(9 downto 0),
-   -- TX: bits 14:13 (final point fraction) forced to 00 = window centre; the
-   -- off-centre placement compensates an RX-side effect (simultaneous switching
-   -- on DIQ2), the TX window is not known to be asymmetric
-   dynps_step_size   => tx_auto_phcfg_step,
+   dynps_step_size   => inst2_auto_phcfg_step(9 downto 0),
    dynps_busy        => open,
    dynps_done        => inst0_dynps_done,
    dynps_status      => inst0_dynps_status,
@@ -269,7 +266,8 @@ rx_pll_top_inst0 : entity work.rx_pll_top
       operation_mode          => RXPLL_OPERATION_MODE,
       scan_chain_mif_file     => RXPLL_SCAN_CHAIN_MIF_FILE,
       drct_c0_ndly            => RXPLL_DRCT_C0_NDLY,
-      drct_c1_ndly            => RXPLL_DRCT_C1_NDLY
+      drct_c1_ndly            => RXPLL_DRCT_C1_NDLY,
+      ps_bias                 => RXPLL_PS_BIAS
    )
    port map(
    --PLL input 
@@ -298,7 +296,7 @@ rx_pll_top_inst0 : entity work.rx_pll_top
    dynps_cnt_sel     => inst2_cnt_ind(2 downto 0),
    -- max phase steps in auto mode, phase steps to shift in manual mode
    dynps_phase       => inst2_cnt_phase(9 downto 0),
-   dynps_step_size   => inst2_auto_phcfg_step(14 downto 0),
+   dynps_step_size   => inst2_auto_phcfg_step(9 downto 0),
    dynps_busy        => open,
    dynps_done        => inst1_dynps_done,
    dynps_status      => inst1_dynps_status,

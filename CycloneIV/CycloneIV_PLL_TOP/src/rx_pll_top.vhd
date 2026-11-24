@@ -33,7 +33,9 @@ entity rx_pll_top is
       operation_mode          : STRING    := "SOURCE_SYNCHRONOUS";
       scan_chain_mif_file     : STRING    := "ip/pll/pll.mif";
       drct_c0_ndly            : integer   := 1;
-      drct_c1_ndly            : integer   := 2
+      drct_c1_ndly            : integer   := 2;
+      -- auto phase search: final phase = window centre + ps_bias steps (search direction)
+      ps_bias                 : natural   := 0
    );
    port (
    --PLL input 
@@ -62,7 +64,7 @@ entity rx_pll_top is
    dynps_cnt_sel     : in std_logic_vector(2 downto 0);
    -- max phase steps in auto mode, phase steps to shift in manual mode 
    dynps_phase       : in std_logic_vector(9 downto 0);
-   dynps_step_size   : in std_logic_vector(14 downto 0); -- (6:0) step, (9:7) bias, (12:10) edge refinement k, (14:13) centre fraction
+   dynps_step_size   : in std_logic_vector(9 downto 0);
    dynps_busy        : out std_logic;
    dynps_done        : out std_logic;
    dynps_status      : out std_logic;
@@ -97,7 +99,7 @@ signal dynps_en_sync             : std_logic;
 signal dynps_dir_sync            : std_logic;
 signal dynps_cnt_sel_sync        : std_logic_vector(2 downto 0);
 signal dynps_phase_sync          : std_logic_vector(9 downto 0);
-signal dynps_step_size_sync      : std_logic_vector(14 downto 0);
+signal dynps_step_size_sync      : std_logic_vector(9 downto 0);
 signal rcnfig_en_sync_scanclk    : std_logic;
 signal dynps_mode_sync           : std_logic;
 signal dynps_tst_sync            : std_logic;
@@ -303,7 +305,7 @@ pll_areset_n   <= not pll_areset;
  port map(inst1_pll_scanclk, pll_logic_reset_n, dynps_phase, dynps_phase_sync);
  
  bus_sync_reg3 : entity work.bus_sync_reg
- generic map (15) 
+ generic map (10) 
  port map(inst1_pll_scanclk, pll_logic_reset_n, dynps_step_size, dynps_step_size_sync);
   
  
@@ -376,6 +378,9 @@ pll_reconfig_module_inst1 : ENTITY work.pll_reconfig_module
 --      );
    
 pll_ps_top_inst2 : entity work.pll_ps_top
+   generic map(
+      g_BIAS                  => ps_bias
+   )
    port map(
 
       clk                     => inst1_pll_scanclk,
