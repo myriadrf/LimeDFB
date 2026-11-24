@@ -58,10 +58,8 @@ begin
 
       if (int_rst_n = '0') then
          state <= WAIT_PACKET;
-         M_AXIS_TVALID <= '0';
          data_counter <= 0;
       elsif rising_edge(AXIS_ACLK) then
-         M_AXIS_TVALID <= '0';
 
          case state is
 
@@ -85,28 +83,23 @@ begin
             -- Actions for MIMO_12BIT state
             when SISO_16BIT =>
 
-                     if S_AXIS_TVALID = '1' then
-                        M_AXIS_TVALID <= '1';
-                        if M_AXIS_TREADY = '1' and M_AXIS_TVALID = '1' then
-                           if data_counter < 3 then
-                               data_counter <= data_counter + 1;
-                           else
-                               data_counter <= 0;
-                           end if;
+                     -- Advance only on a real transfer of the CURRENT input word.
+                     if S_AXIS_TVALID = '1' and M_AXIS_TREADY = '1' then
+                        if data_counter < 3 then
+                            data_counter <= data_counter + 1;
+                        else
+                            data_counter <= 0;
                         end if;
                      end if;
 
             -- Actions for MIMO_16BIT state
             when MIMO_16BIT =>
 
-                     if S_AXIS_TVALID = '1' then
-                        M_AXIS_TVALID <= '1';
-                        if M_AXIS_TREADY = '1' and M_AXIS_TVALID = '1' then
-                           if data_counter < 1 then
-                               data_counter <= data_counter + 1;
-                           else
-                               data_counter <= 0;
-                           end if;
+                     if S_AXIS_TVALID = '1' and M_AXIS_TREADY = '1' then
+                        if data_counter < 1 then
+                            data_counter <= data_counter + 1;
+                        else
+                            data_counter <= 0;
                         end if;
                      end if;
 
@@ -196,7 +189,14 @@ begin
    end process;
 
 
-   S_AXIS_TREADY <= '1' when (M_AXIS_TREADY = '1' and M_AXIS_TVALID = '1' and s_axis_tready_skip='0')  else '0';
+   -- Output valid follows the current input word (M_AXIS_TDATA is decoded combinationally from
+   -- S_AXIS_TDATA). It used to be S_AXIS_TVALID registered, i.e. a cycle late: whenever the input
+   -- FIFO ran empty for a cycle mid-stream, a chunk of a stale word was emitted and data_counter
+   -- advanced without an input word, so the next word started at the wrong chunk (duplicated /
+   -- skipped samples, e.g. at packet boundaries when the TX buffer runs just in time).
+   M_AXIS_TVALID <= S_AXIS_TVALID when (state = SISO_16BIT or state = MIMO_16BIT) else '0';
+   S_AXIS_TREADY <= '1' when (M_AXIS_TREADY = '1' and S_AXIS_TVALID = '1' and
+                              (state = SISO_16BIT or state = MIMO_16BIT) and s_axis_tready_skip='0') else '0';
 
 -- Implementation of the architecture goes here
 
