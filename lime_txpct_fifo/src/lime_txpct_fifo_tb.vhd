@@ -1,6 +1,10 @@
 -- ----------------------------------------------------------------------------
 -- FILE:          lime_txpct_fifo_tb.vhd
 -- DESCRIPTION:   Minimal testbench for lime_txpct_fifo
+--                Default generics (16 words / 4 packets): edge-case suite (CASE 1-25).
+--                Other sizes (e.g. -gg_MAX_FIFO_WORDS=4096 -gg_MAX_PACKETS=16, the
+--                LimeSDR-USB 64 KB buffer, or 3072 / 16 = 48 KB, non-power-of-two wrap):
+--                full-width address / threshold clamp suite (CASE L1-L4).
 -- ----------------------------------------------------------------------------
 
 library ieee;
@@ -10,6 +14,10 @@ use ieee.math_real.all;
 use std.env.finish;
 
 entity lime_txpct_fifo_tb is
+   generic (
+      g_MAX_FIFO_WORDS : positive := 16;
+      g_MAX_PACKETS    : positive := 4
+   );
 end entity;
 
 architecture tb of lime_txpct_fifo_tb is
@@ -17,8 +25,10 @@ architecture tb of lime_txpct_fifo_tb is
    constant c_CLK_PERIOD         : time     := 10 ns;
 
    -- Small values make edge cases easy to hit.
-   constant c_MAX_FIFO_WORDS     : positive := 16;
-   constant c_MAX_PACKETS        : positive := 4;
+   constant c_MAX_FIFO_WORDS     : positive := g_MAX_FIFO_WORDS;
+   constant c_MAX_PACKETS        : positive := g_MAX_PACKETS;
+   -- The CASE 1-25 sequences are written for the 16-word / 4-packet geometry.
+   constant c_SMALL              : boolean  := (g_MAX_FIFO_WORDS = 16 and g_MAX_PACKETS = 4);
 
    -- Set true after pct/m_axis read side is implemented.
    constant c_ENABLE_M_AXIS_TESTS : boolean := TRUE;
@@ -322,6 +332,133 @@ architecture tb of lime_txpct_fifo_tb is
       m_axis_tready_o <= '0';
    end procedure;
 
+   -- Large-geometry suite: production-size packets (255 payload words = one 4 KB USB
+   -- packet), all address bits of the payload RAM, wrap-around, and the
+   -- payload_buff_cnt (LMS64C 0x0201) clamp / release behaviour.
+   procedure large_geometry_cases (
+      signal clk_i         : in  std_logic;
+      signal rst_o         : out std_logic;
+      signal s_tdata_o     : out std_logic_vector(127 downto 0);
+      signal s_tvalid_o    : out std_logic;
+      signal s_tready_i    : in  std_logic;
+      signal m_tdata_i     : in  std_logic_vector(127 downto 0);
+      signal m_tvalid_i    : in  std_logic;
+      signal m_tready_o    : out std_logic;
+      signal pct_cnt_o     : out std_logic_vector(7 downto 0);
+      signal payload_cnt_o : out std_logic_vector(15 downto 0);
+      signal pct_rd_o      : out std_logic;
+      signal pct_valid_i   : in  std_logic;
+      signal pct_header_i  : in  std_logic_vector(127 downto 0)
+   ) is
+      constant c_PW_FULL : natural := c_MAX_FIFO_WORDS / c_MAX_PACKETS;    -- fills RAM exactly
+      -- The head packet is moved out of the metadata RAM into the read register, so the
+      -- writer stalls on metadata only after g_MAX_PACKETS + 1 packets. L1 sends that many
+      -- packets of c_PW words (<= 255 = one 4 KB USB packet) without reaching the clamped
+      -- payload threshold, so only the metadata-full stall can start the stream.
+      constant c_FIT_255 : natural := c_MAX_PACKETS + 1;
+      constant c_USB_PW  : natural := 255;                               -- one 4 KB USB packet
+      constant c_PW      : natural := minimum(255, (c_MAX_FIFO_WORDS - 1) / c_FIT_255);
+
+      procedure send (constant n : natural; constant words : natural; constant tag : string) is
+      begin
+         axis_send_packet(clk_i, s_tdata_o, s_tvalid_o, s_tready_i,
+            std_logic_vector(to_unsigned(n, 64)), '1', words, n * 4096);
+         wait_packet_store_complete(clk_i, s_tready_i, 20, tag & " write " & integer'image(n));
+      end procedure;
+
+      procedure recv (constant n : natural; constant words : natural; constant tag : string) is
+      begin
+         read_packet_no_backpressure(clk_i, pct_rd_o, pct_valid_i, pct_header_i, m_tdata_i, m_tvalid_i, m_tready_o,
+            std_logic_vector(to_unsigned(n, 64)), '1', words, n * 4096, tag & " read " & integer'image(n));
+      end procedure;
+
+      procedure expect_held (constant tag : string) is
+      begin
+         wait_clk_cycles(clk_i, 10);
+         assert m_tvalid_i = '0'
+            report tag & " failed: stream started before the buffering threshold"
+            severity failure;
+      end procedure;
+   begin
+      ---------------------------------------------------------------------------
+      -- L1: payload_buff_cnt = 0xFFFF (clamped to g_MAX_FIFO_WORDS). g_MAX_PACKETS + 1 packets
+      -- of c_PW words stay below the clamped threshold; the stream must start only when the
+      -- writer stalls (metadata full), then every word
+      -- (all payload address bits) must read back intact. Repeated twice -> wrap-around.
+      ---------------------------------------------------------------------------
+      report "CASE L1: payload_buff_cnt 0xFFFF clamp, " & integer'image(c_FIT_255) & " x " & integer'image(c_PW) & "-word packets";
+      pct_cnt_o     <= x"00";
+      payload_cnt_o <= x"FFFF";
+      reset_dut(clk_i, rst_o);
+      for n in 1 to c_FIT_255 - 1 loop
+         send(n, c_PW, "CASE L1");
+      end loop;
+      expect_held("CASE L1");
+      -- Last packet fills the metadata: s_axis_tready stays low afterwards (no store-complete wait).
+      axis_send_packet(clk_i, s_tdata_o, s_tvalid_o, s_tready_i,
+         std_logic_vector(to_unsigned(c_FIT_255, 64)), '1', c_PW, c_FIT_255 * 4096);
+      wait_clk_cycles(clk_i, 3);
+      assert s_tready_i = '0'
+         report "CASE L1 failed: s_axis_tready high with g_MAX_PACKETS + 1 packets stored"
+         severity failure;
+      for n in 1 to c_FIT_255 loop
+         recv(n, c_PW, "CASE L1");
+      end loop;
+      -- Second pass: stream already started, data must pass straight through across the wrap.
+      for n in c_FIT_255 + 1 to 2 * c_FIT_255 loop
+         send(n, c_PW, "CASE L1 wrap");
+         recv(n, c_PW, "CASE L1 wrap");
+      end loop;
+
+      ---------------------------------------------------------------------------
+      -- L2: payload_buff_cnt = 0x0201 (513 words): held at 2 x 255 = 510 words,
+      -- released by the third packet (765 >= 513). Needs g_MAX_FIFO_WORDS >= 765.
+      ---------------------------------------------------------------------------
+      report "CASE L2: payload_buff_cnt 0x0201 threshold";
+      pct_cnt_o     <= x"00";
+      payload_cnt_o <= x"0201";
+      reset_dut(clk_i, rst_o);
+      send(1, c_USB_PW, "CASE L2");
+      send(2, c_USB_PW, "CASE L2");
+      expect_held("CASE L2");
+      send(3, c_USB_PW, "CASE L2");
+      for n in 1 to 3 loop
+         recv(n, c_USB_PW, "CASE L2");
+      end loop;
+
+      ---------------------------------------------------------------------------
+      -- L3: payload RAM filled exactly (g_MAX_PACKETS x g_MAX_FIFO_WORDS/g_MAX_PACKETS)
+      -- with payload_buff_cnt = g_MAX_FIFO_WORDS: threshold met at the last word.
+      ---------------------------------------------------------------------------
+      report "CASE L3: exact fill, payload_buff_cnt = g_MAX_FIFO_WORDS";
+      pct_cnt_o     <= x"00";
+      payload_cnt_o <= std_logic_vector(to_unsigned(c_MAX_FIFO_WORDS, 16));
+      reset_dut(clk_i, rst_o);
+      for n in 1 to c_MAX_PACKETS - 1 loop
+         send(n, c_PW_FULL, "CASE L3");
+      end loop;
+      expect_held("CASE L3");
+      send(c_MAX_PACKETS, c_PW_FULL, "CASE L3");
+      for n in 1 to c_MAX_PACKETS loop
+         recv(n, c_PW_FULL, "CASE L3");
+      end loop;
+
+      ---------------------------------------------------------------------------
+      -- L4: payload_buff_cnt = g_MAX_FIFO_WORDS + 1 (just above the clamp) behaves like L3.
+      ---------------------------------------------------------------------------
+      report "CASE L4: payload_buff_cnt = g_MAX_FIFO_WORDS + 1";
+      payload_cnt_o <= std_logic_vector(to_unsigned(c_MAX_FIFO_WORDS + 1, 16));
+      reset_dut(clk_i, rst_o);
+      for n in 1 to c_MAX_PACKETS - 1 loop
+         send(n, c_PW_FULL, "CASE L4");
+      end loop;
+      expect_held("CASE L4");
+      send(c_MAX_PACKETS, c_PW_FULL, "CASE L4");
+      for n in 1 to c_MAX_PACKETS loop
+         recv(n, c_PW_FULL, "CASE L4");
+      end loop;
+   end procedure;
+
 begin
 
    clk <= not clk after c_CLK_PERIOD / 2;
@@ -366,6 +503,16 @@ begin
       m_axis_tready <= '0';
       pct_rd        <= '0';
       pct_clr       <= '0';
+
+      if not c_SMALL then
+         large_geometry_cases(clk, rst, s_axis_tdata, s_axis_tvalid, s_axis_tready,
+            m_axis_tdata, m_axis_tvalid, m_axis_tready, pct_buff_cnt, payload_buff_cnt,
+            pct_rd, pct_valid, pct_header);
+         report "All enabled lime_txpct_fifo tests passed (" & integer'image(c_MAX_FIFO_WORDS) &
+                " words / " & integer'image(c_MAX_PACKETS) & " packets)";
+         wait_clk_cycles(clk, 5);
+         finish;
+      end if;
 
       -------------------------------------------------------------------------
       -- CASE 1: short packet write

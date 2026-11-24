@@ -24,7 +24,10 @@ def fifo_words_to_nbits(n_words: int, add_msb: bool) -> int:
 
 class FX3(LiteXModule):
     def __init__(self, platform, pads,
-                 EP01_size    = 4096,  # Stream PC->FPGA, FIFO size in bytes, same size for FX3_EP01_0 and FX3_EP01_1
+                 EP01_size    = 4096,  # Stream PC->FPGA, FIFO size in bytes (FX3_EP01_0, and FX3_EP01_1 unless EP01_1_size is set).
+                                       # 4096 = one packet: the next GPIF read starts only when the FIFO is empty.
+                                       # 8192 = two packets: the next 4 KB GPIF read starts as soon as 4 KB are free.
+                 EP01_1_size  = None,  # Stream PC->FPGA FIFO size in bytes for FX3_EP01_1 (WFM load path), default EP01_size
                  EP01_0_rwidth= 32,   # Stream PC->FPGA, FIFO rd width, FIFO number - 0
                  EP01_1_rwidth= 32,    # Stream PC->FPGA, FIFO rd width, FIFO number - 1
                  EP81_size    = 16384, # Stream FPGA->PC, FIFO size in bytes
@@ -41,6 +44,13 @@ class FX3(LiteXModule):
         assert EP0F_rwidth == 32, "EP0F_rwidth values other than 32 bits are not supported yet"
         assert EP8F_wwidth == 32, "EP8F_wwidth values other than 32 bits are not supported yet"
         assert EP01_1_rwidth == 32, "EP01_1_rwidth values other than 32 bits are not supported yet"
+
+        EP01_1_size = EP01_size if EP01_1_size is None else EP01_1_size
+        # EP01_1_size = 0: no WFM load path (FIFO, payload extractor and muxing not instantiated;
+        # data_source_1 stays an idle endpoint). Used by builds without DDR/WFM player.
+        with_source_1 = EP01_1_size > 0
+        self.with_source_1 = with_source_1
+        assert EP01_1_size <= EP01_size, "EP01_1_size must not exceed EP01_size (socket 0 watermark is derived from EP01_size)"
 
         #internal variables
         self.ep01_0_rdusedw_width  = ep01_0_rdusedw_width = fifo_words_to_nbits(EP01_size//4, add_msb=True)
@@ -94,17 +104,19 @@ class FX3(LiteXModule):
             layout=[("data", 32)],
             depth=EP01_size//4,
             buffered=True))
-        if cd_source_1_rd == "sys":
+        if not with_source_1:
+            pass
+        elif cd_source_1_rd == "sys":
             self.source_data_fifo_1 = ResetInserter()(SyncFIFO(
                 layout=[("data", 32)],
-                depth=EP01_size//4,
+                depth=EP01_1_size//4,
                 buffered=True))
         else:
             from gateware.LimeDFB.lime_fifo.src.lime_fifo import LimeStreamAsyncFIFO
             self.source_data_fifo_1 = ClockDomainsRenamer({"write": "sys", "read": cd_source_1_rd})(
                 LimeStreamAsyncFIFO(
                     layout=[("data", 32)],
-                    depth=EP01_size//4,
+                    depth=EP01_1_size//4,
                     buffered=True))
         # # FPGA -> Host data FIFO
         self.sink_data_fifo = ResetInserter()(SyncFIFO(
@@ -123,23 +135,32 @@ class FX3(LiteXModule):
             buffered=True))
 
         # Host -> FPGA data fifo muxing
-        source_1_level_w = self.source_data_fifo_1.level_w if cd_source_1_rd != "sys" else self.source_data_fifo_1.level
-        source_1_level_r = self.source_data_fifo_1.level_r if cd_source_1_rd != "sys" else self.source_data_fifo_1.level
-        self.comb +=[
-            self.source_data_fifo_0.sink.data.eq(self._socket0_fifo_data),
-            self._payload_extract_sink_data.eq(self._socket0_fifo_data),
-            self.source_data_fifo_1.sink.data.eq(self._payload_extract_source_data),
-            self.source_data_fifo_1.sink.valid.eq(self._payload_extract_source_valid),
-            If(self.data_source_sel == 0,[
+        if not with_source_1:
+            self.comb += [
+                self.source_data_fifo_0.sink.data.eq(self._socket0_fifo_data),
                 self.source_data_fifo_0.sink.valid.eq(self._socket0_fifo_wr),
-                self._payload_extract_sink_valid.eq(0),
                 self._socket0_fifo_usedw.eq(self.source_data_fifo_0.level),
-            ]).Else([
-                self.source_data_fifo_0.sink.valid.eq(0),
-                self._payload_extract_sink_valid.eq(self._socket0_fifo_wr),
-                self._socket0_fifo_usedw.eq(source_1_level_w),
-            ])
-        ]
+            ]
+        source_1_level_w = (self.source_data_fifo_1.level_w if cd_source_1_rd != "sys" else self.source_data_fifo_1.level) if with_source_1 else 0
+        source_1_level_r = (self.source_data_fifo_1.level_r if cd_source_1_rd != "sys" else self.source_data_fifo_1.level) if with_source_1 else 0
+        if with_source_1:
+            self.comb += [
+                self.source_data_fifo_0.sink.data.eq(self._socket0_fifo_data),
+                self._payload_extract_sink_data.eq(self._socket0_fifo_data),
+                self.source_data_fifo_1.sink.data.eq(self._payload_extract_source_data),
+                self.source_data_fifo_1.sink.valid.eq(self._payload_extract_source_valid),
+                If(self.data_source_sel == 0,[
+                    self.source_data_fifo_0.sink.valid.eq(self._socket0_fifo_wr),
+                    self._payload_extract_sink_valid.eq(0),
+                    self._socket0_fifo_usedw.eq(self.source_data_fifo_0.level),
+                ]).Else([
+                    self.source_data_fifo_0.sink.valid.eq(0),
+                    self._payload_extract_sink_valid.eq(self._socket0_fifo_wr),
+                    # The socket 0 write watermark is derived from the EP01_0 FIFO depth; offset the
+                    # EP01_1 level so that a smaller EP01_1 FIFO is never written past its capacity.
+                    self._socket0_fifo_usedw.eq(source_1_level_w + (EP01_size - EP01_1_size)//4),
+                ])
+            ]
 
         # register clear signals
         self.sync += [
@@ -168,14 +189,21 @@ class FX3(LiteXModule):
             self.comb += self.source_data_fifo_0.source.connect(self.data_source, omit=["keep", "id", "dest", "user"])
 
         # Source 1
-        if EP01_1_rwidth != 32:
+        if not with_source_1:
+            pass
+        elif EP01_1_rwidth != 32:
             self.source_1_conv = ResetInserter()(stream.Converter(32, EP01_1_rwidth))
             self.comb += self.source_1_conv.reset.eq(self.data_source1_clr)
             self.comb += self.source_data_fifo_1.source.connect(self.source_1_conv.sink, omit=["keep", "id", "dest", "user"])
             self.comb += self.source_1_conv.source.connect(self.data_source_1, omit=["keep", "id", "dest", "user"])
         else:
             self.comb += self.source_data_fifo_1.source.connect(self.data_source_1, omit=["keep", "id", "dest", "user"])
-            self.comb += self.data_source_1_level.eq(source_1_level_r)
+            # Registered: the async FIFO read level is a gray-decode + subtract, and the WFM
+            # write-command FSM compares it against burst thresholds in the lms_tx domain
+            # (setup failures at 122.88 MHz in the 3.12 build). The WFM FSM only samples
+            # the level after an idle cycle, so one cycle of latency is harmless.
+            sync_source_1_rd  = getattr(self.sync, cd_source_1_rd)
+            sync_source_1_rd += self.data_source_1_level.eq(source_1_level_r)
 
         # Sink
         if EP81_wwidth != 32:
@@ -189,7 +217,7 @@ class FX3(LiteXModule):
         # FIFO clear signals
         self.comb += [
             self.source_data_fifo_0.reset.eq(self.data_source0_clr),
-            self.source_data_fifo_1.reset.eq(self.data_source1_clr),
+            *([self.source_data_fifo_1.reset.eq(self.data_source1_clr)] if with_source_1 else []),
             self.sink_data_fifo.reset.eq(self.data_sink_clr),
             self.sink_ctrl_fifo.reset.eq(self.ctrl_sink_clr | self._fifo_control.fields.reset),
             self.source_ctrl_fifo.reset.eq(ResetSignal("sys")),
@@ -291,29 +319,30 @@ class FX3(LiteXModule):
             self.busy_out.eq(self._GPIF_busy | pads.ctl8)
         ]
 
-        # Packet Payload Extract Instance ----------------------------------------------------------
-        self.pct_payload_extrct = Instance("pct_payload_extrct",
-            # Parameters
-            p_data_w      = 32,
-            p_header_size = 16,
-            p_pct_size    = 4096,
+        if with_source_1:
+            # Packet Payload Extract Instance ----------------------------------------------------------
+            self.pct_payload_extrct = Instance("pct_payload_extrct",
+                # Parameters
+                p_data_w      = 32,
+                p_header_size = 16,
+                p_pct_size    = 4096,
 
-            # Ports
-            i_clk               = ClockSignal("sys"),
-            i_reset_n           = ~ResetSignal("sys"),
-            i_pct_data          = self._payload_extract_sink_data,
-            i_pct_wr            = self._payload_extract_sink_valid,
-            o_pct_payload_data  = self._payload_extract_source_data,
-            o_pct_payload_valid = self._payload_extract_source_valid,
-            o_pct_payload_dest  = Open(),
-        )
+                # Ports
+                i_clk               = ClockSignal("sys"),
+                i_reset_n           = ~ResetSignal("sys"),
+                i_pct_data          = self._payload_extract_sink_data,
+                i_pct_wr            = self._payload_extract_sink_valid,
+                o_pct_payload_data  = self._payload_extract_source_data,
+                o_pct_payload_valid = self._payload_extract_source_valid,
+                o_pct_payload_dest  = Open(),
+            )
 
-        self.pct_payload_extrct_conv = add_vhd2v_converter(self.platform,
-            instance = self.pct_payload_extrct,
-            files    = ["gateware/LimeDFB/FX3/src/pct_payload_extrct.vhd"],
-        )
-        # Removed Instance to avoid multiple definition
-        self._fragment.specials.remove(self.pct_payload_extrct)
+            self.pct_payload_extrct_conv = add_vhd2v_converter(self.platform,
+                instance = self.pct_payload_extrct,
+                files    = ["gateware/LimeDFB/FX3/src/pct_payload_extrct.vhd"],
+            )
+            # Removed Instance to avoid multiple definition
+            self._fragment.specials.remove(self.pct_payload_extrct)
 
         self.slaveFIFO5b_conv = add_vhd2v_converter(self.platform,
             instance = self.slaveFIFO5b,

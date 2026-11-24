@@ -18,6 +18,9 @@ entity simple_dual_port_ram is
     generic (
         DATA_WIDTH : positive := 32;
         ADDR_WIDTH : positive := 10;
+        -- Number of words (0 = 2**ADDR_WIDTH). Smaller values let a non-power-of-two
+        -- buffer use only the block RAM it needs; addresses must stay below DEPTH.
+        DEPTH      : natural  := 0;
 
         -- Synthesis hints. Unsupported tools usually ignore unknown attributes.
         AMD_RAM_STYLE    : string := "AUTO";       -- Vivado: "AUTO", "BLOCK", "DISTRIBUTED", "Ultra"
@@ -41,7 +44,15 @@ end entity simple_dual_port_ram;
 
 architecture rtl of simple_dual_port_ram is
 
-    constant RAM_DEPTH : positive := 2 ** ADDR_WIDTH;
+    function ram_depth_f return positive is
+    begin
+        if DEPTH = 0 then
+            return 2 ** ADDR_WIDTH;
+        end if;
+        return DEPTH;
+    end function;
+
+    constant RAM_DEPTH : positive := ram_depth_f;
 
     type ram_t is array (0 to RAM_DEPTH-1)
         of std_logic_vector(DATA_WIDTH-1 downto 0);

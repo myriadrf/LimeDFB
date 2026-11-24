@@ -92,6 +92,17 @@ architecture rtl of lime_txpct_fifo is
    constant c_META_MEM_ADDR_WIDTH         : positive := clogb2(g_MAX_PACKETS);
    constant c_PAYLOAD_MEM_ADDR_WIDTH      : integer  := clogb2(g_MAX_FIFO_WORDS);
    constant c_PACKET_PAYLOAD_SIZE_WIDTH   : positive := 16;
+   constant c_PAYLOAD_DEPTH_POW2          : boolean  := (2 ** c_PAYLOAD_MEM_ADDR_WIDTH = g_MAX_FIFO_WORDS);
+
+   -- Payload RAM address increment; wraps at g_MAX_FIFO_WORDS (non-power-of-two sizes,
+   -- e.g. 3072 words = 48 KB). Power-of-two sizes keep the plain binary roll-over.
+   function payload_addr_next(addr : std_logic_vector) return std_logic_vector is
+   begin
+      if not c_PAYLOAD_DEPTH_POW2 and unsigned(addr) = g_MAX_FIFO_WORDS - 1 then
+         return std_logic_vector(to_unsigned(0, addr'length));
+      end if;
+      return std_logic_vector(unsigned(addr) + 1);
+   end function;
    
 
    signal s_axis_handshake       : std_logic;
@@ -388,7 +399,8 @@ begin
    payload_mem_i : entity work.simple_dual_port_ram
       generic map (
          DATA_WIDTH     => c_AXIS_DATA_WIDTH,
-         ADDR_WIDTH     => c_PAYLOAD_MEM_ADDR_WIDTH
+         ADDR_WIDTH     => c_PAYLOAD_MEM_ADDR_WIDTH,
+         DEPTH          => g_MAX_FIFO_WORDS
       )
       port map (
          wr_clk  => clk,
@@ -427,7 +439,7 @@ begin
             payload_mem_wr_addr <= (others=>'0');
          else
             if payload_mem_wr_en = '1' then 
-               payload_mem_wr_addr <= std_logic_vector(unsigned(payload_mem_wr_addr) + 1);
+               payload_mem_wr_addr <= payload_addr_next(payload_mem_wr_addr);
             end if;
          end if;
       end if;
@@ -537,7 +549,7 @@ begin
                -- Issue payload RAM read
                -- RAM samples old payload_mem_rd_addr on this clock edge.
                if payload_mem_rd_en = '1' then
-                  payload_mem_rd_addr <= std_logic_vector(unsigned(payload_mem_rd_addr) + 1);
+                  payload_mem_rd_addr <= payload_addr_next(payload_mem_rd_addr);
                   payload_rd_req_cnt  <= payload_rd_req_cnt + 1;
                   payload_rd_left     <= payload_rd_left - 1;
                end if;
