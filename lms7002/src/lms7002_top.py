@@ -28,6 +28,8 @@ from gateware.LimeDFB.lms7002.src.lms7002_clk   import LMS7002CLK
 # LMS7002 Top --------------------------------------------------------------------------------------
 
 class LMS7002Top(LiteXModule):
+    domain_rst_on_unlock = False  # Board targets may enable it before building (see reset section).
+
     def __init__(self, platform, vendor, family, pads=None,
         fpgacfg_manager      = None,
         rx_stream_en         = None,
@@ -160,6 +162,12 @@ class LMS7002Top(LiteXModule):
         self.lms7002_ddout = ClockDomainsRenamer("lms_tx")(LMS7002DDOUT(platform, vendor, 12, pads))
         self.tx_cdc        = stream.AsyncFIFO([("data", 64)], depth=s_axis_tx_fifo_words, buffered=False)
         self.tx_cdc        = ClockDomainsRenamer({"write" : s_clk_domain, "read" : "lms_tx"})(self.tx_cdc)
+        # LMS7002_TX holds S_AXIS_TREADY low in reset and the AsyncFIFO has no reset, so up to
+        # s_axis_tx_fifo_words frames of the previous stream were transmitted first at the next
+        # start. Drain it while the TX interface is in reset (the legacy design cleared its
+        # TX FIFOs with the stream reset).
+        tx_cdc_lms_ready   = Signal()
+        self.comb += self.tx_cdc.source.ready.eq(tx_cdc_lms_ready | ~tx_reset_n)
 
         self.lms7002_tx = Instance("LMS7002_TX",
             # Parameters.
@@ -186,7 +194,7 @@ class LMS7002Top(LiteXModule):
             i_S_AXIS_ACLK     = Constant(0, 1), # Unused
             i_S_AXIS_TVALID   = self.tx_cdc.source.valid,
             i_S_AXIS_TDATA    = self.tx_cdc.source.data,
-            o_S_AXIS_TREADY   = self.tx_cdc.source.ready,
+            o_S_AXIS_TREADY   = tx_cdc_lms_ready,
             i_S_AXIS_TLAST    = self.tx_cdc.source.last,
         )
 
@@ -535,8 +543,18 @@ class LMS7002Top(LiteXModule):
             )
         ]
 
-        self.specials += AsyncResetSynchronizer(self.cd_lms_rx, ResetSignal("sys"))
-        self.specials += AsyncResetSynchronizer(self.cd_lms_tx, ResetSignal("sys"))
+        # domain_rst_on_unlock (opt-in, Cyclone IV PLL): also hold lms_rx / lms_tx in reset while
+        # the respective interface PLL is not locked (PLL reconfiguration, and the first start-up
+        # after configuration), so registers that only see the domain reset (tx_cdc pointers, TX
+        # mux pipeline, ...) are re-initialised on a clean clock. Not tied to the stream enables:
+        # the phase search needs the TX pattern path running while streaming is off.
+        rx_unlocked = Constant(0, 1)
+        tx_unlocked = Constant(0, 1)
+        if LMS7002Top.domain_rst_on_unlock and hasattr(self.lms7002_clk, "cycloneiv_pll"):
+            rx_unlocked = ~self.lms7002_clk.cycloneiv_pll.pll_lock[1]
+            tx_unlocked = ~self.lms7002_clk.cycloneiv_pll.pll_lock[0]
+        self.specials += AsyncResetSynchronizer(self.cd_lms_rx, ResetSignal("sys") | rx_unlocked)
+        self.specials += AsyncResetSynchronizer(self.cd_lms_tx, ResetSignal("sys") | tx_unlocked)
 
         # TX.
         # ---
